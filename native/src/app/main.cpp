@@ -1,6 +1,9 @@
 #include "pepepow/core/backend.hpp"
 #include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
+#ifdef PEPEPOW_HAS_CUDA
+#include "pepepow/cuda/header80_backend.hpp"
+#endif
 
 #include <atomic>
 #include <condition_variable>
@@ -153,12 +156,25 @@ int main(int argc, char** argv) {
             else throw std::invalid_argument("unknown argument: " + argument);
         }
 
-        pepepow::CpuReferenceBackend backend;
-        const auto devices = backend.enumerate_devices();
+        std::unique_ptr<pepepow::MiningBackend> backend;
+#ifdef PEPEPOW_HAS_CUDA
+        backend = std::make_unique<pepepow::Header80CudaBackend>(0);
+#else
+        backend = std::make_unique<pepepow::CpuReferenceBackend>();
+#endif
+
+        const auto devices = backend->enumerate_devices();
         if (list_gpu) {
-            for (const auto& device : devices) std::cout << '[' << device.index << "] " << device.name << '\n';
+            for (const auto& device : devices) {
+                std::cout << '[' << device.index << "] " << device.name;
+                if (device.compute_major > 0) {
+                    std::cout << " sm_" << device.compute_major << device.compute_minor;
+                }
+                std::cout << '\n';
+            }
             return 0;
         }
+        if (devices.empty()) throw std::runtime_error("no mining device available");
 
         if (pool.empty() || username.empty()) {
             print_help();
@@ -173,7 +189,7 @@ int main(int argc, char** argv) {
         config.agent = "PepePowMiner/0.1.1-rc1";
 
         pepepow::stratum::Client client(std::move(config));
-        MiningWorker worker(backend, client);
+        MiningWorker worker(*backend, client);
         active_client = &client;
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
