@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(PepePowMiner VERSION 0.2.0 LANGUAGES C CXX)
+project(PepePowMiner VERSION 0.1.1 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
+find_package(Threads REQUIRED)
 set(BLAKE3_SIMD_TYPE "none" CACHE STRING "Use portable BLAKE3 for deterministic reference builds" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
 FetchContent_Declare(
@@ -41,7 +42,7 @@ add_library(pepepow_core
 
 target_include_directories(pepepow_core PUBLIC include)
 target_compile_features(pepepow_core PUBLIC cxx_std_20)
-target_link_libraries(pepepow_core PUBLIC BLAKE3::blake3 nlohmann_json::nlohmann_json)
+target_link_libraries(pepepow_core PUBLIC BLAKE3::blake3 nlohmann_json::nlohmann_json Threads::Threads)
 if(WIN32)
     target_link_libraries(pepepow_core PUBLIC ws2_32)
 endif()
@@ -96,7 +97,7 @@ if(PEPEPOW_ENABLE_CUDA)
 endif()
 
 add_executable(pepepowminer src/app/main.cpp)
-target_link_libraries(pepepowminer PRIVATE pepepow_core)
+target_link_libraries(pepepowminer PRIVATE pepepow_core Threads::Threads)
 
 if(PEPEPOW_ENABLE_CUDA)
     target_link_libraries(pepepowminer PRIVATE pepepow_cuda)
