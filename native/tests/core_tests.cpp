@@ -57,5 +57,18 @@ int main() {
     for (const auto byte : pow_a) nonzero = nonzero || byte != 0;
     assert(nonzero);
 
+    const auto direct_a = pepepow::crypto::calculate_header80_pow(header);
+    const auto direct_b = pepepow::crypto::calculate_header80_pow(header);
+    assert(direct_a == direct_b);
+
+    auto next_header = header;
+    next_header[76] ^= 0x01U;
+    const auto direct_next = pepepow::crypto::calculate_header80_pow(next_header);
+    assert(direct_a != direct_next);
+
+    bool direct_nonzero = false;
+    for (const auto byte : direct_a) direct_nonzero = direct_nonzero || byte != 0;
+    assert(direct_nonzero);
+
     return 0;
 }
