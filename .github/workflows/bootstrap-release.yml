@@ -26,9 +26,6 @@ jobs:
 
           rm -rf native
           cp -a /tmp/source/native ./native
-          mkdir -p .github/workflows
-          cp /tmp/source/.github/workflows/native-ci.yml .github/workflows/native-ci.yml
-          sed -i 's/agent\/pepepowminer-foundation/main/g' .github/workflows/native-ci.yml
 
           cat > README.md <<'EOF'
           # PepePow Miner
@@ -51,7 +48,7 @@ jobs:
 
           ## Verified hardware
 
-          RTX 3080 (`sm_86`) has been tested with CUDA 12.4. The verified development benchmark reached approximately 0.99 MH/s median with peaks above 1.03 MH/s using 128 threads per block. Results depend on clocks, power limit, temperature and driver state.
+          RTX 3080 (`sm_86`) has been tested with CUDA 12.4. The development benchmark reached approximately 0.99 MH/s median with peaks above 1.03 MH/s using 128 threads per block. Results depend on clocks, power limit, temperature and driver state.
 
           Tesla V100 (`sm_70`) is supported by the build system but requires further performance validation and tuning.
 
@@ -97,7 +94,7 @@ jobs:
 
           - `pepepowminer` — native application foundation
           - `pepepow_cuda_benchmark` — CUDA throughput measurement
-          - `pepepow_cuda_warp_probe` — diagnostic tool for warp divergence and nonlinear branch distribution
+          - `pepepow_cuda_warp_probe` — warp-divergence and nonlinear branch diagnostic tool
 
           ## Current limitations
 
