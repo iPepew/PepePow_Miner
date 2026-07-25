@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(PepePowMiner VERSION 0.1.0 LANGUAGES C CXX)
+project(PepePowMiner VERSION 0.2.0 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
@@ -21,7 +21,13 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
     SOURCE_SUBDIR c
 )
-FetchContent_MakeAvailable(blake3_source)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(blake3_source nlohmann_json)
 
 add_library(pepepow_core
     src/core/header_builder.cpp
@@ -29,11 +35,15 @@ add_library(pepepow_core
     src/crypto/blake3.cpp
     src/crypto/hoohash_reference.cpp
     src/crypto/pow.cpp
+    src/network/stratum_client.cpp
 )
 
 target_include_directories(pepepow_core PUBLIC include)
 target_compile_features(pepepow_core PUBLIC cxx_std_20)
-target_link_libraries(pepepow_core PUBLIC BLAKE3::blake3)
+target_link_libraries(pepepow_core PUBLIC BLAKE3::blake3 nlohmann_json::nlohmann_json)
+if(WIN32)
+    target_link_libraries(pepepow_core PUBLIC ws2_32)
+endif()
 
 if(MSVC)
     target_compile_options(pepepow_core PRIVATE /W4 /permissive-)
