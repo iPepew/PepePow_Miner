@@ -48,7 +48,8 @@ Target256 target_from_difficulty(double difficulty) {
     Target256 output{};
     for (std::size_t index = 0; index < output.size(); ++index) {
         const std::size_t shift = (output.size() - 1U - index) * 8U;
-        output[index] = static_cast<std::uint8_t>((target >> shift) & 0xff);
+        const cpp_int byte = (target >> shift) & 0xff;
+        output[index] = static_cast<std::uint8_t>(byte.convert_to<unsigned int>());
     }
     return output;
 }
@@ -61,4 +62,4 @@ bool hash_meets_target_be(const Hash256& hash, const Target256& target) noexcept
     return true;
 }
 
-} // namespace pepepow::mining
+} // namespace pepepow::mining {
