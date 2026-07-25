@@ -35,6 +35,7 @@ add_library(pepepow_core
     src/crypto/blake3.cpp
     src/crypto/hoohash_reference.cpp
     src/crypto/pow.cpp
+    src/mining/target.cpp
     src/network/stratum_client.cpp
 )
 
