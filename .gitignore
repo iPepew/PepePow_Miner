@@ -1,0 +1,12 @@
+build/
+native/build*/
+native/ptxas*.log
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+.vs/
+.vscode/
