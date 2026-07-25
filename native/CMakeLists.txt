@@ -57,6 +57,7 @@ if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
     add_library(pepepow_cuda
         src/cuda/cuda_backend.cu
+        src/cuda/header80_backend.cu
         src/cuda/hoohash_matrix_reference.cu
         src/cuda/pow_pipeline_reference.cu
         src/cuda/warp_divergence_probe.cu
@@ -66,7 +67,7 @@ if(PEPEPOW_ENABLE_CUDA)
     set_target_properties(pepepow_cuda PROPERTIES
         CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "70;75;80;86;89"
+        CUDA_ARCHITECTURES "86"
         CUDA_SEPARABLE_COMPILATION ON
     )
     target_compile_options(pepepow_cuda PRIVATE
@@ -97,7 +98,7 @@ if(PEPEPOW_ENABLE_CUDA)
 endif()
 
 add_executable(pepepowminer src/app/main.cpp)
-target_link_libraries(pepepowminer PRIVATE pepepow_core Threads::Threads)
+target_link_libraries(pepepowminer PRIVATE pepepow_core)
 
 if(PEPEPOW_ENABLE_CUDA)
     target_link_libraries(pepepowminer PRIVATE pepepow_cuda)
