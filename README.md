@@ -20,7 +20,6 @@ The current CUDA implementation preserves strict FP64 behavior with `--fmad=fals
 
 RTX 3080 (`sm_86`) has been tested with CUDA 12.4. The development benchmark reached approximately 0.99 MH/s median with peaks above 1.03 MH/s using 128 threads per block. Results depend on clocks, power limit, temperature and driver state.
 
-Tesla V100 (`sm_70`) is supported by the build system but requires further performance validation and tuning.
 
 ## Build without CUDA
 
@@ -48,16 +47,6 @@ chmod +x scripts/profile_cuda.sh
 ./scripts/profile_cuda.sh 86
 ctest --test-dir build-cuda-sm86 --output-on-failure
 ./build-cuda-sm86/pepepow_cuda_benchmark 1048576 0 128
-```
-
-Tesla V100:
-
-```bash
-cd native
-chmod +x scripts/profile_cuda.sh
-./scripts/profile_cuda.sh 70
-ctest --test-dir build-cuda-sm70 --output-on-failure
-./build-cuda-sm70/pepepow_cuda_benchmark 1048576 0 128
 ```
 
 ## Included executables
