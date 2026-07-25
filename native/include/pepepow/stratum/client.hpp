@@ -2,6 +2,7 @@
 
 #include "pepepow/core/types.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <functional>
