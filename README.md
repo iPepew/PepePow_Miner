@@ -57,7 +57,7 @@ ctest --test-dir build-cuda-sm86 --output-on-failure
 
 ## Current limitations
 
-v0.1.0 is a foundation release. It is not yet a complete pool-connected production miner and does not claim SRBMiner-level performance. Stratum networking, production share submission, long-running device management and additional GPU-specific tuning remain under development.
+v0.1.0 is a foundation release. It is not yet a complete pool-connected production miner. Stratum networking, production share submission, long-running device management and additional GPU-specific tuning remain under development.
 
 ## Safety
 
