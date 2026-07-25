@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -76,12 +77,12 @@ public:
 private:
     void run() {
         constexpr std::uint64_t chunk_size = 4096;
-        while (!stopped_) {
+        while (!stopped_.load()) {
             WorkItem item;
             {
                 std::unique_lock lock(mutex_);
-                condition_.wait(lock, [this] { return stopped_ || latest_.has_value(); });
-                if (stopped_) break;
+                condition_.wait(lock, [this] { return stopped_.load() || latest_.has_value(); });
+                if (stopped_.load()) break;
                 item = *latest_;
                 latest_.reset();
             }
@@ -95,7 +96,7 @@ private:
                           << " difficulty=" << item.stratum_job.difficulty
                           << " backend=" << backend_.name() << '\n';
 
-                while (!stopped_ && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
+                while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
                     const std::uint64_t remaining = 0x100000000ULL - nonce;
                     const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
                     const auto candidate = backend_.search(
