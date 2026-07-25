@@ -1,0 +1,26 @@
+name: Protocol Probe
+
+on:
+  push:
+    paths:
+      - '.github/workflows/protocol-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect pool protocol
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/edisontw/pool-pepepow.git pool
+          echo '=== FILES ==='
+          find pool/apps/pool-core -type f | sort
+          echo '=== STRATUM METHODS ==='
+          grep -RInE 'mining\.(subscribe|authorize|notify|submit|set_difficulty)|extranonce|difficulty|target' pool/apps/pool-core pool/tests | head -n 500
+          echo '=== SOURCE SNIPPETS ==='
+          grep -RIlE 'mining\.(subscribe|authorize|notify|submit|set_difficulty)' pool/apps/pool-core | while read -r f; do
+            echo "--- $f ---"
+            sed -n '1,260p' "$f"
+          done
