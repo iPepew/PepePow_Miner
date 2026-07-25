@@ -1,0 +1,2235 @@
+=== FILES ===
+/tmp/pool-pepepow/apps/pool-core/README.md
+/tmp/pool-pepepow/apps/pool-core/accounting.py
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py
+/tmp/pool-pepepow/apps/pool-core/activity_log.py
+/tmp/pool-pepepow/apps/pool-core/blake3.h
+/tmp/pool-pepepow/apps/pool-core/config.example.toml
+/tmp/pool-pepepow/apps/pool-core/config.py
+/tmp/pool-pepepow/apps/pool-core/contracts/activity-snapshot.schema.json
+/tmp/pool-pepepow/apps/pool-core/contracts/pool-snapshot.schema.json
+/tmp/pool-pepepow/apps/pool-core/contracts/share-event.schema.json
+/tmp/pool-pepepow/apps/pool-core/daemon_rpc.py
+/tmp/pool-pepepow/apps/pool-core/hoohash.c
+/tmp/pool-pepepow/apps/pool-core/hoohash.h
+/tmp/pool-pepepow/apps/pool-core/libs/aarch64-linux/README.md
+/tmp/pool-pepepow/apps/pool-core/libs/aarch64-linux/libblake3.a
+/tmp/pool-pepepow/apps/pool-core/libs/aarch64-linux/libhoohash.a
+/tmp/pool-pepepow/apps/pool-core/pepepow_pow.py
+/tmp/pool-pepepow/apps/pool-core/pepepow_pow_helper.c
+/tmp/pool-pepepow/apps/pool-core/producer.py
+/tmp/pool-pepepow/apps/pool-core/runtime_io.py
+/tmp/pool-pepepow/apps/pool-core/snapshot_builder.py
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py
+/tmp/pool-pepepow/apps/pool-core/tools/brute_scan.py
+/tmp/pool-pepepow/apps/pool-core/tools/compare_hoohash_libs.c
+/tmp/pool-pepepow/apps/pool-core/tools/compare_hoohash_symbols.c
+/tmp/pool-pepepow/apps/pool-core/tools/compare_versions.c
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py
+/tmp/pool-pepepow/apps/pool-core/tools/generate_shares.py
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pow_hypotheses.py
+/tmp/pool-pepepow/apps/pool-core/tools/summarize_evidence.py
+/tmp/pool-pepepow/apps/pool-core/tools/test_hoohash_parity.py
+/tmp/pool-pepepow/apps/pool-core/tools/test_pow_consistency.py
+/tmp/pool-pepepow/apps/pool-core/tools/test_v110.c
+/tmp/pool-pepepow/apps/pool-core/tools/verify_known_vector.c
+=== STRATUM METHODS ===
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py:20:    difficulty: float | None = None
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py:123:    difficulty = _resolve_difficulty(payload)
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py:129:        difficulty=difficulty,
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py:236:def _resolve_difficulty(payload: dict[str, Any]) -> float | None:
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py:237:    for key in ("difficulty", "shareDifficulty", "effectiveDifficulty"):
+/tmp/pool-pepepow/apps/pool-core/activity_ingest.py:243:        for key in ("shareDifficultyUsed", "difficulty", "effectiveDifficulty"):
+/tmp/pool-pepepow/apps/pool-core/accounting.py:28:    assumed_share_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/accounting.py:37:    assumed_share_difficulty: float = DEFAULT_ASSUMED_SHARE_DIFFICULTY,
+/tmp/pool-pepepow/apps/pool-core/accounting.py:40:        assumed_share_difficulty=assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/accounting.py:76:        assumed_share_difficulty=float(
+/tmp/pool-pepepow/apps/pool-core/accounting.py:77:            meta.get("assumedShareDifficulty", assumed_share_difficulty)
+/tmp/pool-pepepow/apps/pool-core/producer.py:165:            assumed_share_difficulty=self._config.estimated_hashrate_assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/producer.py:176:            "assumedShareDifficulty": activity.assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/producer.py:210:            "assumedShareDifficulty": self._config.estimated_hashrate_assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/producer.py:257:                self._config.estimated_hashrate_assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/config.py:50:    hashrate_assumed_share_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/config.py:51:    estimated_hashrate_assumed_share_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/config.py:64:    stratum_wire_difficulty_scale: float
+/tmp/pool-pepepow/apps/pool-core/config.py:66:    stratum_vardiff_initial_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/config.py:67:    stratum_vardiff_min_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/config.py:68:    stratum_vardiff_max_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/config.py:69:    stratum_vardiff_target_share_interval_seconds: float
+/tmp/pool-pepepow/apps/pool-core/config.py:70:    stratum_vardiff_retarget_interval_seconds: float
+/tmp/pool-pepepow/apps/pool-core/config.py:85:    hashrate_assumed_share_difficulty = max(
+/tmp/pool-pepepow/apps/pool-core/config.py:176:        hashrate_assumed_share_difficulty=hashrate_assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/config.py:177:        estimated_hashrate_assumed_share_difficulty=float(
+/tmp/pool-pepepow/apps/pool-core/config.py:180:                str(hashrate_assumed_share_difficulty),
+/tmp/pool-pepepow/apps/pool-core/config.py:270:        stratum_wire_difficulty_scale=max(
+/tmp/pool-pepepow/apps/pool-core/config.py:282:        stratum_vardiff_initial_difficulty=max(
+/tmp/pool-pepepow/apps/pool-core/config.py:291:        stratum_vardiff_min_difficulty=max(
+/tmp/pool-pepepow/apps/pool-core/config.py:300:        stratum_vardiff_max_difficulty=max(
+/tmp/pool-pepepow/apps/pool-core/config.py:309:        stratum_vardiff_target_share_interval_seconds=max(
+/tmp/pool-pepepow/apps/pool-core/config.py:318:        stratum_vardiff_retarget_interval_seconds=max(
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:30:    extranonce1: str
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:31:    extranonce2_size: int = 4
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:36:    current_difficulty: float | None = None
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:46:    last_difficulty_reason: str | None = None
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:53:        extranonce1=secrets.token_hex(4),
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:95:            ["mining.set_difficulty", state.session_id],
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:96:            ["mining.notify", state.session_id],
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:98:        state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:99:        state.extranonce2_size,
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:103:def difficulty_notification(difficulty: float) -> dict[str, Any]:
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:106:        "method": "mining.set_difficulty",
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:107:        "params": [difficulty],
+/tmp/pool-pepepow/apps/pool-core/stratum_protocol.py:139:        "method": "mining.notify",
+/tmp/pool-pepepow/apps/pool-core/tools/generate_shares.py:102:        "targetRate": args.rate,
+/tmp/pool-pepepow/apps/pool-core/tools/generate_shares.py:159:            {"id": 1, "method": "mining.subscribe", "params": ["loadgen/1.0"]},
+/tmp/pool-pepepow/apps/pool-core/tools/generate_shares.py:164:            {"id": 2, "method": "mining.authorize", "params": [login, "x"]},
+/tmp/pool-pepepow/apps/pool-core/tools/generate_shares.py:179:                    "method": "mining.submit",
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pow_hypotheses.py:24:    target_int = int(record["shareTarget"], 16)
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pow_hypotheses.py:40:        if int.from_bytes(res, "big") <= target_int:
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:26:def format_target_diff(hash_hex: str, target_hex: str) -> str:
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:28:    t_val = int(target_hex, 16)
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:63:    share_target_hex = record.get("shareTarget")
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:69:        print(f"Share Target:       {share_target_hex}")
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:81:        target_status = format_target_diff(final_hash, share_target_hex)
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:83:        if "!!!" in target_status or (match_status == "MATCH" and not scan):
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:86:            print(f"    Status: {match_status} | {target_status}")
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:94:                    v_target = format_target_diff(v_hash, share_target_hex)
+/tmp/pool-pepepow/apps/pool-core/tools/replay_submit_evidence.py:95:                    print(f"      Matrix {v_name:12}: {v_hash} | {v_status} | {v_target}")
+/tmp/pool-pepepow/apps/pool-core/tools/summarize_evidence.py:34:        "rejected": sum(1 for r in records if r.get("shareHashValidationStatus") in ("share-hash-invalid", "low-difficulty-share")),
+/tmp/pool-pepepow/apps/pool-core/tools/summarize_evidence.py:36:        "targetStatus": Counter(r.get("targetValidationStatus", "none") for r in records),
+/tmp/pool-pepepow/apps/pool-core/tools/summarize_evidence.py:58:    for k, v in sorted(summary['targetStatus'].items()):
+/tmp/pool-pepepow/apps/pool-core/tools/summarize_evidence.py:107:        "rejected": sum(1 for r in records if r.get("shareHashValidationStatus") in ("share-hash-invalid", "low-difficulty-share")),
+/tmp/pool-pepepow/apps/pool-core/tools/summarize_evidence.py:109:        "targetStatus": Counter(r.get("targetValidationStatus", "none") for r in records),
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:9:target_hex = "0000000268f30000000000000000000000000000000000000000000000000000"
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:12:target = int(target_hex, 16)
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:17:print(f"Target: {target_hex}")
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:24:    match = val <= target
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:30:    match_rev = val_rev <= target
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:49:               match = val <= target
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:70:               match = val <= target
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:88:    match = val <= target
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:104:        match = val <= target
+/tmp/pool-pepepow/apps/pool-core/tools/debug_header.py:124:    if val <= target:
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:39:    en1 = record.get("extranonce1") or ""
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:40:    en2 = record.get("extranonce2") or ""
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:45:    target = record.get("shareTarget")
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:46:    if not target: return
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:52:    print(f"Target: {target}")
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:86:                        if int(res, 16) <= int(target, 16):
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:110:    if int(res, 16) <= int(target, 16):
+/tmp/pool-pepepow/apps/pool-core/tools/scan_pepepow_algos.py:119:            if int(res, 16) <= int(target, 16):
+/tmp/pool-pepepow/apps/pool-core/tools/brute_scan.py:26:    target = int(record.get("shareTarget"), 16)
+/tmp/pool-pepepow/apps/pool-core/tools/brute_scan.py:55:                if hash_int <= target:
+/tmp/pool-pepepow/apps/pool-core/contracts/share-event.schema.json:54:    "difficulty": {
+/tmp/pool-pepepow/apps/pool-core/contracts/activity-snapshot.schema.json:256:              "targetContext",
+/tmp/pool-pepepow/apps/pool-core/contracts/activity-snapshot.schema.json:267:              "targetContext": { "type": "object" },
+/tmp/pool-pepepow/apps/pool-core/contracts/pool-snapshot.schema.json:198:        "difficulty",
+/tmp/pool-pepepow/apps/pool-core/contracts/pool-snapshot.schema.json:208:        "difficulty": {
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:70:    target_context: dict[str, Any]
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:82:    assigned_difficulty: float | None
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:83:    target_context: dict[str, Any]
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:102:            "targetContext": self.target_context,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:202:        assigned_difficulty: float | None = None,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:215:            target_context = dict(template.target_context)
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:228:            target_context = {
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:230:                "target": None,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:252:            assigned_difficulty=assigned_difficulty,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:253:            target_context=target_context,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:385:                    "height": _optional_int(template.target_context.get("height")),
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:386:                    "curtime": template.target_context.get("curtime"),
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:483:        target_context={
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:485:            "target": _optional_string(raw_template.get("target")),
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:539:    extranonce_bytes = 8
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:541:    script_length = len(script_prefix) + extranonce_bytes
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:611:            "extranonceRegion": {
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:613:                "expectedTotalBytes": extranonce_bytes,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:616:                "offset": len(coinb1_bytes) + extranonce_bytes,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:620:                "offset": len(coinb1_bytes) + extranonce_bytes + 4,
+/tmp/pool-pepepow/apps/pool-core/template_jobs.py:625:                "offset": len(coinb1_bytes) + extranonce_bytes + len(coinb2_bytes) - 4,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:31:    difficulty_notification,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:77:# Miner-facing PEPEPOW stratum difficulty uses the pool-difficulty baseline.
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:78:# The Bitcoin diff1 target is 65,536x stricter and rejects ordinary pool shares.
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:132:    vardiff_last_retarget_at: datetime | None = None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:144:    target_validation_status: str | None = None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:164:    assigned_difficulty: float | None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:165:    previous_assigned_difficulty: float | None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:178:    effective_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:179:    miner_wire_difficulty: float
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:260:            assumed_share_difficulty=_hashrate_estimation_difficulty(config)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:349:            "targetValidationCounts": {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:352:                "target-context-missing": 0,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:353:                "target-context-mismatch": 0,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:372:                "REAL submitblock ENABLED via PEPEPOW_ENABLE_REAL_SUBMITBLOCK=true; block-target shares may call daemon submitblock; send_budget=%s remaining=%s",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:612:        if request.method == "mining.subscribe":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:617:        if request.method == "mining.extranonce.subscribe":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:620:        if request.method == "mining.authorize":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:641:            manual_difficulty = _manual_share_difficulty_from_password(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:646:                "_manual_share_difficulty_override",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:647:                manual_difficulty is not None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:649:            desired_difficulty = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:650:                manual_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:651:                if manual_difficulty is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:652:                else self._initial_session_difficulty()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:654:            if state.current_difficulty != desired_difficulty:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:655:                state.current_difficulty = desired_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:656:                difficulty_message = self._current_difficulty_notification(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:660:                        if manual_difficulty is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:665:                if difficulty_message is not None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:666:                    notifications.append(difficulty_message)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:683:        if request.method == "mining.submit":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:747:                difficulty=state.current_difficulty or self._synthetic_difficulty(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:806:                difficulty_value = vardiff_message.get("params", [None])[0]
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:807:                if isinstance(difficulty_value, (int, float)):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:808:                    self._record_difficulty_probe(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:810:                        effective_difficulty=state.current_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:811:                        or self._initial_session_difficulty(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:812:                        miner_wire_difficulty=float(difficulty_value),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:816:                    "Notify sent: session=%s jobId=%s previousJobId=%s cleanJobs=%s reason=vardiff-retarget",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:824:            if not assessment.accepted and assessment.reject_reason == "low-difficulty-share":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:828:                    "Low difficulty share",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:858:        # unsampled low-difficulty reject, where a reduced payload preserves replayable
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:876:                "difficulty": state.current_difficulty or self._synthetic_difficulty(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:883:                "targetValidationStatus": assessment.target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:892:        if assessment.reject_reason == "low-difficulty-share":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:897:        if not assessment.accepted and assessment.reject_reason == "low-difficulty-share":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:910:                "targetContext": (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:911:                    cached_job.target_context if cached_job is not None else None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:956:            expected_extranonce2_size=state.extranonce2_size,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:995:        target_context_check = self._assess_target_context(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:999:        if target_context_check.reject_reason is not None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1013:                reject_reason=target_context_check.reject_reason,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1014:                detail=target_context_check.detail,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1015:                target_validation_status=target_context_check.status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1022:            target_context_check=target_context_check,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1028:        resolved_target_validation_status, resolved_candidate_possible = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1029:            _resolve_target_validation_outcome(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1030:                target_context_status=target_context_check.status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1031:                target_context_candidate_possible=target_context_check.candidate_possible,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1043:                    target_validation_status=resolved_target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1056:                target_validation_status=resolved_target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1070:                target_validation_status=resolved_target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1086:                target_validation_status=resolved_target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1099:            target_validation_status=resolved_target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1214:        submitted_extranonce2 = params[2] if len(params) > 2 else None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1221:                "extranonce2": submitted_extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1238:        submitted_extranonce1 = state.extranonce1
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1247:            extranonce1=submitted_extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1248:            extranonce2=submitted_extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1261:            isinstance(submitted_extranonce1, str)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1262:            and isinstance(submitted_extranonce2, str)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1268:                extranonce1_hex=submitted_extranonce1.strip(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1269:                extranonce2_hex=submitted_extranonce2.strip(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1289:            extranonce1 = _normalize_optional_hex(submitted_extranonce1)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1290:            extranonce2 = _normalize_optional_hex(submitted_extranonce2)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1291:            if None not in (coinb1, coinb2, extranonce1, extranonce2):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1292:                reconstructed_coinbase_hex = f"{coinb1}{extranonce1}{extranonce2}{coinb2}"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1366:            "extranonce1": submitted_extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1367:            "extranonce2": submitted_extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1401:            "targetValidationStatus": assessment.target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1525:                notify_evidence.get("extranonce1")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1529:            "submitExtranonce1": submitted_extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1531:                notify_evidence.get("extranonce2Size")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1535:            "submitExtranonce2Size": state.extranonce2_size,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1578:            "difficultyEffective": state.current_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1579:            "difficultyWire": self._miner_wire_difficulty(state.current_difficulty),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1580:            "difficultyScale": self._config.stratum_wire_difficulty_scale,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1582:            "extranonce1": state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1583:            "extranonce2Size": state.extranonce2_size,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1719:            "difficulty": state.current_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1720:            "extranonce1": state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1721:            "extranonce2Size": state.extranonce2_size,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1771:    def _assess_target_context(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1780:        target_context = cached_job.target_context
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1781:        if not isinstance(target_context, dict):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1783:                status="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1784:                reject_reason="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1785:                detail="issued job is missing target context",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1788:        # Fallback to computing target from bits if it is missing or empty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1789:        target_value = target_context.get("target")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1790:        if not isinstance(target_value, str) or not target_value.strip() or not _is_hex_string(target_value):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1791:            bits_hex = target_context.get("bits")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1798:                        target_val = mantissa >> (8 * (3 - exponent))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1800:                        target_val = mantissa << (8 * (exponent - 3))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1801:                    target_context["target"] = f"{target_val:064x}"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1807:            required_fields.add("target")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1810:                    status="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1811:                    reject_reason="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1818:            if target_context.get(field_name) in (None, "")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1822:                status="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1823:                reject_reason="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1824:                detail=f"issued job target context is missing {', '.join(missing_fields)}",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1827:        context_bits = target_context.get("bits")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1828:        context_version = target_context.get("version")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1829:        context_curtime = _parse_uint32(target_context.get("curtime"))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1841:                status="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1842:                reject_reason="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1843:                detail="issued job target context does not match cached header fields",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1846:        submit_extranonce2 = params[2]
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1849:        if not _is_hex_string(submit_extranonce2):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1851:                status="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1852:                reject_reason="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1853:                detail="submit extranonce2 must be hex for target-context checks",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1857:                status="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1858:                reject_reason="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1859:                detail="submit ntime must be 8-character hex for target-context checks",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1863:                status="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1864:                reject_reason="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1865:                detail="submit nonce must be 8-character hex for target-context checks",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1871:                status="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1872:                reject_reason="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1874:                    "submit ntime is outside the issued target-context window "
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1882:        target_value = target_context.get("target")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1883:        if not isinstance(target_value, str) or not target_value.strip():
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1885:                status="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1886:                reject_reason="target-context-missing",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1887:                detail="daemon-template job is missing target value",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1889:        if not _is_hex_string(target_value):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1891:                status="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1892:                reject_reason="target-context-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1893:                detail="daemon-template target value must be hex",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1908:        target_context_check: TargetContextCheck,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1916:        if not target_context_check.candidate_possible:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1938:            extranonce1=state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1939:            extranonce2=params[2],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1952:                    extranonce1=state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1953:                    extranonce2=params[2],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1970:        target_context = cached_job.target_context if isinstance(cached_job.target_context, dict) else {}
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1971:        target_value = target_context.get("target")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1972:        if not isinstance(target_value, str) or not target_value.strip() or not _is_hex_string(target_value):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1973:            bits_hex = target_context.get("bits")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1980:                        target_val = mantissa >> (8 * (3 - exponent))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1982:                        target_val = mantissa << (8 * (exponent - 3))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1983:                    target_value = f"{target_val:064x}"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1986:        if not isinstance(target_value, str) or not target_value.strip():
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1990:                detail="daemon-template job is missing target for local hash check",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1993:                    extranonce1=state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1994:                    extranonce2=params[2],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:1999:                    detail="daemon-template job is missing target for local hash check",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2004:        if not _is_hex_string(target_value):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2008:                detail="daemon-template target must be hex for local hash check",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2011:                    extranonce1=state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2012:                    extranonce2=params[2],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2017:                    detail="daemon-template target must be hex for local hash check",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2028:        block_target_int = int(target_value.strip(), 16)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2029:        effective_difficulty = getattr(cached_job, "assigned_difficulty", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2030:        if effective_difficulty is None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2031:            effective_difficulty = state.current_difficulty or self._synthetic_difficulty()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2032:        share_target_int = _share_target_from_difficulty(effective_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2035:            block_target_int=block_target_int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2036:            share_target_int=share_target_int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2038:        threshold_summary["shareDifficultyUsed"] = effective_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2056:                    extranonce1_hex=str(state.extranonce1).strip(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2057:                    extranonce2_hex=str(params[2]).strip(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2060:                    block_target_hex=f"{block_target_int:064x}",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2084:                    "localComputedHashOrder": "canonical-big-endian-target-compare",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2102:                    "localComputedHashOrder": "canonical-big-endian-target-compare",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2112:            status="low-difficulty-share",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2113:            reject_reason="low-difficulty-share",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2117:                    extranonce1=state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2118:                    extranonce2=params[2],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2122:                    reason_code="low-difficulty-share",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2123:                    detail="local share hash exceeded effective share target",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2126:                    target_value=threshold_summary["shareTargetUsed"],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2606:        target_context = getattr(cached_job, "target_context", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2607:        if not isinstance(target_context, dict):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2608:            target_context = {}
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2610:        bits = target_context.get("bits") or getattr(cached_job, "nbits", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2611:        nbits = getattr(cached_job, "nbits", None) or target_context.get("bits")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2643:            "candidateComparisonOrder": threshold_summary.get("candidateComparisonOrder") or "canonical-big-endian-target-compare",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2646:            "targetContext": {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2647:                "height": target_context.get("height"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2648:                "curtime": target_context.get("curtime"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2769:        if (not assessment.accepted and assessment.reject_reason != "low-difficulty-share") or assessment.job_status not in {"current", "previous"}:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2775:        if assessment.target_validation_status not in {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2814:            "targetValidationStatus": assessment.target_validation_status,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2816:                "extranonce1": input_summary.get("extranonce1") or state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2817:                "extranonce2": input_summary.get("extranonce2") or _optional_submit_param(submit_params, 2),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2821:                "difficulty": state.current_difficulty or self._synthetic_difficulty(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2832:                "extranonce1": input_summary.get("extranonce1") or state.extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2833:                "extranonce2": input_summary.get("extranonce2") or _optional_submit_param(submit_params, 2),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2918:        if assessment.target_validation_status is not None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2919:            target_validation_counts = self._submit_validation_counts[
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2920:                "targetValidationCounts"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2922:            target_validation_counts.setdefault(assessment.target_validation_status, 0)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2923:            target_validation_counts[assessment.target_validation_status] += 1
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2979:                if state.current_difficulty is None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2980:                    state.current_difficulty = self._initial_session_difficulty()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2981:                difficulty_message = self._current_difficulty_notification(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2994:                if difficulty_message is not None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:2998:                        difficulty_message,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3044:        if payload.get("method") == "mining.set_difficulty":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3045:            difficulty = None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3048:                difficulty = params[0]
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3049:            effective_share_difficulty = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3050:                state.current_difficulty if state is not None else None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3052:            difficulty_scale = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3053:                getattr(self._config, "stratum_wire_difficulty_scale", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3058:                "Wire send: session=%s remote=%s method=mining.set_difficulty difficulty=%s effectiveShareDifficulty=%s minerWireDifficulty=%s difficultyScale=%s reason=%s",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3061:                difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3062:                effective_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3063:                difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3064:                difficulty_scale,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3065:                state.last_difficulty_reason if state is not None else "unknown",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3071:        if payload.get("method") == "mining.notify" and state is not None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3264:                    "advertisedDifficulty": self._miner_wire_difficulty(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3265:                        state.current_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3267:                    if state.current_difficulty is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3269:                    "effectiveShareDifficulty": state.current_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3270:                    "minerWireDifficulty": self._miner_wire_difficulty(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3271:                        state.current_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3273:                    if state.current_difficulty is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3275:                    "difficultyScale": self._config.stratum_wire_difficulty_scale,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3313:        assigned_difficulty = state.current_difficulty or self._synthetic_difficulty()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3317:            assigned_difficulty=assigned_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3349:            "height": _optional_int((job.target_context or {}).get("height")),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3350:            "curtime": (job.target_context or {}).get("curtime"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3378:                assigned_difficulty=assigned_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3379:                previous_assigned_difficulty=(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3380:                    previous_job_probe.assigned_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3384:                template_height=_optional_int((job.target_context or {}).get("height")),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3394:        self._mark_latest_difficulty_notify_followed(state)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3437:    def _record_difficulty_probe(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3441:        effective_difficulty: float,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3442:        miner_wire_difficulty: float,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3447:            "_latest_difficulty_probe",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3449:                effective_difficulty=effective_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3450:                miner_wire_difficulty=miner_wire_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3455:    def _latest_difficulty_probe(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3458:        probe = getattr(state, "_latest_difficulty_probe", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3461:    def _mark_latest_difficulty_notify_followed(self, state: ConnectionState) -> None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3462:        probe = self._latest_difficulty_probe(state)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3490:        difficulty_probe = self._latest_difficulty_probe(state)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3503:            "activeDifficultyAtSubmit": state.current_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3504:            or self._synthetic_difficulty(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3506:                notify_probe.assigned_difficulty if notify_probe is not None else None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3514:                notify_probe.previous_assigned_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3530:                difficulty_probe.effective_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3531:                if difficulty_probe is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3535:                difficulty_probe.miner_wire_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3536:                if difficulty_probe is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3540:                _isoformat_optional(difficulty_probe.sent_at)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3541:                if difficulty_probe is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3545:                difficulty_probe.notify_followed_immediately
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3546:                if difficulty_probe is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3550:                _delta_ms(difficulty_probe.sent_at, observed_at)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3551:                if difficulty_probe is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3575:    def _synthetic_difficulty(self) -> float:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3576:        return self._config.hashrate_assumed_share_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3578:    def _miner_wire_difficulty(self, effective_difficulty: float | None) -> float | None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3579:        if effective_difficulty is None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3581:        return effective_difficulty * self._config.stratum_wire_difficulty_scale
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3583:    def _current_difficulty_notification(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3590:        effective_difficulty = state.current_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3591:        miner_wire_difficulty = self._miner_wire_difficulty(effective_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3592:        if effective_difficulty is None or miner_wire_difficulty is None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3594:        state.last_difficulty_reason = reason
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3595:        self._record_difficulty_probe(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3597:            effective_difficulty=effective_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3598:            miner_wire_difficulty=miner_wire_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3600:        self._log_difficulty_sent(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3602:            effective_difficulty=effective_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3603:            miner_wire_difficulty=miner_wire_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3607:        return difficulty_notification(miner_wire_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3609:    def _log_difficulty_sent(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3613:        effective_difficulty: float,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3614:        miner_wire_difficulty: float,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3619:            "Difficulty sent: session=%s remote=%s wallet=%s worker=%s effectiveShareDifficulty=%s minerWireDifficulty=%s difficultyScale=%s reason=%s vardiffEnabled=%s",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3624:            effective_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3625:            miner_wire_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3626:            self._config.stratum_wire_difficulty_scale,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3631:    def _initial_session_difficulty(self) -> float:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3633:            # Fixed baseline difficulty when vardiff is disabled
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3635:        return self._clamp_vardiff(self._config.stratum_vardiff_initial_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3645:        if getattr(state, "_manual_share_difficulty_override", False):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3672:        retarget_anchor = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3673:            session_stats.vardiff_last_retarget_at
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3678:            observed_at - retarget_anchor
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3679:        ).total_seconds() < self._config.stratum_vardiff_retarget_interval_seconds:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3682:        current_difficulty = state.current_difficulty or self._initial_session_difficulty()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3685:            next_difficulty = current_difficulty * 2.0
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3687:            next_difficulty = current_difficulty / 2.0
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3689:            session_stats.vardiff_last_retarget_at = observed_at
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3692:        next_difficulty = self._clamp_vardiff(next_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3693:        if math.isclose(next_difficulty, current_difficulty, rel_tol=0.0, abs_tol=1e-12):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3694:            session_stats.vardiff_last_retarget_at = observed_at
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3697:        state.current_difficulty = next_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3698:        session_stats.vardiff_last_retarget_at = observed_at
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3699:        miner_wire_difficulty = self._miner_wire_difficulty(next_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3701:            "Vardiff retarget: session=%s effectiveShareDifficulty=%s minerWireDifficulty=%s difficultyScale=%s averageShareInterval=%.3f vardiffSamples=%s",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3703:            next_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3704:            miner_wire_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3705:            self._config.stratum_wire_difficulty_scale,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3709:        state.last_difficulty_reason = "vardiff-retarget"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3710:        self._log_difficulty_sent(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3712:            effective_difficulty=next_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3713:            miner_wire_difficulty=miner_wire_difficulty,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3714:            reason="vardiff-retarget",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3716:        return difficulty_notification(miner_wire_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3718:    def _clamp_vardiff(self, difficulty: float) -> float:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3719:        minimum = self._config.stratum_vardiff_min_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3720:        maximum = max(minimum, self._config.stratum_vardiff_max_difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3721:        return min(maximum, max(minimum, difficulty))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3740:        assessment.reject_reason == "low-difficulty-share"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3744:        and assessment.target_validation_status == "context-valid"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3745:        and assessment.share_hash_validation_status == "low-difficulty-share"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3785:        "low-difficulty-share",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3801:    expected_extranonce2_size: int | None = None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3804:        return "submit params must include login, job id, extranonce2, ntime, and nonce"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3810:        return "submit extranonce2 must be a non-empty string"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3815:    extranonce2 = params[2].strip()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3818:    if not _is_hex_string(extranonce2) or len(extranonce2) % 2 != 0:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3819:        return "submit extranonce2 must be even-length hex"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3821:        isinstance(expected_extranonce2_size, int)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3822:        and expected_extranonce2_size >= 0
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3823:        and len(extranonce2) != expected_extranonce2_size * 2
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3826:            "submit extranonce2 must be "
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3827:            f"{expected_extranonce2_size * 2}-char hex"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3859:        "extranonce2": params[2],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3876:def _hashrate_estimation_difficulty(config: PoolCoreConfig) -> float:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3877:    # Return effective difficulty so that ActivityEngine.assumed_share_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3878:    # is in effective difficulty units.
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3880:        return config.stratum_vardiff_initial_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3881:    return config.estimated_hashrate_assumed_share_difficulty
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3884:def _share_target_from_difficulty(difficulty: float | None) -> int | None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3885:    if difficulty is None or not math.isfinite(difficulty) or difficulty <= 0:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3887:    target = int(STRATUM_DIFF1_TARGET / difficulty)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3888:    return max(1, min(MAX_UINT256_TARGET, target))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3891:def _manual_share_difficulty_from_password(password: str | None) -> float | None:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3902:            miner_wire_difficulty = float(raw_value)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3905:        if not math.isfinite(miner_wire_difficulty) or miner_wire_difficulty <= 0:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3907:        difficulty = miner_wire_difficulty / MANUAL_SHARE_DIFFICULTY_WIRE_SCALE
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3910:            max(MANUAL_SHARE_DIFFICULTY_MIN, difficulty),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3919:    block_target_int: int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3920:    share_target_int: int | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3922:    effective_share_target_int = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3923:        share_target_int if share_target_int is not None else block_target_int
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3927:        "meetsShareTarget": share_hash_int <= effective_share_target_int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3928:        "meetsBlockTarget": share_hash_int <= block_target_int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3929:        "shareTargetUsed": f"{effective_share_target_int:064x}",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3930:        "blockTargetUsed": f"{block_target_int:064x}",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3931:        "shareHashComparisonMode": "effective-pool-share-target-and-block-target",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3945:        "blockTargetInt": block_target_int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3946:        "candidateComparisonOrder": "canonical-big-endian-target-compare",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3955:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3956:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3959:    block_target_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3991:            "blockTargetUsed": block_target_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3995:                "extranonce1": extranonce1_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:3996:                "extranonce2": extranonce2_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4009:    coinbase_hex = coinb1_hex + extranonce1_hex + extranonce2_hex + coinb2_hex
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4015:        "blockTargetUsed": block_target_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4019:            "extranonce1": extranonce1_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4020:            "extranonce2": extranonce2_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4247:    # target comparisons and logged block hashes use the canonical big-endian form.
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4376:def _resolve_target_validation_outcome(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4378:    target_context_status: str | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4379:    target_context_candidate_possible: bool,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4382:    if target_context_status != "candidate-possible":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4383:        return target_context_status, target_context_candidate_possible
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4385:    meets_block_target = False
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4387:        meets_block_target = share_hash_diagnostic.get("meetsBlockTarget") is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4389:    if meets_block_target:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4413:            "extranonce1",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4414:            "extranonce2",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4440:            "extranonce1",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4441:            "extranonce2",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4464:    target_context = getattr(cached_job, "target_context", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4465:    if not isinstance(target_context, dict):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4481:    extranonce1: str | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4482:    extranonce2: Any,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4490:    target_value: str | None = None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4494:    target_context = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4495:        cached_job.target_context if isinstance(getattr(cached_job, "target_context", None), dict) else {}
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4502:    extranonce1_value = _normalize_optional_hex(extranonce1)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4503:    extranonce2_value = _normalize_optional_hex(extranonce2)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4513:        for value in (coinb1_value, coinb2_value, extranonce1_value, extranonce2_value)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4516:            f"{coinb1_value}{extranonce1_value}{extranonce2_value}{coinb2_value}"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4534:    normalized_target = _normalize_optional_hex(target_value)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4547:            "extranonce1": extranonce1_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4548:            "extranonce2": extranonce2_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4555:            "height": target_context.get("height"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4556:            "bits": target_context.get("bits"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4557:            "version": target_context.get("version"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4558:            "curtime": target_context.get("curtime"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4559:            "target": normalized_target,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4570:            "coinbaseLocalHex": f"{coinb1_value}{extranonce1_value}{extranonce2_value}{coinb2_value}" if coinbase_hex_length is not None else None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4594:        "localComputedHashOrder": "canonical-big-endian-target-compare",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4601:        "comparedTarget": normalized_target,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4611:        and normalized_target is not None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4618:            target_value=normalized_target,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4631:                    extranonce1=extranonce1_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4632:                    extranonce2=extranonce2_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4637:                    target_value=normalized_target,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4680:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4681:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4716:        extranonce_bytes = bytes.fromhex(extranonce1_hex) + bytes.fromhex(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4717:            extranonce2_hex
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4719:        post_extranonce_script_sig_bytes = bytes.fromhex(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4757:            + extranonce_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4758:            + post_extranonce_script_sig_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4797:def _build_header80_variant_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4801:    target_int: int,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4825:            int.from_bytes(candidate_hash, byteorder="big", signed=False) <= target_int
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4855:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4888:    variant_target_matches = _build_header80_variant_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4891:        target_int=int(target_value, 16),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4904:        if variant_target_matches.get(variant_name) is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4906:    all_source_order_match = variant_target_matches.get("allFieldsSourceOrder") is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4959:        "header80VariantTargetMatches": variant_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4964:    target_context = getattr(cached_job, "target_context", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4966:    if not isinstance(target_context, dict) or not isinstance(preimage_context, dict):
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4969:    context_version = _normalize_optional_hex(target_context.get("version"))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4970:    context_bits = _normalize_optional_hex(target_context.get("bits"))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:4971:    context_curtime = _parse_uint32(target_context.get("curtime"))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5079:    target_context = getattr(job, "target_context", None)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5080:    curtime = target_context.get("curtime") if isinstance(target_context, dict) else None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5181:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5182:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5185:    zero_extranonce1 = "00" * (len(extranonce1_hex) // 2)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5186:    zero_extranonce2 = "00" * (len(extranonce2_hex) // 2)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5188:        "currentAssembly": (coinb1_hex, extranonce1_hex, extranonce2_hex, coinb2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5189:        "swapExtranonces": (coinb1_hex, extranonce2_hex, extranonce1_hex, coinb2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5190:        "zeroExtranonce1": (coinb1_hex, zero_extranonce1, extranonce2_hex, coinb2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5191:        "zeroExtranonce2": (coinb1_hex, extranonce1_hex, zero_extranonce2, coinb2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5192:        "dropExtranonce1": (coinb1_hex, "", extranonce2_hex, coinb2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5193:        "dropExtranonce2": (coinb1_hex, extranonce1_hex, "", coinb2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5223:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5224:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5228:    extranonce1_bytes = bytes.fromhex(extranonce1_hex)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5229:    extranonce2_bytes = bytes.fromhex(extranonce2_hex)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5230:    combined_extranonce = extranonce1_bytes + extranonce2_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5239:    total_extranonce_bytes = len(combined_extranonce)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5242:        "currentAssembly": coinb1_bytes + extranonce1_bytes + extranonce2_bytes + coinb2_bytes,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5243:        "swapExtranonces": coinb1_bytes + extranonce2_bytes + extranonce1_bytes + coinb2_bytes,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5244:        "prependCombinedExtranonce": combined_extranonce + coinb1_bytes + coinb2_bytes,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5245:        "appendCombinedExtranonce": coinb1_bytes + coinb2_bytes + combined_extranonce,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5248:            + _encode_varint_local(max(0, adjusted_declared - total_extranonce_bytes))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5250:            + extranonce1_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5251:            + extranonce2_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5256:            + _encode_varint_local(adjusted_declared + total_extranonce_bytes)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5258:            + extranonce1_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5259:            + extranonce2_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5265:        "swapExtranonces": "extranonce-placement",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5282:def _build_coinbase_assembly_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5286:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5288:    target_int = int(target_value, 16)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5303:            int.from_bytes(candidate_hash, byteorder="big", signed=False) <= target_int
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5400:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5401:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5403:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5405:    coinbase_hex = coinb1_hex + extranonce1_hex + extranonce2_hex + coinb2_hex
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5411:    target_match: bool | None = None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5416:        target_match = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5418:            <= int(target_value, 16)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5420:        comparison_result = "share-hash-valid" if target_match else "share-hash-invalid"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5430:        "targetMatch": target_match,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5457:    output_layout_variant_target_matches: dict[str, bool | None],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5471:    if output_layout_variant_target_matches.get("decrementOutputCountOnly") is True:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5483:    if output_layout_variant_target_matches.get("movePlaceholderToEnd") is True:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5495:        output_layout_variant_target_matches.get(variant_name) is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5709:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5710:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5716:    total_extranonce_bytes = (len(extranonce1_hex) + len(extranonce2_hex)) // 2
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5718:    post_extranonce_script_bytes = b""
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5720:        post_extranonce_length = max(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5724:            - total_extranonce_bytes,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5726:        post_extranonce_script_bytes = coinb2_bytes[:post_extranonce_length]
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5727:    sequence_offset_in_coinb2 = len(post_extranonce_script_bytes)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5748:        "extranonceRegion": {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5750:            "extranonce1HexLength": len(extranonce1_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5751:            "extranonce2HexLength": len(extranonce2_hex),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5752:            "totalBytes": total_extranonce_bytes,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5755:            "offset": len(coinb1_bytes) + total_extranonce_bytes,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5756:            "hexLength": len(post_extranonce_script_bytes) * 2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5757:            "hex": post_extranonce_script_bytes.hex(),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5758:            "digest": hashlib.sha256(post_extranonce_script_bytes).hexdigest()[:24],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5762:            + total_extranonce_bytes
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5763:            + len(post_extranonce_script_bytes),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5767:            "offset": len(coinb1_bytes) + total_extranonce_bytes + sequence_end,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5772:            "offset": len(coinb1_bytes) + total_extranonce_bytes + len(coinb2_bytes) - 4,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5783:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5784:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5806:            "extranonceRegionSummary": None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5829:            "extranonceRegionSummary": None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5836:        extranonce1_hex=extranonce1_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5837:        extranonce2_hex=extranonce2_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5843:        "extranonceRegion",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5858:        if segment_name == "extranonceRegion":
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5921:    elif mismatching_segments == ["extranonceRegion"]:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5922:        reason_code = "extranonce-region-mismatch"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5923:        source_candidates = ["extranonce-region-mismatch"]
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5967:        "extranonceRegionSummary": {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5968:            "local": local_segments.get("extranonceRegion"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5969:            "authoritative": authoritative_segments.get("extranonceRegion"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5980:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5981:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5991:            f"{coinb1_hex}{extranonce1_hex}{extranonce2_hex}{coinb2_hex}"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:5994:            f"{coinb1_hex}{extranonce1_hex}{extranonce2_hex}{coinb2_hex}"
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6037:        "source": "normalized-job-cache-plus-submit-extranonce",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6080:            "source": "normalized-job-cache-plus-submit-extranonce",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6109:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6110:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6206:            extranonce1_hex=extranonce1_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6207:            extranonce2_hex=extranonce2_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6336:    extranonce1_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6337:    extranonce2_hex: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6341:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6449:            extranonce1_hex=extranonce1_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6450:            extranonce2_hex=extranonce2_hex,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6452:            target_value=target_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6456:    output_layout_variant_target_matches = {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6457:        variant_name: variant_data.get("targetMatch")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6467:        output_layout_variant_target_matches=output_layout_variant_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6476:    corrected_target_match = corrected_variant.get("targetMatch")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6478:    would_remove_mismatch = corrected_target_match is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6505:        "correctedOutputLayoutTargetMatch": corrected_target_match,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6511:            "variantTargetMatches": output_layout_variant_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6520:            "decrementOutputCountOnlyTargetMatch": output_layout_variant_target_matches.get(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6530:            "movePlaceholderToEndTargetMatch": output_layout_variant_target_matches.get(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6597:            "correctedTargetMatch": corrected_target_match,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6604:    coinbase_assembly_target_matches: dict[str, bool | None],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6609:        for variant_name, matched in coinbase_assembly_target_matches.items()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6616:                "extranonce-placement-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6627:            "extranonce-placement-mismatch",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6628:            ["extranonce-placement-mismatch", "scriptSig-assembly-mismatch"],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6630:            ["extranonce1", "extranonce2"],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6640:            ["coinbasePrefix", "extranoncePlacement"],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6692:def _build_merkle_variant_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6696:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6698:    target_int = int(target_value, 16)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6713:            int.from_bytes(candidate_hash, byteorder="big", signed=False) <= target_int
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6792:def _build_branch_fold_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6796:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6798:    target_int = int(target_value, 16)
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6813:            int.from_bytes(candidate_hash, byteorder="big", signed=False) <= target_int
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6821:    branch_fold_target_matches: dict[str, bool | None],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6832:    current_rule = branch_fold_target_matches.get("currentRule")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6834:        if branch_fold_target_matches.get("reverseBranchOrder") is True:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6840:        if branch_fold_target_matches.get("sourceOrderSiblings") is True:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6849:        if branch_fold_target_matches.get("prependSibling") is True:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6872:    extranonce_byte_count: int | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6873:    merkle_variant_target_matches: dict[str, bool | None],
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6878:    if extranonce_byte_count is not None and extranonce_byte_count != 8:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6882:    if merkle_variant_target_matches.get("swapExtranonces") is True:
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6883:        source_candidates.append("extranonce-assembly-mismatch")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6884:        return "extranonce-assembly-mismatch", source_candidates
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6887:        merkle_variant_target_matches.get(variant_name) is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6891:            ["coinbase-input-mismatch", "extranonce-assembly-mismatch"]
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6896:        merkle_variant_target_matches.get(variant_name) is True
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6945:    extranonce1: str | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6946:    extranonce2: str | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6951:    target_value: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6956:    target_context = (
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6957:        cached_job.target_context if isinstance(getattr(cached_job, "target_context", None), dict) else {}
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6966:        or extranonce1 is None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6967:        or extranonce2 is None
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6980:        extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6981:        extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6984:    merkle_variant_target_matches = _build_merkle_variant_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6987:        target_value=target_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6993:    branch_fold_target_matches = _build_branch_fold_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6996:        target_value=target_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:6998:    extranonce_byte_count = (len(extranonce1) + len(extranonce2)) // 2
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7000:        extranonce_byte_count=extranonce_byte_count,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7001:        merkle_variant_target_matches=merkle_variant_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7014:            branch_fold_target_matches=branch_fold_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7039:            "height": target_context.get("height"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7045:            "targetBits": target_context.get("bits"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7046:            "targetVersion": target_context.get("version"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7047:            "targetCurtime": target_context.get("curtime"),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7064:            "submitExtranonceByteCount": extranonce_byte_count,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7072:        "alternateCoinbaseVariantTargetMatches": merkle_variant_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7089:            extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7090:            extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7101:            extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7102:            extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7111:            extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7112:            extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7132:            "reverseBranchOrder": branch_fold_target_matches.get("reverseBranchOrder")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7135:            "sourceOrderSiblings": branch_fold_target_matches.get("sourceOrderSiblings")
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7137:        diagnostic["branchFoldTargetMatches"] = branch_fold_target_matches
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7145:                extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7146:                extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7148:            coinbase_assembly_target_matches = _build_coinbase_assembly_target_matches(
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7151:                target_value=target_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7154:                coinbase_assembly_target_matches=coinbase_assembly_target_matches,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7163:                coinb1_hex + extranonce1 + extranonce2 + coinb2_hex
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7169:                "extranonce1HexLength": len(extranonce1),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7170:                "extranonce2HexLength": len(extranonce2),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7190:                "submitExtranonceBytes": (len(extranonce1) + len(extranonce2)) // 2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7192:            diagnostic["extranoncePlacementSummary"] = {
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7193:                "assumedLayout": "coinb1|extranonce1|extranonce2|coinb2",
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7194:                "extranonce1HexLength": len(extranonce1),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7195:                "extranonce2HexLength": len(extranonce2),
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7205:                "localCoinbaseExtranonceBytes": (len(extranonce1) + len(extranonce2))
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7217:                coinbase_assembly_target_matches
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7233:                        extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7234:                        extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7238:                        target_value=target_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7247:    extranonce1: str | None,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7248:    extranonce2: str,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7261:        "extranonce1": extranonce1,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7262:        "extranonce2": extranonce2,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7282:    extranonce1_value = str(required_hex_fields["extranonce1"]).strip()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7283:    extranonce2_value = str(required_hex_fields["extranonce2"]).strip()
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7330:        "extranonce1": extranonce1_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7331:        "extranonce2": extranonce2_value,
+/tmp/pool-pepepow/apps/pool-core/stratum_ingress.py:7363:        coinbase = bytes.fromhex(coinb1 + extranonce1_value + extranonce2_value + coinb2)
+/tmp/pool-pepepow/apps/pool-core/README.md:109:- accepts `mining.subscribe`
+/tmp/pool-pepepow/apps/pool-core/README.md:110:- returns a standard Stratum v1 subscription tuple list plus extranonce fields
+/tmp/pool-pepepow/apps/pool-core/README.md:111:- accepts `mining.extranonce.subscribe` as a no-op compatibility method
+/tmp/pool-pepepow/apps/pool-core/README.md:112:- accepts `mining.authorize`
+/tmp/pool-pepepow/apps/pool-core/README.md:113:- pushes synthetic `mining.set_difficulty`
+/tmp/pool-pepepow/apps/pool-core/README.md:114:- pushes synthetic `mining.notify`
+/tmp/pool-pepepow/apps/pool-core/README.md:116:- accepts `mining.submit`
+/tmp/pool-pepepow/apps/pool-core/README.md:125:- real difficulty management
+/tmp/pool-pepepow/apps/pool-core/README.md:190:- **Comparison**: `stratum_ingress.py` uses `byteorder="little"` to correctly interpret the LE hash for integer-based target comparison.
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:19:# Hashes represented by one share at difficulty 1.0 under the PEPEPOW/PEPEW stratum convention.
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:20:# Formula: hashrate (H/s) = (accepted_shares / window_seconds) * wire_difficulty * 2^32
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:21:# where wire_difficulty = effective_share_difficulty * PEPEW_DIFFICULTY_SCALE (65536).
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:132:        assumed_share_difficulty: float = DEFAULT_ASSUMED_SHARE_DIFFICULTY,
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:134:        self.assumed_share_difficulty = assumed_share_difficulty
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:178:            difficulty = event.difficulty if (isinstance(event.difficulty, (int, float)) and event.difficulty > 0.0) else self.assumed_share_difficulty
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:180:                self._accepted_work_windows, second, difficulty
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:183:                wallet_state.accepted_work_windows, second, difficulty
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:186:                worker_state.accepted_work_windows, second, difficulty
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:366:            "assumedShareDifficulty": self.assumed_share_difficulty,
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:447:                submit_validation_snapshot.get("targetValidationCounts", {})
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:510:def effective_to_wire_difficulty(
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:513:    """Convert effective share difficulty to miner wire difficulty.
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:515:    PEPEPOW/PEPEW stratum encodes difficulty as:
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:516:        wire_difficulty = effective_share_difficulty * difficulty_scale
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:517:    where difficulty_scale is 65536 by default.
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:520:        effective_diff: Pool-internal effective share difficulty (e.g. 0.00025).
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:521:        scale: Coin-specific wire difficulty multiplier (default 65536 for PEPEW).
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:524:        Miner-facing wire difficulty (e.g. 16.384 for effective=0.00025, scale=65536).
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:532:    effective_difficulty: float,
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:537:        hashrate = (accepted_shares / window_seconds) * effective_difficulty * 2^32
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:545:        effective_difficulty: Pool effective share difficulty.
+/tmp/pool-pepepow/apps/pool-core/activity_engine.py:553:    return shares_per_second * effective_difficulty * HASHES_PER_SHARE
+/tmp/pool-pepepow/apps/pool-core/snapshot_builder.py:161:            "difficulty": float(blockchain_info.get("difficulty", 0.0)),
+/tmp/pool-pepepow/tests/test_pool_core_accounting.py:93:    def test_accounting_uses_estimation_difficulty_only_for_hashrate(self):
+/tmp/pool-pepepow/tests/test_pool_core_accounting.py:104:            assumed_share_difficulty=1e-08,
+/tmp/pool-pepepow/tests/test_pool_core_accounting.py:110:            assumed_share_difficulty=1e-05,
+/tmp/pool-pepepow/tests/test_pool_core_accounting.py:120:        self.assertEqual(low_activity.assumed_share_difficulty, 1e-08)
+/tmp/pool-pepepow/tests/test_pool_core_accounting.py:121:        self.assertEqual(high_activity.assumed_share_difficulty, 1e-05)
+/tmp/pool-pepepow/tests/test_notify_suppression.py:65:            service._new_notify_message = mock.Mock(return_value={"method": "mining.notify", "params": ["job-X", "prev", "c1", "c2", [], "v", "b", "t", True]})
+/tmp/pool-pepepow/tests/test_notify_suppression.py:87:            self.assertEqual(last_msg["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:128:    def test_candidate_hash_block_target_comparison(self):
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:130:        # Block target: 0000000379120000000000000000000000000000000000000000000000000000
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:132:        block_target = "0000000379120000000000000000000000000000000000000000000000000000"
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:135:        target_int = int(block_target, 16)
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:137:        # The pool-side comparison logic is: share_hash_int <= block_target_int
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:138:        meets_target = candidate_int <= target_int
+/tmp/pool-pepepow/tests/test_pool_core_daemon_rpc.py:139:        self.assertTrue(meets_target)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:72:            "target": "0f" * 32,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:174:    def test_load_config_clamps_hashrate_assumed_share_difficulty_to_pool_floor(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:182:        self.assertEqual(config.hashrate_assumed_share_difficulty, 0.001)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:183:        self.assertEqual(config.estimated_hashrate_assumed_share_difficulty, 0.001)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:201:        self.assertEqual(config.stratum_vardiff_initial_difficulty, 0.2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:202:        self.assertEqual(config.stratum_vardiff_min_difficulty, 0.02)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:203:        self.assertEqual(config.stratum_vardiff_max_difficulty, 32.0)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:204:        self.assertEqual(config.stratum_vardiff_retarget_interval_seconds, 90.0)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:207:    def test_load_config_reads_stratum_wire_difficulty_scale(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:215:        self.assertEqual(config.stratum_wire_difficulty_scale, 65536.0)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:227:    def test_load_config_allows_fixed_stratum_difficulty_of_point_zero_zero_one(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:238:        self.assertEqual(config.stratum_vardiff_initial_difficulty, 0.001)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:239:        self.assertEqual(config.stratum_vardiff_min_difficulty, 0.001)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:241:    def test_load_config_allows_fixed_stratum_difficulty_of_point_zero_zero_zero_zero_zero_one_five(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:252:        self.assertEqual(config.stratum_vardiff_initial_difficulty, 0.0000015)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:253:        self.assertEqual(config.stratum_vardiff_min_difficulty, 0.0000015)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:298:        self.assertEqual(notify_message["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:325:            block_target_int=int("0f" * 32, 16),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:326:            share_target_int=int(canonical_hash.hex(), 16),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:330:    def test_pepepow_share_target_uses_pool_diff1_baseline(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:339:    def test_pepepow_share_target_from_representative_difficulties(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:346:        for difficulty, expected_target in cases.items():
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:347:            with self.subTest(difficulty=difficulty):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:348:                target = stratum_ingress._share_target_from_difficulty(difficulty)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:350:                self.assertEqual(f"{target:064x}", expected_target)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:352:    def test_manual_share_difficulty_password_parser_accepts_supported_token_forms(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:364:                    stratum_ingress._manual_share_difficulty_from_password(password),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:368:    def test_manual_share_difficulty_password_parser_ignores_invalid_values(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:372:                    stratum_ingress._manual_share_difficulty_from_password(password)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:375:    def test_manual_share_difficulty_password_parser_clamps_safe_bounds(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:377:            stratum_ingress._manual_share_difficulty_from_password("sd=0.00000001"),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:381:            stratum_ingress._manual_share_difficulty_from_password("sd=1000000000000"),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:385:    def test_share_hash_threshold_summary_keeps_pool_share_target_distinct(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:386:        block_target_int = int("00ff" + "00" * 30, 16)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:387:        share_target_int = int("000f" + "00" * 30, 16)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:388:        share_hash = (share_target_int - 1).to_bytes(32, "big")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:392:            block_target_int=block_target_int,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:393:            share_target_int=share_target_int,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:397:        self.assertEqual(summary["shareTargetUsed"], f"{share_target_int:064x}")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:398:        self.assertEqual(summary["blockTargetUsed"], f"{block_target_int:064x}")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:402:    def test_assess_share_hash_uses_job_assigned_difficulty_for_previous_job(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:407:        state.extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:408:        state.current_difficulty = 2.0
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:412:            assigned_difficulty = 1.0
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:413:            target_context = {"target": "00" * 31 + "01"}
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:425:        # hash is below diff=1 target but above diff=2 target
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:427:            stratum_ingress._share_target_from_difficulty(1.0) - 1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:431:            stratum_ingress._share_target_from_difficulty(2.0),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:451:                target_context_check=stratum_ingress.TargetContextCheck(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:461:    def test_daemon_template_share_hash_uses_pool_share_target_not_block_target(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:466:        state.extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:467:        state.current_difficulty = 51.2
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:468:        share_target_int = stratum_ingress._share_target_from_difficulty(51.2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:469:        self.assertIsNotNone(share_target_int)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:470:        block_target_int = share_target_int // 4
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:474:            assigned_difficulty = 51.2
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:475:            target_context = {"target": f"{block_target_int:064x}"}
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:487:        self.assertNotEqual(share_target_int, block_target_int)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:488:        share_hash = (share_target_int - 1).to_bytes(32, "big")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:507:                target_context_check=stratum_ingress.TargetContextCheck(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:519:            f"{share_target_int:064x}",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:523:            f"{block_target_int:064x}",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:526:    def test_daemon_template_block_candidate_uses_block_target_separately(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:531:        state.extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:535:            assigned_difficulty = 32768.0
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:536:            target_context = {
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:537:                "target": "00000004248e0000000000000000000000000000000000000000000000000000"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:551:        block_target_int = int(_Job.target_context["target"], 16)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:552:        share_target_int = stratum_ingress._share_target_from_difficulty(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:553:            _Job.assigned_difficulty
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:555:        self.assertIsNotNone(share_target_int)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:556:        self.assertLess(share_target_int, block_target_int)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:557:        share_hash = (block_target_int - 1).to_bytes(32, "big")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:579:                target_context_check=stratum_ingress.TargetContextCheck(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:595:        state.extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:599:            assigned_difficulty = 32768.0
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:600:            target_context = {
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:601:                "target": "00000004248e0000000000000000000000000000000000000000000000000000",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:618:        block_target_int = int(_Job.target_context["target"], 16)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:619:        share_hash = (block_target_int - 1).to_bytes(32, "big")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:643:                target_context_check=stratum_ingress.TargetContextCheck(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:657:        self.assertEqual(payload["blockTargetUsed"], _Job.target_context["target"])
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:661:        self.assertEqual(payload["blockTargetInt"], block_target_int)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:662:        self.assertEqual(payload["candidateComparisonOrder"], "canonical-big-endian-target-compare")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:665:        self.assertEqual(payload["targetContext"]["height"], 123456)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:666:        self.assertEqual(payload["targetContext"]["curtime"], 1713225600)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:972:    async def test_authorize_pushes_synthetic_difficulty_and_notify(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:978:                stratum_vardiff_initial_difficulty=0.001,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:979:                stratum_vardiff_min_difficulty=0.001,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:981:            config = replace(config, hashrate_assumed_share_difficulty=0.05)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:993:                        "method": "mining.subscribe",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1001:                        "mining.set_difficulty",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1002:                        "mining.notify",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1012:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1024:                difficulty_message = await self._read_json(reader)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1028:                self.assertEqual(difficulty_message["method"], "mining.set_difficulty")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1030:                    difficulty_message["params"],
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1033:                self.assertEqual(notify_message["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1039:                    issued_job.assigned_difficulty,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1048:                        "method": "mining.submit",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1080:                    share_event["difficulty"],
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1098:                self.assertEqual(session["difficultyScale"], 65536.0)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1129:    async def test_authorize_manual_share_difficulty_from_password(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1144:                        "method": "mining.subscribe",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1152:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1164:                difficulty_message = await self._read_json(reader)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1168:                self.assertEqual(difficulty_message["method"], "mining.set_difficulty")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1169:                self.assertEqual(difficulty_message["params"], [200.0])
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1173:                    issued_job.assigned_difficulty,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1182:                        "method": "mining.submit",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1202:                self.assertAlmostEqual(share_event["difficulty"], 200.0 / 65536.0)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1210:    async def test_authorize_invalid_manual_share_difficulty_keeps_default_fixed_diff(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1225:                        "method": "mining.subscribe",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1233:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1245:                difficulty_message = await self._read_json(reader)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1248:                self.assertEqual(difficulty_message["params"], [98.304])
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1251:                self.assertEqual(issued_job.assigned_difficulty, 0.0015)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1259:    async def test_authorize_starts_at_vardiff_initial_difficulty_when_enabled(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1265:                stratum_vardiff_initial_difficulty=0.1,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1278:                        "method": "mining.subscribe",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1286:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1298:                    difficulty_message = await self._read_json(reader)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1299:                self.assertEqual(difficulty_message["method"], "mining.set_difficulty")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1300:                self.assertEqual(difficulty_message["params"], [6553.6])
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1308:                self.assertIn("difficultyScale=65536.0", combined_logs)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1317:    def test_vardiff_fast_share_session_retargets_upward(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1324:        state.current_difficulty = 0.1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1340:        self.assertEqual(state.current_difficulty, 0.2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1341:        self.assertEqual(message["method"], "mining.set_difficulty")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1344:        self.assertIn("Vardiff retarget: session=", combined_logs)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1351:        self.assertIn("reason=vardiff-retarget", combined_logs)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1354:    def test_vardiff_slow_share_session_retargets_downward(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1359:        state.current_difficulty = 0.1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1374:        self.assertEqual(state.current_difficulty, 0.05)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1377:    def test_vardiff_does_not_retarget_before_minimum_window_conditions(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1382:        state.current_difficulty = 0.1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1397:        self.assertEqual(state.current_difficulty, 0.1)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1399:    def test_vardiff_low_difficulty_share_samples_can_retarget_upward(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1404:        state.current_difficulty = 0.1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1418:        self.assertEqual(state.current_difficulty, 0.2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1421:    def test_vardiff_retarget_next_notify_carries_new_assigned_difficulty(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1426:        state.current_difficulty = 0.1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1438:        self.assertEqual(state.current_difficulty, 0.2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1443:        self.assertEqual(issued_job.assigned_difficulty, 0.2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1609:    def test_submit_validation_uses_newly_issued_job_difficulty_after_vardiff(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1614:        state.extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1615:        state.current_difficulty = 0.2
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1620:        target_context = dict(cached_job.target_context)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1621:        target_context["target"] = "00" * 31 + "01"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1625:            target_context=target_context,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1629:            stratum_ingress._share_target_from_difficulty(0.2) - 1
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1649:                target_context_check=stratum_ingress.TargetContextCheck(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1659:    def test_vardiff_sample_predicate_allows_only_clean_low_difficulty_shares(self):
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1668:            reject_reason="low-difficulty-share",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1669:            target_validation_status="context-valid",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1670:            share_hash_validation_status="low-difficulty-share",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1679:            replace(clean_low_diff, target_validation_status="context-mismatch"),
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1687:                target_validation_status=assessment.target_validation_status,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1728:                    {"id": 1, "method": "mining.subscribe", "params": ["test-miner/1.0"]},
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1734:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1746:                    if message.get("method") == "mining.notify":
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1751:                periodic_difficulty = await asyncio.wait_for(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1757:                self.assertEqual(periodic_difficulty["method"], "mining.set_difficulty")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1758:                self.assertEqual(periodic_notify["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1760:                    periodic_difficulty["params"],
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1793:                    {"id": 1, "method": "mining.subscribe", "params": ["test-miner/1.0"]},
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1799:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1817:                second_difficulty = await asyncio.wait_for(
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1825:                self.assertEqual(second_difficulty["method"], "mining.set_difficulty")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1826:                self.assertEqual(second_notify["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1849:        state.extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1850:        state.current_difficulty = 1.0
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1890:        # Step 4: Simulate a block-target share submit on the old stale job (job_id_1)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1891:        block_target_int = int("0f" * 32, 16)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1892:        share_hash = (block_target_int - 1).to_bytes(32, "big")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1918:        self.assertEqual(assessment.target_validation_status, "candidate-possible")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1925:        # Step 5: Simulate a block-target share submit on the latest job (job_id_2)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1948:        self.assertEqual(assessment_2.target_validation_status, "candidate-possible")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1980:                    {"id": 1, "method": "mining.subscribe", "params": ["test-miner/1.0"]},
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:1986:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2022:                    {"id": 1, "method": "mining.subscribe", "params": ["test-miner/1.0"]},
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2028:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2037:                await self._read_json(reader)  # set_difficulty
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2040:                self.assertEqual(notify_message["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2080:                    {"id": 1, "method": "mining.subscribe", "params": ["test-miner/1.0"]},
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2086:                            "method": "mining.authorize",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2102:                target_context = dict(cached_job.target_context)
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2103:                target_context["target"] = "0" * 63 + "1"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2106:                    target_context=target_context,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2109:                self.assertEqual(notify_message["method"], "mining.notify")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2126:                        "method": "mining.submit",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2137:                    [23, "Low difficulty share", None],
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2149:                self.assertEqual(share_event["targetContext"]["bits"], "1c0ffff0")
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2157:                    share_event["targetValidationStatus"], "context-valid"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2161:                    share_event["shareHashValidationStatus"], "low-difficulty-share"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2184:                    "low-difficulty-share",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2197:                    "canonical-big-endian-target-compare",
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2204:                # structural mismatches (header80-mismatch). For low-difficulty-share,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2227:                # No heavy structural probe is expected for simple low-difficulty shares
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2232:                        "low-difficulty-share"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2272:            assigned_difficulty=1e-08,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2273:            target_context=snapshot.target_context,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2289:        extranonce1 = "aabbccdd"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2290:        extranonce2 = "00000001"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2294:            extranonce1=extranonce1,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2295:            extranonce2=extranonce2,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2302:        coinbase_hex = f"{job.coinb1}{extranonce1}{extranonce2}{job.coinb2}"
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2312:                extranonce1_hex=extranonce1,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2313:                extranonce2_hex=extranonce2,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2336:            assigned_difficulty=1e-08,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2337:            target_context=snapshot.target_context,
+/tmp/pool-pepepow/tests/test_stratum_ingress.py:2355:        extranonce1 = "aabbccdd"
+=== SOURCE SNIPPETS ===
+--- /tmp/pool-pepepow/apps/pool-core/stratum_protocol.py ---
+from __future__ import annotations
+
+import json
+import secrets
+from dataclasses import dataclass, field
+from typing import Any
+
+
+DEFAULT_WORKER_NAME = "default"
+UNKNOWN_WALLET = "unknown"
+
+
+class StratumProtocolError(ValueError):
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+@dataclass(frozen=True)
+class StratumRequest:
+    request_id: Any
+    method: str
+    params: list[Any]
+
+
+@dataclass
+class ConnectionState:
+    session_id: str
+    extranonce1: str
+    extranonce2_size: int = 4
+    authorized: bool = False
+    authorized_login: str | None = None
+    authorized_wallet: str | None = None
+    authorized_worker: str | None = None
+    current_difficulty: float | None = None
+    current_job_id: str | None = None
+    previous_job_id: str | None = None
+    submits_received: int = 0
+    shares_valid: int = 0
+    shares_rejected: int = 0
+    reject_reason_counts: dict[str, int] = field(default_factory=dict)
+    last_share_at: Any | None = None  # Use Any to avoid datetime import dependency here if preferred, but datetime is fine
+    clean_jobs_legacy: bool = False
+    last_notified_anchor: str | None = None
+    last_difficulty_reason: str | None = None
+
+
+def new_connection_state() -> ConnectionState:
+    session_id = secrets.token_hex(8)
+    return ConnectionState(
+        session_id=session_id,
+        extranonce1=secrets.token_hex(4),
+    )
+
+
+def parse_request(raw_line: str) -> StratumRequest:
+    try:
+        payload = json.loads(raw_line)
+    except json.JSONDecodeError as exc:
+        raise StratumProtocolError(-32700, "Parse error") from exc
+
+    if not isinstance(payload, dict):
+        raise StratumProtocolError(-32600, "Request must be a JSON object")
+
+    method = payload.get("method")
+    params = payload.get("params", [])
+    request_id = payload.get("id")
+
+    if not isinstance(method, str) or not method:
+        raise StratumProtocolError(-32600, "Request method is invalid")
+    if not isinstance(params, list):
+        raise StratumProtocolError(-32602, "Request params must be an array")
+
+    return StratumRequest(request_id=request_id, method=method, params=params)
+
+
+def success_response(request_id: Any, result: Any) -> dict[str, Any]:
+    return {"id": request_id, "result": result, "error": None}
+
+
+def error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
+    return {"id": request_id, "result": None, "error": {"code": code, "message": message}}
+
+
+def submit_error_response(
+    request_id: Any, code: int, message: str, data: Any = None
+) -> dict[str, Any]:
+    return {"id": request_id, "result": None, "error": [code, message, data]}
+
+
+def subscribe_result(state: ConnectionState) -> list[Any]:
+    return [
+        [
+            ["mining.set_difficulty", state.session_id],
+            ["mining.notify", state.session_id],
+        ],
+        state.extranonce1,
+        state.extranonce2_size,
+    ]
+
+
+def difficulty_notification(difficulty: float) -> dict[str, Any]:
+    return {
+        "id": None,
+        "method": "mining.set_difficulty",
+        "params": [difficulty],
+    }
+
+
+def format_prevhash_for_stratum(prevhash: str) -> str:
+    value = prevhash.strip()
+    if len(value) != 64:
+        raise ValueError("prevhash must be 64-character hex")
+    try:
+        bytes.fromhex(value)
+    except ValueError as exc:
+        raise ValueError("prevhash must be valid hex") from exc
+
+    words = [value[index : index + 8] for index in range(0, 64, 8)]
+    return "".join(bytes.fromhex(word)[::-1].hex() for word in words)
+
+
+def notify_notification(
+    *,
+    job_id: str,
+    prevhash: str,
+    coinb1: str,
+    coinb2: str,
+    merkle_branch: list[str],
+    version: str,
+    nbits: str,
+    ntime: str,
+    clean_jobs: bool,
+    legacy_clean_jobs: bool = False,
+) -> dict[str, Any]:
+    return {
+        "id": None,
+        "method": "mining.notify",
+        "params": [
+            job_id,
+            format_prevhash_for_stratum(prevhash),
+            coinb1,
+            coinb2,
+            merkle_branch,
+            version,
+            nbits,
+            ntime,
+            1 if (clean_jobs and legacy_clean_jobs) else clean_jobs,
+        ],
+    }
+
+
+def authorize_identity(login: str | None) -> tuple[str, str, str]:
+    normalized_login = (login or "").strip()
+    if not normalized_login:
+        return UNKNOWN_WALLET, DEFAULT_WORKER_NAME, UNKNOWN_WALLET
+
+    if "." in normalized_login:
+        wallet, worker = normalized_login.split(".", 1)
+        wallet = wallet.strip() or UNKNOWN_WALLET
+        worker = worker.strip() or DEFAULT_WORKER_NAME
+        return wallet, worker, f"{wallet}.{worker}"
+
+    return normalized_login, DEFAULT_WORKER_NAME, normalized_login
+
+
+def resolve_submit_identity(
+    params: list[Any], state: ConnectionState
+) -> tuple[str, str, str]:
+    if params:
+        login = params[0]
+        if isinstance(login, str) and login.strip():
+            normalized_login = login.strip()
+            if "." in normalized_login:
+                return authorize_identity(normalized_login)
+            if (
+                state.authorized_wallet is not None
+                and normalized_login == state.authorized_wallet
+            ):
+                return (
+                    state.authorized_wallet,
+                    state.authorized_worker or DEFAULT_WORKER_NAME,
+                    state.authorized_login or normalized_login,
+                )
+            return authorize_identity(normalized_login)
+
+    if state.authorized_login is not None:
+        return (
+            state.authorized_wallet or UNKNOWN_WALLET,
+            state.authorized_worker or DEFAULT_WORKER_NAME,
+            state.authorized_login,
+        )
+
+    return UNKNOWN_WALLET, DEFAULT_WORKER_NAME, UNKNOWN_WALLET
+--- /tmp/pool-pepepow/apps/pool-core/tools/generate_shares.py ---
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import math
+import os
+import statistics
+import time
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate synthetic Stratum shares")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--rate", type=int, required=True, help="Target shares per second")
+    parser.add_argument("--duration", type=int, default=60, help="Run time in seconds")
+    parser.add_argument("--connections", type=int, default=20)
+    parser.add_argument("--wallet-prefix", default="PEPEPOW1LoadWalletAddress")
+    parser.add_argument("--workers-per-wallet", type=int, default=4)
+    parser.add_argument("--activity-log-path", type=Path, default=None)
+    parser.add_argument("--activity-snapshot-path", type=Path, default=None)
+    parser.add_argument("--api-base-url", default=None)
+    parser.add_argument("--pid", type=int, default=None, help="PID to sample for CPU/RSS")
+    parser.add_argument("--output", type=Path, default=None)
+    return parser.parse_args()
+
+
+@dataclass
+class RunStats:
+    sent: int = 0
+    responses_ok: int = 0
+    responses_error: int = 0
+    connect_failures: int = 0
+    api_latencies_ms: list[float] = field(default_factory=list)
+    api_errors: int = 0
+    cpu_percent_samples: list[float] = field(default_factory=list)
+    rss_mb_samples: list[float] = field(default_factory=list)
+    snapshot_writes_observed: int = 0
+    max_snapshot_lag_seconds: float = 0.0
+    max_sequence_backlog: int = 0
+
+
+async def main() -> int:
+    args = parse_args()
+    stats = RunStats()
+    deadline = asyncio.get_running_loop().time() + args.duration
+    before_lines = count_lines(args.activity_log_path) if args.activity_log_path else None
+
+    sampler_tasks = [
+        asyncio.create_task(
+            sample_api(args.api_base_url, deadline, stats),
+            name="api-sampler",
+        )
+        if args.api_base_url
+        else None,
+        asyncio.create_task(
+            sample_process(args.pid, deadline, stats),
+            name="process-sampler",
+        )
+        if args.pid
+        else None,
+        asyncio.create_task(
+            sample_activity_snapshot(args.activity_snapshot_path, deadline, stats, lambda: stats.sent),
+            name="snapshot-sampler",
+        )
+        if args.activity_snapshot_path
+        else None,
+    ]
+    sampler_tasks = [task for task in sampler_tasks if task is not None]
+
+    worker_tasks = [
+        asyncio.create_task(
+            run_connection(
+                index=index,
+                host=args.host,
+                port=args.port,
+                deadline=deadline,
+                total_rate=args.rate,
+                total_connections=args.connections,
+                wallet_prefix=args.wallet_prefix,
+                workers_per_wallet=max(1, args.workers_per_wallet),
+                stats=stats,
+            ),
+            name=f"generator-{index}",
+        )
+        for index in range(max(1, args.connections))
+    ]
+
+    await asyncio.gather(*worker_tasks)
+    for task in sampler_tasks:
+        await task
+
+    after_lines = count_lines(args.activity_log_path) if args.activity_log_path else None
+    duration_seconds = float(args.duration)
+    summary = {
+        "targetRate": args.rate,
+        "durationSeconds": args.duration,
+        "connections": args.connections,
+        "sharesSent": stats.sent,
+        "responsesOk": stats.responses_ok,
+        "responsesError": stats.responses_error,
+        "connectFailures": stats.connect_failures,
+        "observedShareRate": stats.sent / duration_seconds if duration_seconds else 0.0,
+        "jsonlLinesWritten": (
+            after_lines - before_lines
+            if before_lines is not None and after_lines is not None
+            else None
+        ),
+        "cpuPercentAvg": average_or_none(stats.cpu_percent_samples),
+        "cpuPercentMax": max_or_none(stats.cpu_percent_samples),
+        "rssMbAvg": average_or_none(stats.rss_mb_samples),
+        "rssMbMax": max_or_none(stats.rss_mb_samples),
+        "apiLatencyMsMedian": percentile(stats.api_latencies_ms, 50),
+        "apiLatencyMsP95": percentile(stats.api_latencies_ms, 95),
+        "apiErrors": stats.api_errors,
+        "snapshotWritesObserved": stats.snapshot_writes_observed,
+        "maxSnapshotLagSeconds": stats.max_snapshot_lag_seconds,
+        "maxSequenceBacklog": stats.max_sequence_backlog,
+    }
+
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    if args.output is not None:
+        args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return 0
+
+
+async def run_connection(
+    *,
+    index: int,
+    host: str,
+    port: int,
+    deadline: float,
+    total_rate: int,
+    total_connections: int,
+    wallet_prefix: str,
+    workers_per_wallet: int,
+    stats: RunStats,
+) -> None:
+    try:
+        reader, writer = await asyncio.open_connection(host, port)
+    except OSError:
+        stats.connect_failures += 1
+        return
+
+    wallet = f"{wallet_prefix}{index // workers_per_wallet:06d}"
+    worker = f"rig{index % workers_per_wallet:02d}"
+    login = f"{wallet}.{worker}"
+
+    try:
+        await rpc_call(
+            reader,
+            writer,
+            {"id": 1, "method": "mining.subscribe", "params": ["loadgen/1.0"]},
+        )
+        await rpc_call(
+            reader,
+            writer,
+            {"id": 2, "method": "mining.authorize", "params": [login, "x"]},
+        )
+
+        rate_per_connection = max(total_rate / max(1, total_connections), 0.01)
+        interval = 1.0 / rate_per_connection
+        request_id = 3
+        next_at = asyncio.get_running_loop().time()
+        share_number = 0
+
+        while asyncio.get_running_loop().time() < deadline:
+            response = await rpc_call(
+                reader,
+                writer,
+                {
+                    "id": request_id,
+                    "method": "mining.submit",
+                    "params": [
+                        login,
+                        f"job-{index}",
+                        f"{share_number:08x}",
+                        f"{share_number + 1:08x}",
+                        f"{share_number + 2:08x}",
+                    ],
+                },
+            )
+            stats.sent += 1
+            if response.get("result") is True:
+                stats.responses_ok += 1
+            else:
+                stats.responses_error += 1
+
+            request_id += 1
+            share_number += 1
+            next_at += interval
+            delay = next_at - asyncio.get_running_loop().time()
+            if delay > 0:
+                await asyncio.sleep(delay)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+async def rpc_call(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    writer.write(json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n")
+    await writer.drain()
+    request_id = payload.get("id")
+
+    while True:
+        raw_response = await reader.readline()
+        response = json.loads(raw_response.decode("utf-8"))
+        if response.get("id") == request_id:
+            return response
+
+
+async def sample_api(base_url: str | None, deadline: float, stats: RunStats) -> None:
+    if not base_url:
+        return
+
+    while asyncio.get_running_loop().time() < deadline:
+        for endpoint in ("/health", "/pool/summary"):
+            started = time.perf_counter()
+            try:
+                await asyncio.to_thread(fetch_url, f"{base_url}{endpoint}")
+            except OSError:
+                stats.api_errors += 1
+            else:
+                stats.api_latencies_ms.append((time.perf_counter() - started) * 1000.0)
+        await asyncio.sleep(1.0)
+
+
+async def sample_process(pid: int | None, deadline: float, stats: RunStats) -> None:
+    if pid is None:
+        return
+
+    previous = read_process_times(pid)
+    if previous is None:
+        return
+
+    while asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(1.0)
+        current = read_process_times(pid)
+        if current is None:
+            return
+        cpu_percent = ((current[1] - previous[1]) / max(current[0] - previous[0], 0.001)) * 100.0
+        stats.cpu_percent_samples.append(cpu_percent)
+        stats.rss_mb_samples.append(current[2] / (1024.0 * 1024.0))
+        previous = current
+
+
+async def sample_activity_snapshot(
+    snapshot_path: Path | None,
+    deadline: float,
+    stats: RunStats,
+    shares_sent: callable,
+) -> None:
+    if snapshot_path is None:
+        return
+
+    last_generated_at: str | None = None
+
+    while asyncio.get_running_loop().time() < deadline:
+        if snapshot_path.exists():
+            try:
+                payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                await asyncio.sleep(1.0)
+                continue
+
+            generated_at = payload.get("generatedAt")
+            meta = payload.get("meta", {})
+            if generated_at != last_generated_at and isinstance(generated_at, str):
+                stats.snapshot_writes_observed += 1
+                last_generated_at = generated_at
+
+            generated_at_dt = parse_iso(generated_at)
+            if generated_at_dt is not None:
+                lag = max(
+                    0.0,
+                    (datetime.now(timezone.utc) - generated_at_dt).total_seconds(),
+                )
+                stats.max_snapshot_lag_seconds = max(stats.max_snapshot_lag_seconds, lag)
+
+            if isinstance(meta, dict):
+                sequence = meta.get("sequence")
+                if isinstance(sequence, int):
+                    stats.max_sequence_backlog = max(
+                        stats.max_sequence_backlog, shares_sent() - sequence
+                    )
+
+        await asyncio.sleep(1.0)
+
+
+def count_lines(path: Path | None) -> int | None:
+    if path is None or not path.exists():
+        return None
+    count = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            count += chunk.count(b"\n")
+    return count
+
+
+def fetch_url(url: str) -> None:
+    with urllib.request.urlopen(url, timeout=5) as response:
+        response.read()
+
+
+def read_process_times(pid: int) -> tuple[float, float, int] | None:
+    stat_path = Path(f"/proc/{pid}/stat")
+    statm_path = Path(f"/proc/{pid}/statm")
+    if not stat_path.exists() or not statm_path.exists():
+        return None
+
+    clock_ticks = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+    page_size = os.sysconf("SC_PAGE_SIZE")
+    stat_fields = stat_path.read_text(encoding="utf-8").split()
+    if len(stat_fields) < 24:
+        return None
+
+    process_seconds = (int(stat_fields[13]) + int(stat_fields[14])) / clock_ticks
+    resident_pages = int(statm_path.read_text(encoding="utf-8").split()[1])
+    rss_bytes = resident_pages * page_size
+    return time.monotonic(), process_seconds, rss_bytes
+
+
+def parse_iso(raw_value: Any) -> datetime | None:
+    if not isinstance(raw_value, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw_value.replace("Z", "+00:00")).astimezone(
+            timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def average_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return statistics.fmean(values)
+
+
+def max_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return max(values)
+
+
+def percentile(values: list[float], pct: int) -> float | None:
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    ordered = sorted(values)
+    index = (len(ordered) - 1) * (pct / 100.0)
+    lower = math.floor(index)
+    upper = math.ceil(index)
+    if lower == upper:
+        return ordered[lower]
+    weight = index - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
+if __name__ == "__main__":
+    raise SystemExit(asyncio.run(main()))
+--- /tmp/pool-pepepow/apps/pool-core/stratum_ingress.py ---
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import math
+import os
+import re
+import signal
+import time
+from collections import OrderedDict, deque
+from contextlib import suppress
+from dataclasses import dataclass, field, is_dataclass, replace
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from activity_engine import ActivityEngine
+from activity_ingest import ShareEvent, ShareEventLoadError, read_share_event_records
+from activity_log import discover_log_segments, prune_rotated_logs, rotated_log_path
+from config import PoolCoreConfig, load_config
+from daemon_rpc import append_candidate_outcome_event, candidate_followup_defaults
+from runtime_io import write_json_atomic
+from pepepow_pow import PepepowPowError, blake3_hash, hoohash_v110
+from stratum_protocol import (
+    ConnectionState,
+    DEFAULT_WORKER_NAME,
+    StratumProtocolError,
+    authorize_identity,
+    difficulty_notification,
+    error_response,
+    new_connection_state,
+    notify_notification,
+    parse_request,
+    resolve_submit_identity,
+    subscribe_result,
+    submit_error_response,
+    success_response,
+)
+from template_jobs import PLACEHOLDER_PAYOUT_SCRIPT, TemplateJobManager
+
+
+LOGGER = logging.getLogger("pepepow.stratum_ingress")
+APPEND_FLUSH_INTERVAL_SECONDS = 0.1
+APPEND_BATCH_SIZE = 500
+SYNTHETIC_JOB_MODE = "synthetic-stratum-v1"
+SHARE_VALIDATION_MODE = "structural-skeleton"
+SHARE_HASH_VALIDATION_MODE = "hoohashv110-pepew-header80"
+SYNTHETIC_PREVHASH = "0" * 64
+SYNTHETIC_COINB1 = "0100000001"
+SYNTHETIC_COINB2 = "ffffffff"
+SYNTHETIC_VERSION = "20000000"
+SYNTHETIC_NBITS = "1d00ffff"
+COINBASE_DIALECT_ENV = "PEPEPOW_POOL_CORE_COINBASE_DIALECT"
+PEPEW_TAGGED_COINBASE_DIALECT = "pepew-tagged"
+PEPEW_SCRIPT_SEPARATOR = b"\x06PEPEW/"
+PEPEW_COINBASE_TAG = b"/PEPEPOW/"
+SUBMIT_DUPLICATE_WINDOW_SECONDS = 900
+REJECT_LOG_SUPPRESS_REASONS = frozenset({"unknown-job", "stale-job"})
+INTERNAL_JOB_ID_PATTERN = re.compile(r"^job-([0-9a-f]{16})$")
+HEX_STRING_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
+HEADER80_FIELD_LAYOUT = (
+    ("version", 0, 4),
+    ("prevHash", 4, 32),
+    ("merkleRoot", 36, 32),
+    ("ntime", 68, 4),
+    ("bits", 72, 4),
+    ("nonce", 76, 4),
+)
+HEADER80_FIELD_OFFSET_MAP = {
+    field_name: offset for field_name, offset, _size in HEADER80_FIELD_LAYOUT
+}
+STRATUM_DIFF1_TARGET_PEPEPOW_POOL = int(
+    "0000ffff00000000000000000000000000000000000000000000000000000000", 16
+)
+# Miner-facing PEPEPOW stratum difficulty uses the pool-difficulty baseline.
+# The Bitcoin diff1 target is 65,536x stricter and rejects ordinary pool shares.
+STRATUM_DIFF1_TARGET = STRATUM_DIFF1_TARGET_PEPEPOW_POOL
+MAX_UINT256_TARGET = (1 << 256) - 1
+MANUAL_SHARE_DIFFICULTY_MIN = 0.0000015
+MANUAL_SHARE_DIFFICULTY_MAX = 1_000_000.0
+MANUAL_SHARE_DIFFICULTY_WIRE_SCALE = 65536.0
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _reverse_hex_bytes(hex_value: str | None) -> str | None:
+    normalized = _normalize_optional_hex(hex_value)
+    if normalized is None:
+        return None
+    return bytes.fromhex(normalized)[::-1].hex()
+
+
+@dataclass(frozen=True)
+class ShareEnvelope:
+    sequence: int
+    event: ShareEvent
+    remote_address: str
+    payload: dict[str, Any]
+
+    @property
+    def serialized(self) -> str:
+        return json.dumps(self.payload, sort_keys=True, separators=(",", ":"))
+
+
+@dataclass(frozen=True)
+class DispatchResult:
+    response: dict[str, Any]
+    notifications: list[dict[str, Any]] = field(default_factory=list)
+    start_notify_loop: bool = False
+
+
+@dataclass
+class SessionStats:
+    accepted_share_count: int = 0
+    rejected_share_count: int = 0
+    submits_received: int = 0
+    reject_reason_counts: dict[str, int] = field(default_factory=dict)
+    first_share_at: datetime | None = None
+    last_share_at: datetime | None = None
+    last_submitted_job_id: str | None = None
+    reject_log_key: tuple[Any, ...] | None = None
+    suppressed_reject_logs: int = 0
+    reject_log_context: dict[str, Any] | None = None
+    vardiff_sample_count: int = 0
+    vardiff_first_accepted_share_at: datetime | None = None
+    vardiff_last_accepted_share_at: datetime | None = None
+    vardiff_average_share_interval_seconds: float | None = None
+    vardiff_last_retarget_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class SubmitAssessment:
+    job_status: str
+    submit_job_id: str | None
+    cached_job: Any | None
+    accepted: bool
+    reject_reason: str | None = None
+    detail: str | None = None
+    duplicate_submit: bool = False
+    target_validation_status: str | None = None
+    candidate_possible: bool = False
+    share_hash_validation_status: str | None = None
+    share_hash_valid: bool | None = None
+    share_hash_diagnostic: dict[str, Any] | None = None
+
+    @property
+    def counts_as_accepted_share(self) -> bool:
+        if not self.accepted:
+            return False
+        if self.share_hash_validation_status is None:
+            return True
+        return self.share_hash_valid is True
+
+
+@dataclass
+class NotifyProbeMetadata:
+    job_id: str
+    job_created_at: datetime
+    notify_sent_at: datetime
+    assigned_difficulty: float | None
+    previous_assigned_difficulty: float | None
+    template_height: int | None
+    replaced_current_job: bool
+    previous_job_id: str | None = None
+    previous_job_prevhash: str | None = None
+    current_job_prevhash: str | None = None
+    template_observed_at: datetime | None = None
+    tip_prevhash_changed: bool = False
+    tip_to_job_created_delta_ms: int | None = None
+
+
+@dataclass
+class DifficultyProbeMetadata:
+    effective_difficulty: float
+    miner_wire_difficulty: float
+    sent_at: datetime
+    notify_followed_immediately: bool = False
+
+
+@dataclass(frozen=True)
+class TargetContextCheck:
+    status: str | None
+    reject_reason: str | None
+    detail: str | None = None
+    candidate_possible: bool = False
+
+
+@dataclass(frozen=True)
+class ShareHashCheck:
+    status: str | None
+    reject_reason: str | None
+    detail: str | None = None
+    valid: bool | None = None
+    diagnostic: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class ShareHeaderPreimage:
+    status: str
+    reject_reason: str | None
+    detail: str | None = None
+    header: bytes | None = None
+
+
+class RecoveryTracker:
+    def __init__(self) -> None:
+        self.current_offset = 0
+        self.log_inode: int | None = None
+        self.current_sequence = 0
+        self._window_sequences: deque[tuple[int, int]] = deque()
+
+    @property
+    def window_replay_sequence_floor(self) -> int:
+        self._trim(int(utc_now().timestamp()))
+        if self._window_sequences:
+            return self._window_sequences[0][1]
+        if self.current_sequence > 0:
+            return self.current_sequence + 1
+        return 0
+
+    @property
+    def window_replay_offset(self) -> int:
+        return self.current_offset
+
+    def restore(self, *, sequence: int) -> None:
+        self.current_sequence = max(self.current_sequence, sequence)
+
+    def record(self, occurred_at_second: int, sequence: int) -> None:
+        if sequence <= 0:
+            return
+
+        self.current_sequence = max(self.current_sequence, sequence)
+        if (
+            not self._window_sequences
+            or self._window_sequences[-1][0] != occurred_at_second
+        ):
+            self._window_sequences.append((occurred_at_second, sequence))
+
+        self._trim(occurred_at_second)
+
+    def _trim(self, occurred_at_second: int) -> None:
+        cutoff = occurred_at_second - 900
+        while self._window_sequences and self._window_sequences[0][0] <= cutoff:
+            self._window_sequences.popleft()
+
+
+class StratumIngressService:
+    def __init__(
+        self,
+        config: PoolCoreConfig,
+        *,
+        rpc_client: Any | None = None,
+    ) -> None:
+        self._config = config
+        self._engine = ActivityEngine(
+            assumed_share_difficulty=_hashrate_estimation_difficulty(config)
+        )
+        self._job_manager = TemplateJobManager(
+            config,
+            rpc_client=rpc_client,
+            template_rollover_callback=self._handle_template_rollover,
+        )
+        self._queue: asyncio.Queue[ShareEnvelope] = asyncio.Queue(
+            maxsize=config.stratum_queue_maxsize
+        )
+        self._state_lock = asyncio.Lock()
+        self._stop_event = asyncio.Event()
+        self._server: asyncio.AbstractServer | None = None
+        self._append_task: asyncio.Task[None] | None = None
+        self._snapshot_task: asyncio.Task[None] | None = None
+        self._recovery = RecoveryTracker()
+        self._warning_count = 0
+        self._dirty_snapshot = False
+        self._job_counter = 0
+        self._active_log_first_sequence: int | None = None
+        self._active_log_last_sequence: int | None = None
+        self._client_writers: set[asyncio.StreamWriter] = set()
+        self._active_sessions: dict[str, tuple[ConnectionState, SessionStats]] = {}
+        self._template_wake_events: dict[str, asyncio.Event] = {}
+        self._duplicate_submit_cache_size = max(
+            512, config.template_job_cache_size * 64
+        )
+        self._submit_fingerprints: OrderedDict[str, datetime] = OrderedDict()
+        self._submit_evidence_fingerprints: OrderedDict[str, None] = OrderedDict()
+        self._candidate_event_log_path = config.activity_log_path.with_name(
+            "candidate-events.jsonl"
+        )
+        self._candidate_outcome_event_log_path = config.activity_log_path.with_name(
+            "candidate-outcome-events.jsonl"
+        )
+        self._share_hash_probe_log_path = config.activity_log_path.with_name(
+            "share-hash-probe.jsonl"
+        )
+        self._submit_evidence_path = config.activity_log_path.with_name(
+            "submit-evidence.jsonl"
+        )
+        self._notify_evidence_path = config.activity_log_path.with_name(
+            "notify-evidence.jsonl"
+        )
+        self._notify_evidence_by_session_job: OrderedDict[
+            tuple[str, str], dict[str, Any]
+        ] = OrderedDict()
+        self._notify_debug_capture_path = config.activity_log_path.with_name(
+            "notify-debug-capture.jsonl"
+        )
+        self._notify_debug_capture_limit = max(
+            0, int(getattr(config, "notify_debug_capture_limit", 0))
+        )
+        self._notify_debug_capture_count = 0
+        self._low_diff_share_full_log_every_n = max(
+            1, int(getattr(config, "low_diff_share_full_log_every_n", 1))
+        )
+        self._low_diff_share_skipped_since_last_full = 0
+        self._notify_debug_context_by_session_job: OrderedDict[
+            tuple[str, str], dict[str, Any]
+        ] = OrderedDict()
+        self._share_hash_probe_captured = False
+        self._submit_validation_counts: dict[str, Any] = {
+            "mode": "structural-skeleton",
+            "accepted": 0,
+            "rejected": 0,
+            "duplicateWindowSize": self._duplicate_submit_cache_size,
+            "candidatePossibleCount": 0,
+            "shareHashValidationMode": SHARE_HASH_VALIDATION_MODE,
+            "realSubmitblockEnabled": config.enable_real_submitblock,
+            "realSubmitblockSendBudget": config.real_submitblock_max_sends,
+            "realSubmitblockSendBudgetRemaining": config.real_submitblock_max_sends,
+            "realSubmitblockAttemptCount": 0,
+            "realSubmitblockSentCount": 0,
+            "realSubmitblockErrorCount": 0,
+            "realSubmitblockStalePrevblkSkipCount": 0,
+            "realSubmitblockBudgetExhaustedSkipCount": 0,
+            "realSubmitblockLastCandidateFreshness": None,
+            "realSubmitblockLastStatus": "never-attempted",
+            "realSubmitblockLastAttemptAt": None,
+            "realSubmitblockLastError": None,
+            "classificationCounts": {
+                "current": 0,
+                "previous": 0,
+                "stale": 0,
+                "unknown": 0,
+                "malformed": 0,
+            },
+            "rejectReasonCounts": {},
+            "targetValidationCounts": {
+                "context-valid": 0,
+                "candidate-possible": 0,
+                "target-context-missing": 0,
+                "target-context-mismatch": 0,
+            },
+            "shareHashValidationCounts": {
+                "share-hash-valid": 0,
+                "share-hash-invalid": 0,
+                "preimage-missing": 0,
+                "preimage-mismatch": 0,
+            },
+        }
+
+    async def start(self) -> None:
+        await self._bootstrap_state()
+        await self._job_manager.start()
+        self._append_task = asyncio.create_task(self._append_loop(), name="append-loop")
+        self._snapshot_task = asyncio.create_task(
+            self._snapshot_loop(), name="activity-snapshot-loop"
+        )
+        if self._config.enable_real_submitblock:
+            LOGGER.warning(
+                "REAL submitblock ENABLED via PEPEPOW_ENABLE_REAL_SUBMITBLOCK=true; block-target shares may call daemon submitblock; send_budget=%s remaining=%s",
+                self._config.real_submitblock_max_sends,
+                self._submit_validation_counts["realSubmitblockSendBudgetRemaining"],
+            )
+        self._server = await asyncio.start_server(
+            self._handle_client,
+            host=self._config.stratum_bind_host,
+            port=self._config.stratum_bind_port,
+        )
+        sockets = self._server.sockets or []
+        endpoints = ", ".join(
+            str(socket.getsockname()) for socket in sockets
+        ) or f"{self._config.stratum_bind_host}:{self._config.stratum_bind_port}"
+        LOGGER.info("Stratum ingress listening on %s", endpoints)
+
+    async def run(self) -> None:
+        await self.start()
+        assert self._server is not None
+
+        async with self._server:
+            await self._stop_event.wait()
+
+        await self.stop()
+
+    async def stop(self) -> None:
+        self._stop_event.set()
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+
+        client_writers = list(self._client_writers)
+        for writer in client_writers:
+            writer.close()
+        if client_writers:
+            await asyncio.gather(
+                *(writer.wait_closed() for writer in client_writers),
+                return_exceptions=True,
+            )
+
+        if self._append_task is not None:
+            await self._append_task
+
+        if self._snapshot_task is not None:
+            await self._snapshot_task
+
+        await self._job_manager.stop()
+
+    async def _bootstrap_state(self) -> None:
+        previous_snapshot = self._load_previous_activity_snapshot()
+--- /tmp/pool-pepepow/apps/pool-core/README.md ---
+# Pool Core
+
+This directory contains the minimal read-only internal data pipeline for the
+current PEPEPOW round.
+
+## Implemented In This Round
+
+- daemon read-only JSON-RPC adapter
+- conservative snapshot producer
+- daemon-independent Stratum ingress
+- synthetic/fake Stratum v1 job broadcast for miner compatibility
+- optional daemon-backed block template polling with synthetic-safe fallback
+- atomic snapshot writes for the API layer
+- degraded fallback behavior when daemon RPC is unavailable
+- local JSONL share ingest for testing-mode and Stratum activity data
+- lightweight miner/worker accounting for runtime snapshots
+- additive activity snapshot output for API overlay
+- bounded JSONL rotation/retention and snapshot-first replay
+
+## Not Implemented In This Round
+
+- real share validation
+- candidate block handling or `submitblock`
+- payout-grade accounting
+- payout automation
+- Redis-backed runtime state
+
+## RPC Boundary
+
+Only the producer talks to daemon RPC. The frontend must never call daemon RPC
+and nginx must never proxy it publicly.
+
+Configure RPC explicitly in `~/.PEPEPOWcore/PEPEPOW.conf`:
+
+```ini
+server=1
+rpcbind=127.0.0.1
+rpcallowip=127.0.0.1
+rpcport=8834
+rpcuser=change-me
+rpcpassword=change-me
+```
+
+After editing `PEPEPOW.conf`, stop `PEPEPOWd` and start it again. Do not assume
+RPC settings hot-reload.
+
+Back up the daemon config before changing it:
+
+```bash
+mkdir -p ~/.PEPEPOWcore/backups
+cp ~/.PEPEPOWcore/PEPEPOW.conf \
+  ~/.PEPEPOWcore/backups/PEPEPOW.conf.$(date -u +%Y%m%dT%H%M%SZ)
+```
+
+## Snapshot Contract
+
+The producer writes JSON matching:
+
+`contracts/pool-snapshot.schema.json`
+
+The local testing-mode share ingest accepts JSONL events matching:
+
+`contracts/share-event.schema.json`
+
+The daemon-independent Stratum activity snapshot is described by:
+
+`contracts/activity-snapshot.schema.json`
+
+Recommended output path:
+
+`/var/lib/pepepow-pool/pool-snapshot.json`
+
+Recommended local share log path:
+
+`/var/lib/pepepow-pool/share-events.jsonl`
+
+Recommended activity snapshot path:
+
+`/var/lib/pepepow-pool/activity-snapshot.json`
+
+Keep the daemon RPC private:
+
+- `rpcbind=127.0.0.1`
+- `rpcallowip=127.0.0.1`
+- do not expose `8834` through nginx, firewall rules, or a public interface
+
+## Producer
+
+Run once:
+
+```bash
+cd /home/ubuntu/pool-pepepow/apps/pool-core
+python3 producer.py --once
+```
+
+Run as a long-lived service through systemd in deployment.
+
+## Stratum Ingress
+
+Run locally:
+
+```bash
+cd /home/ubuntu/pool-pepepow/apps/pool-core
+python3 stratum_ingress.py
+```
+
+Current minimal scope:
+
+- accepts `mining.subscribe`
+- returns a standard Stratum v1 subscription tuple list plus extranonce fields
+- accepts `mining.extranonce.subscribe` as a no-op compatibility method
+- accepts `mining.authorize`
+- pushes synthetic `mining.set_difficulty`
+- pushes synthetic `mining.notify`
+- can attach daemon template context to jobs when `PEPEPOW_POOL_CORE_TEMPLATE_MODE=daemon-template`
+- accepts `mining.submit`
+- always accepts submitted shares
+- writes every submitted share to JSONL with `source="stratum"`
+- writes a daemon-independent activity snapshot for the API to overlay
+- exposes template fetch/job-cache status through the activity snapshot
+- rotates JSONL by size and replays bounded retained tail on restart
+
+Not implemented in this round:
+
+- real difficulty management
+- daemon/template validation
+- real candidate validation or `submitblock`
+- payouts
+
+Important boundaries:
+
+- synthetic job mode is fake work for protocol compatibility only
+- submitted shares are non-validated
+- activity output is not blockchain verified
+- bounded replay is snapshot-first and only restores retained rolling tail
+
+## PEPEPOW Hash Bridge
+
+The local share-hash classification bridge is intentionally small:
+
+- [`stratum_ingress.py`](/home/ubuntu/pool-pepepow/apps/pool-core/stratum_ingress.py)
+- [`pepepow_pow.py`](/home/ubuntu/pool-pepepow/apps/pool-core/pepepow_pow.py)
+- [`pepepow_pow_helper.c`](/home/ubuntu/pool-pepepow/apps/pool-core/pepepow_pow_helper.c)
+- vendored static libraries under
+  [`libs/aarch64-linux/`](/home/ubuntu/pool-pepepow/apps/pool-core/libs/aarch64-linux)
+
+Authority and provenance:
+
+- The installed daemon/client on this host are the primary authority:
+  `PEPEPOWd` / `PEPEPOW-cli` `v2.9.0.4-c1394e6`
+- Runtime correctness is checked against local daemon RPC and real chain data.
+- `PEPEPOWd` is a stripped executable, not a stable reusable library ABI, so the
+  pool does not link against the daemon binary directly.
+- The vendored `libhoohash.a` and `libblake3.a` were copied from Hoosat's
+  aarch64 stratum-bridge build so the runtime bridge does not depend on any
+  `/tmp` exploration checkout.
+
+Current runtime dependency boundary:
+
+- runtime does not import code from `/tmp/HTND`, `/tmp/htn-stratum-bridge`, or
+  other exploration trees
+- the helper builds a local
+  `/home/ubuntu/pool-pepepow/.runtime/pool-core-build/libpepepow_pow.so`
+  from repo-vendored sources and static libraries
+
+Current non-essential artifacts:
+
+- `/home/ubuntu/pool-pepepow/.runtime/pool-core-build/libpepepow_pow.so` is a
+  generated artifact and can be rebuilt
+- `/home/ubuntu/pool-pepepow/.runtime/pool-core-build/blake3.h` is not needed
+  for runtime; it is only a leftover build copy if present
+
+## Reindex Behavior
+
+When `PEPEPOWd` is reindexing, the producer may still emit a valid runtime
+snapshot. In that state:
+
+- `meta.chainState` should be `reindexing` or `syncing`
+- `network.synced` should remain `false`
+- chain metrics are only for path verification, not final acceptance
+- local share/activity data stays separate from chain data
+
+## Hoohash V110 Validator
+
+The validator now uses the direct authoritative 80-byte header path from `hoohash.c`.
+
+- **Primary Entry Point**: `pepepow_hoohash_v110_direct` in `pepepow_pow_helper.c`
+- **Reference**: `hoohash.c` / `hoohash.h` (Vendored in this directory)
+- **Byte Order**: The validator produces normalized reversed (LE/RPC order) bytes as per the authoritative source.
+- **Comparison**: `stratum_ingress.py` uses `byteorder="little"` to correctly interpret the LE hash for integer-based target comparison.
+
+### Compatibility Flags
+
+- **PEPEPOW_HEADER_VERSION_SOURCE_ORDER_ENABLED**: (Default: `false`)
+  - If `true`, the `version` field in the 80-byte header is assembled in source byte order (Big-Endian as received from job/stratum) for PoW validation.
+  - This resolves rejections from miners that do not reverse the version field bytes in their local PoW checks.
+  - **Path**: Only affects `_build_share_header_preimage` within `stratum_ingress.py` for share validation.
+
+### Rollback
+To revert to the previous behavior:
+1. Set `PEPEPOW_HEADER_VERSION_SOURCE_ORDER_ENABLED=false` or remove the environment variable.
+2. If necessary, revert changes to `apps/pool-core/config.py` and `apps/pool-core/stratum_ingress.py`.
