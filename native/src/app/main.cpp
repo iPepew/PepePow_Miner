@@ -10,10 +10,12 @@
 #include <csignal>
 #include <cstdint>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -21,13 +23,25 @@
 namespace {
 pepepow::stratum::Client* active_client = nullptr;
 
+// The PEPEPOW pool advertises Stratum difficulty as effective pool difficulty
+// multiplied by 65,536. Share targets must be built from the effective value.
+constexpr double kPepepowWireDifficultyScale = 65536.0;
+
 void signal_handler(int) {
     if (active_client != nullptr) active_client->stop();
 }
 
+std::string encode_submit_word(std::uint32_t value) {
+    // Stratum submit fields are eight-digit numeric hex words. The pool parses
+    // this number and serializes it little-endian into the block header.
+    std::ostringstream stream;
+    stream << std::hex << std::nouppercase << std::setfill('0') << std::setw(8) << value;
+    return stream.str();
+}
+
 void print_help() {
     std::cout
-        << "PepePowMiner v0.1.1-rc1\n"
+        << "PepePowMiner v0.1.3-dev\n"
         << "Usage:\n"
         << "  pepepowminer -o stratum+tcp://host:port -u wallet.worker [-p x]\n\n"
         << "Options:\n"
@@ -89,11 +103,14 @@ private:
 
             try {
                 auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, item.extranonce2);
-                const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
+                const double effective_difficulty =
+                    item.stratum_job.difficulty / kPepepowWireDifficultyScale;
+                const auto target = pepepow::mining::target_from_difficulty(effective_difficulty);
                 std::uint64_t nonce = 0;
 
                 std::cout << "Mining job " << mining_job.job_id
-                          << " difficulty=" << item.stratum_job.difficulty
+                          << " wire_difficulty=" << item.stratum_job.difficulty
+                          << " effective_difficulty=" << effective_difficulty
                           << " backend=" << backend_.name() << '\n';
 
                 while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
@@ -109,8 +126,9 @@ private:
                         share.job_id = item.stratum_job.job_id;
                         share.extranonce2 = item.extranonce2;
                         share.ntime = item.stratum_job.ntime;
-                        share.nonce = pepepow::stratum::encode_u32_le_hex(candidate->nonce);
-                        std::cout << "Share candidate nonce=" << share.nonce << '\n';
+                        share.nonce = encode_submit_word(candidate->nonce);
+                        std::cout << "Share candidate nonce_u32=" << candidate->nonce
+                                  << " nonce_wire=" << share.nonce << '\n';
                         client_.submit(share);
                     }
                     nonce += count;
@@ -187,7 +205,7 @@ int main(int argc, char** argv) {
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = "PepePowMiner/0.1.1-rc1";
+        config.agent = "PepePowMiner/0.1.3-dev";
 
         pepepow::stratum::Client client(std::move(config));
         MiningWorker worker(*backend, client);

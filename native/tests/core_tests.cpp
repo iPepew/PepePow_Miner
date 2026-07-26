@@ -79,6 +79,22 @@ int main() {
     const auto diff2 = pepepow::mining::target_from_difficulty(2.0);
     assert(diff2 < diff1);
 
+    // PEPEPOW Stratum sends wire difficulty multiplied by 65,536. A wire value
+    // of 98.304 therefore means effective pool difficulty 0.0015 and must
+    // produce 029aa81000... rather than the 65,536x stricter 0000029aa810...
+    constexpr double wire_difficulty_scale = 65536.0;
+    const auto incorrect_wire_target = pepepow::mining::target_from_difficulty(98.304);
+    const auto effective_pool_target =
+        pepepow::mining::target_from_difficulty(98.304 / wire_difficulty_scale);
+    assert(effective_pool_target > incorrect_wire_target);
+    assert(effective_pool_target[0] == 0x02U);
+    assert(effective_pool_target[1] == 0x9aU);
+    assert(effective_pool_target[2] == 0xa8U);
+    assert(effective_pool_target[3] == 0x10U);
+    for (std::size_t index = 4; index < effective_pool_target.size(); ++index) {
+        assert(effective_pool_target[index] == 0U);
+    }
+
     pepepow::Hash256 zero_hash{};
     assert(pepepow::mining::hash_meets_target_be(zero_hash, diff1));
     pepepow::Hash256 max_hash{};
