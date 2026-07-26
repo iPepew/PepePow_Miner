@@ -17,6 +17,7 @@ JOBS="${JOBS:-$(nproc)}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
 
 command -v nvidia-smi >/dev/null 2>&1 || { echo "nvidia-smi is required" >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required for the forensic Stratum proxy" >&2; exit 1; }
 
 echo "== NVIDIA device =="
 nvidia-smi --query-gpu=name,compute_cap,driver_version,memory.total --format=csv,noheader
@@ -56,7 +57,7 @@ configure_and_build_docker() {
     -v "${ROOT_DIR}:/workspace" -w /workspace "${CUDA_IMAGE}" bash -lc '
       set -euo pipefail
       apt-get update
-      apt-get install -y --no-install-recommends cmake git build-essential ca-certificates
+      apt-get install -y --no-install-recommends cmake git build-essential ca-certificates python3
       rm -rf /var/lib/apt/lists/* /workspace/build-rtx3080
       cmake -S /workspace/native -B /workspace/build-rtx3080 \
         -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON \
@@ -83,6 +84,7 @@ install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
 for script in h-run.sh h-config.sh h-stats.sh diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh; do
   install -m 0755 "${ROOT_DIR}/hiveos/${script}" "${PACKAGE_DIR}/${script}"
 done
+install -m 0755 "${ROOT_DIR}/hiveos/stratum-replay-proxy.py" "${PACKAGE_DIR}/stratum-replay-proxy.py"
 install -m 0644 "${ROOT_DIR}/hiveos/h-manifest.conf" "${PACKAGE_DIR}/h-manifest.conf"
 install -m 0644 "${ROOT_DIR}/VERSION" "${PACKAGE_DIR}/VERSION"
 
@@ -105,6 +107,8 @@ if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hiv
 fi
 
 for script in "${PACKAGE_DIR}"/*.sh; do bash -n "${script}"; done
+python3 -m py_compile "${PACKAGE_DIR}/stratum-replay-proxy.py"
+"${PACKAGE_DIR}/stratum-replay-proxy.py" --help | grep -q -- '--rewrite-submit-nonce'
 "${PACKAGE_DIR}/pepepowminer" --help | grep -q -- '--diagnostic-log'
 "${PACKAGE_DIR}/forensic-audit.sh" "${PACKAGE_DIR}/build-forensic-audit.txt"
 grep -q "Expected package dir: ${PACKAGE_DIR}" "${PACKAGE_DIR}/build-forensic-audit.txt"
@@ -116,7 +120,7 @@ tar -tzf "${ARCHIVE_PATH}" > "${ARCHIVE_LIST}"
 
 echo "== HiveOS archive contents =="
 cat "${ARCHIVE_LIST}"
-for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh VERSION; do
+for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh stratum-replay-proxy.py VERSION; do
   if ! grep -Fxq "${PACKAGE_NAME}/${entry}" "${ARCHIVE_LIST}"; then
     echo "Missing ${entry}" >&2
     exit 1
