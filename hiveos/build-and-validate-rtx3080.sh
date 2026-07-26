@@ -95,6 +95,15 @@ grep -qx "CUSTOM_VERSION=${VERSION}" "${PACKAGE_DIR}/h-manifest.conf"
 grep -qx "CUSTOM_CONFIG_FILENAME=/hive/miners/custom/${PACKAGE_NAME}/config.txt" "${PACKAGE_DIR}/h-manifest.conf"
 grep -qx "${VERSION}" "${PACKAGE_DIR}/VERSION"
 
+# Validate HiveOS callback output and reject stale hard-coded versions.
+MINER_DIR="${PACKAGE_DIR}" source "${PACKAGE_DIR}/h-stats.sh"
+[[ "${stats}" == *"\"ver\":\"${VERSION}\""* ]] || { echo "h-stats version mismatch: ${stats}" >&2; exit 1; }
+[[ "${stats}" == *'"hs":[0]'* ]] || { echo "h-stats must explicitly reset stale hashrate: ${stats}" >&2; exit 1; }
+if grep -R --line-number --fixed-strings '0.1.4' "${PACKAGE_DIR}"; then
+  echo "Stale version 0.1.4 found in package" >&2
+  exit 1
+fi
+
 strip "${PACKAGE_DIR}/pepepowminer" 2>/dev/null || true
 tar -C "${ROOT_DIR}/dist" -czf "${ARCHIVE_PATH}" "${PACKAGE_NAME}"
 
