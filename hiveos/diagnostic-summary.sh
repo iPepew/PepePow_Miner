@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MINER_DIR="${MINER_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-LOG_FILE="${1:-/var/log/miner/custom/pepepowminer/pepepowminer.log}"
-OUT_FILE="${2:-$MINER_DIR/diagnostic-summary.txt}"
+# The script is installed directly inside the miner package. Resolve that exact
+# directory and ignore HiveOS' generic MINER_DIR environment variable.
+miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+diagnostic_log="${1:-${miner_dir}/pepepow-debug.log}"
+out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
 
 {
   echo "PepePow Miner diagnostic summary"
   date -u +"UTC: %Y-%m-%dT%H:%M:%SZ"
-  echo "Miner directory: $MINER_DIR"
-  echo "Log file: $LOG_FILE"
+  echo "Miner directory: ${miner_dir}"
+  echo "Diagnostic log: ${diagnostic_log}"
   echo
   echo "== Build identity =="
-  "$MINER_DIR/pepepowminer" --version 2>&1 || true
+  "${miner_dir}/pepepowminer" --version 2>&1 || true
   echo
   echo "== GPU =="
   nvidia-smi --query-gpu=index,name,uuid,driver_version,compute_cap,pci.bus_id --format=csv,noheader 2>&1 || true
   echo
   echo "== HiveOS package =="
-  cat "$MINER_DIR/h-manifest.conf" 2>&1 || true
+  cat "${miner_dir}/h-manifest.conf" 2>&1 || true
   echo
   echo "== Runtime config =="
-  cat "$MINER_DIR/config.txt" 2>&1 || true
+  cat "${miner_dir}/config.txt" 2>&1 || true
+  echo
+  echo "== Setup =="
+  cat "${miner_dir}/setup.txt" 2>&1 || true
+  echo
+  echo "== Run command =="
+  cat "${miner_dir}/run.txt" 2>&1 || true
   echo
   echo "== Key runtime records =="
-  grep -E 'BUILD_ID|JOB_DIAG|TARGET_DIAG|SHARE_DIAG|SUBMIT_DIAG|Share accepted|Share rejected|CUDA candidate|Worker error|Fatal' "$LOG_FILE" 2>/dev/null | tail -n 500 || true
-} > "$OUT_FILE"
+  grep -E 'BUILD_ID|JOB |JOB_HEADER|CANDIDATE|SHARE_TRACE|SUBMIT|STRATUM|Share accepted|Share rejected|CUDA candidate|Worker error|Fatal|FINAL_STATS' "${diagnostic_log}" 2>/dev/null | tail -n 1000 || true
+} > "${out_file}"
 
-echo "$OUT_FILE"
+echo "${out_file}"
