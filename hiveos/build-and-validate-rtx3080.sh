@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build-rtx3080"
-PACKAGE_DIR="${ROOT_DIR}/dist/pepepowminer-v0.1.1-rc1-hiveos"
+PACKAGE_NAME="pepepowminer-v0.1.1"
+PACKAGE_DIR="${ROOT_DIR}/dist/${PACKAGE_NAME}"
+ARCHIVE_PATH="${ROOT_DIR}/dist/pepepowminer-v0.1.1-rc2-hiveos.tar.gz"
 JOBS="${JOBS:-$(nproc)}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
 
@@ -90,7 +92,7 @@ configure_and_build_docker() {
         '
 }
 
-rm -rf "${BUILD_DIR}" "${PACKAGE_DIR}"
+rm -rf "${BUILD_DIR}" "${PACKAGE_DIR}" "${ARCHIVE_PATH}"
 
 if NVCC_PATH="$(find_nvcc)"; then
     configure_and_build_native "${NVCC_PATH}"
@@ -114,14 +116,29 @@ mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
 install -m 0755 "${ROOT_DIR}/hiveos/h-run.sh" "${PACKAGE_DIR}/h-run.sh"
 install -m 0755 "${ROOT_DIR}/hiveos/h-config.sh" "${PACKAGE_DIR}/h-config.sh"
+install -m 0755 "${ROOT_DIR}/hiveos/h-stats.sh" "${PACKAGE_DIR}/h-stats.sh"
 install -m 0644 "${ROOT_DIR}/hiveos/h-manifest.conf" "${PACKAGE_DIR}/h-manifest.conf"
 
 strip "${PACKAGE_DIR}/pepepowminer" 2>/dev/null || true
 
-mkdir -p "${ROOT_DIR}/dist"
-tar -C "${ROOT_DIR}/dist" -czf \
-    "${ROOT_DIR}/dist/pepepowminer-v0.1.1-rc1-hiveos-sm86.tar.gz" \
-    "pepepowminer-v0.1.1-rc1-hiveos"
+tar -C "${ROOT_DIR}/dist" -czf "${ARCHIVE_PATH}" "${PACKAGE_NAME}"
 
-sha256sum "${ROOT_DIR}/dist/pepepowminer-v0.1.1-rc1-hiveos-sm86.tar.gz"
-echo "PASS: RTX 3080 validation and HiveOS package completed"
+echo "== HiveOS archive contents =="
+tar -tzf "${ARCHIVE_PATH}"
+
+required=(
+    "${PACKAGE_NAME}/pepepowminer"
+    "${PACKAGE_NAME}/h-run.sh"
+    "${PACKAGE_NAME}/h-config.sh"
+    "${PACKAGE_NAME}/h-stats.sh"
+    "${PACKAGE_NAME}/h-manifest.conf"
+)
+for entry in "${required[@]}"; do
+    tar -tzf "${ARCHIVE_PATH}" | grep -qx "${entry}" || {
+        echo "Missing required archive entry: ${entry}" >&2
+        exit 1
+    }
+done
+
+sha256sum "${ARCHIVE_PATH}"
+echo "PASS: RTX 3080 validation and HiveOS rc2 package completed"
