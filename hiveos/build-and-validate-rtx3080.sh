@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build-rtx3080"
-PACKAGE_NAME="pepepowminer-v0.1.1-rc2"
+VERSION="${VERSION:-0.1.2}"
+PACKAGE_NAME="pepepowminer-v${VERSION}"
 PACKAGE_DIR="${ROOT_DIR}/dist/${PACKAGE_NAME}"
-ARCHIVE_PATH="${ROOT_DIR}/dist/pepepowminer-v0.1.1-rc2-hiveos.tar.gz"
+ARCHIVE_PATH="${ROOT_DIR}/dist/${PACKAGE_NAME}-hiveos.tar.gz"
 JOBS="${JOBS:-$(nproc)}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
 
@@ -118,6 +119,7 @@ install -m 0755 "${ROOT_DIR}/hiveos/h-run.sh" "${PACKAGE_DIR}/h-run.sh"
 install -m 0755 "${ROOT_DIR}/hiveos/h-config.sh" "${PACKAGE_DIR}/h-config.sh"
 install -m 0755 "${ROOT_DIR}/hiveos/h-stats.sh" "${PACKAGE_DIR}/h-stats.sh"
 install -m 0644 "${ROOT_DIR}/hiveos/h-manifest.conf" "${PACKAGE_DIR}/h-manifest.conf"
+sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${VERSION}/" "${PACKAGE_DIR}/h-manifest.conf"
 
 strip "${PACKAGE_DIR}/pepepowminer" 2>/dev/null || true
 
@@ -141,4 +143,4 @@ for entry in "${required[@]}"; do
 done
 
 sha256sum "${ARCHIVE_PATH}"
-echo "PASS: RTX 3080 validation and HiveOS rc2 package completed"
+echo "PASS: RTX 3080 validation and HiveOS v${VERSION} package completed"
