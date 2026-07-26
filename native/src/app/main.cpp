@@ -1,4 +1,6 @@
 #include "pepepow/core/backend.hpp"
+#include "pepepow/core/header_builder.hpp"
+#include "pepepow/crypto/pow.hpp"
 #include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
 #ifdef PEPEPOW_HAS_CUDA
@@ -6,14 +8,17 @@
 #endif
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <csignal>
 #include <cstdint>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -27,7 +32,7 @@ void signal_handler(int) {
 
 void print_help() {
     std::cout
-        << "PepePowMiner v0.1.4\n"
+        << "PepePowMiner v0.1.7\n"
         << "Usage:\n"
         << "  pepepowminer -o stratum+tcp://host:port -u wallet.worker [-p x]\n\n"
         << "Options:\n"
@@ -40,6 +45,23 @@ void print_help() {
         << "  -h, --help           Show this help\n";
 }
 
+std::string encode_counter_be(std::uint64_t value, std::size_t byte_count) {
+    std::ostringstream stream;
+    stream << std::hex << std::setfill('0');
+    for (std::size_t index = byte_count; index-- > 0;) {
+        const auto byte = static_cast<unsigned>((value >> ((index % 8U) * 8U)) & 0xffU);
+        stream << std::setw(2) << byte;
+    }
+    return stream.str();
+}
+
+std::string hash_hex(const pepepow::Hash256& hash) {
+    std::ostringstream stream;
+    stream << std::hex << std::setfill('0');
+    for (const auto byte : hash) stream << std::setw(2) << static_cast<unsigned>(byte);
+    return stream.str();
+}
+
 struct WorkItem {
     pepepow::stratum::Job stratum_job;
     std::string extranonce2;
@@ -49,7 +71,10 @@ struct WorkItem {
 class MiningWorker {
 public:
     MiningWorker(pepepow::MiningBackend& backend, pepepow::stratum::Client& client)
-        : backend_(backend), client_(client), thread_([this] { run(); }) {}
+        : backend_(backend), client_(client),
+          extranonce_counter_(static_cast<std::uint64_t>(
+              std::chrono::steady_clock::now().time_since_epoch().count())),
+          thread_([this] { run(); }) {}
 
     ~MiningWorker() { stop(); }
 
@@ -58,7 +83,8 @@ public:
 
     void set_job(const pepepow::stratum::Job& job) {
         std::lock_guard lock(mutex_);
-        const std::string extranonce2(job.extranonce2_size * 2U, '0');
+        const auto counter = extranonce_counter_.fetch_add(1U);
+        const std::string extranonce2 = encode_counter_be(counter, job.extranonce2_size);
         latest_ = WorkItem{job, extranonce2, ++generation_};
         condition_.notify_one();
     }
@@ -90,10 +116,15 @@ private:
             try {
                 auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, item.extranonce2);
                 const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
+                const double normalized_difficulty =
+                    item.stratum_job.difficulty / pepepow::mining::kStratumDifficultyWireScale;
                 std::uint64_t nonce = 0;
 
                 std::cout << "Mining job " << mining_job.job_id
-                          << " difficulty=" << item.stratum_job.difficulty
+                          << " wire-difficulty=" << item.stratum_job.difficulty
+                          << " normalized-difficulty=" << std::fixed << std::setprecision(8)
+                          << normalized_difficulty
+                          << " extranonce2=" << item.extranonce2
                           << " backend=" << backend_.name() << '\n';
 
                 while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
@@ -105,13 +136,31 @@ private:
                         target);
 
                     if (candidate.has_value()) {
-                        pepepow::stratum::Share share;
-                        share.job_id = item.stratum_job.job_id;
-                        share.extranonce2 = item.extranonce2;
-                        share.ntime = item.stratum_job.ntime;
-                        share.nonce = pepepow::stratum::encode_u32_le_hex(candidate->nonce);
-                        std::cout << "Share candidate nonce=" << share.nonce << '\n';
-                        client_.submit(share);
+                        auto validation_job = mining_job;
+                        validation_job.nonce = candidate->nonce;
+                        const auto header = pepepow::build_header80(validation_job);
+                        const auto cpu_hash = pepepow::crypto::calculate_header80_pow(header);
+
+                        if (cpu_hash != candidate->hash) {
+                            std::cerr << "CUDA candidate failed CPU hash equality: nonce="
+                                      << candidate->nonce
+                                      << " gpu=" << hash_hex(candidate->hash)
+                                      << " cpu=" << hash_hex(cpu_hash) << '\n';
+                        } else if (!pepepow::mining::hash_meets_target_be(cpu_hash, target)) {
+                            std::cerr << "CUDA candidate failed CPU target validation: nonce="
+                                      << candidate->nonce
+                                      << " hash=" << hash_hex(cpu_hash) << '\n';
+                        } else if (item.generation == generation_.load()) {
+                            pepepow::stratum::Share share;
+                            share.job_id = item.stratum_job.job_id;
+                            share.extranonce2 = item.extranonce2;
+                            share.ntime = item.stratum_job.ntime;
+                            share.nonce = pepepow::stratum::encode_u32_le_hex(candidate->nonce);
+                            std::cout << "Validated share candidate nonce=" << share.nonce
+                                      << " xnonce2=" << share.extranonce2
+                                      << " hash=" << hash_hex(cpu_hash) << '\n';
+                            client_.submit(share);
+                        }
                     }
                     nonce += count;
                 }
@@ -127,6 +176,7 @@ private:
     std::condition_variable condition_;
     std::optional<WorkItem> latest_;
     std::atomic_uint64_t generation_{0};
+    std::atomic_uint64_t extranonce_counter_{0};
     std::atomic_bool stopped_{false};
     std::thread thread_;
 };
@@ -187,7 +237,7 @@ int main(int argc, char** argv) {
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = "PepePowMiner/0.1.4";
+        config.agent = "PepePowMiner/0.1.7";
 
         pepepow::stratum::Client client(std::move(config));
         MiningWorker worker(*backend, client);
