@@ -79,10 +79,9 @@ echo "BUILD_ID=${BUILD_ID}"
 
 mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
-install -m 0755 "${ROOT_DIR}/hiveos/h-run.sh" "${PACKAGE_DIR}/h-run.sh"
-install -m 0755 "${ROOT_DIR}/hiveos/h-config.sh" "${PACKAGE_DIR}/h-config.sh"
-install -m 0755 "${ROOT_DIR}/hiveos/h-stats.sh" "${PACKAGE_DIR}/h-stats.sh"
-install -m 0755 "${ROOT_DIR}/hiveos/diagnostic-summary.sh" "${PACKAGE_DIR}/diagnostic-summary.sh"
+for script in h-run.sh h-config.sh h-stats.sh diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh; do
+  install -m 0755 "${ROOT_DIR}/hiveos/${script}" "${PACKAGE_DIR}/${script}"
+done
 install -m 0644 "${ROOT_DIR}/hiveos/h-manifest.conf" "${PACKAGE_DIR}/h-manifest.conf"
 install -m 0644 "${ROOT_DIR}/VERSION" "${PACKAGE_DIR}/VERSION"
 
@@ -95,23 +94,29 @@ grep -qx "CUSTOM_VERSION=${VERSION}" "${PACKAGE_DIR}/h-manifest.conf"
 grep -qx "CUSTOM_CONFIG_FILENAME=/hive/miners/custom/${PACKAGE_NAME}/config.txt" "${PACKAGE_DIR}/h-manifest.conf"
 grep -qx "${VERSION}" "${PACKAGE_DIR}/VERSION"
 
-# Validate HiveOS callback output and reject stale hard-coded versions.
 MINER_DIR="${PACKAGE_DIR}" source "${PACKAGE_DIR}/h-stats.sh"
 [[ "${stats}" == *"\"ver\":\"${VERSION}\""* ]] || { echo "h-stats version mismatch: ${stats}" >&2; exit 1; }
 [[ "${stats}" == *'"hs":[0]'* ]] || { echo "h-stats must explicitly reset stale hashrate: ${stats}" >&2; exit 1; }
-if grep -R --line-number --fixed-strings '0.1.4' "${PACKAGE_DIR}"; then
-  echo "Stale version 0.1.4 found in package" >&2
+if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${PACKAGE_DIR}"; then
+  echo "Stale version or unsafe parent-directory path found in package" >&2
   exit 1
 fi
+
+# Static shell validation and path self-tests.
+for script in "${PACKAGE_DIR}"/*.sh; do bash -n "${script}"; done
+"${PACKAGE_DIR}/pepepowminer" --help | grep -q -- '--diagnostic-log'
+"${PACKAGE_DIR}/forensic-audit.sh" "${PACKAGE_DIR}/build-forensic-audit.txt"
+grep -q "Expected package dir: ${PACKAGE_DIR}" "${PACKAGE_DIR}/build-forensic-audit.txt"
+rm -f "${PACKAGE_DIR}/build-forensic-audit.txt"
 
 strip "${PACKAGE_DIR}/pepepowminer" 2>/dev/null || true
 tar -C "${ROOT_DIR}/dist" -czf "${ARCHIVE_PATH}" "${PACKAGE_NAME}"
 
 echo "== HiveOS archive contents =="
 tar -tzf "${ARCHIVE_PATH}"
-for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh VERSION; do
+for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh VERSION; do
   tar -tzf "${ARCHIVE_PATH}" | grep -qx "${PACKAGE_NAME}/${entry}" || { echo "Missing ${entry}" >&2; exit 1; }
 done
 
 sha256sum "${ARCHIVE_PATH}"
-echo "PASS: PepePow Debug Edition ${VERSION} package completed"
+echo "PASS: PepePow Forensic Debug Edition ${VERSION} package completed"
