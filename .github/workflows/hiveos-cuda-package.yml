@@ -31,7 +31,9 @@ jobs:
       - name: Install build tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git cmake build-essential ca-certificates file
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          cmake --version
           rm -rf /var/lib/apt/lists/*
 
       - name: Checkout
