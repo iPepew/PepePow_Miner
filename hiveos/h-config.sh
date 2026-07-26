@@ -8,6 +8,7 @@ fi
 miner_dir="${MINER_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 conf_file="${CUSTOM_CONFIG_FILENAME:-${miner_dir}/config.txt}"
 setup_file="${miner_dir}/setup.txt"
+diagnostic_log="${miner_dir}/pepepow-debug.log"
 
 pool="${CUSTOM_URL:-}"
 user="${CUSTOM_TEMPLATE:-}"
@@ -23,7 +24,7 @@ if [[ -z "${user}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-args=("-o" "${pool}" "-u" "${user}" "-p" "${pass}" "--pepepow" "--diagnostic")
+args=("-o" "${pool}" "-u" "${user}" "-p" "${pass}" "--pepepow" "--diagnostic" "--diagnostic-log" "${diagnostic_log}")
 
 if [[ -n "${extra_raw}" ]]; then
   eval "extra=( ${extra_raw} )"
@@ -44,6 +45,7 @@ mkdir -p "$(dirname "${conf_file}")"
   echo "Password: ${pass}"
   echo "Extra config: ${extra_raw}"
   echo "Diagnostic mode: enabled"
+  echo "Diagnostic log: ${diagnostic_log}"
   printf 'Final command: ./pepepowminer'
   printf ' %q' "${args[@]}"
   echo
