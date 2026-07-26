@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(PepePowMiner VERSION 0.1.4 LANGUAGES C CXX)
+project(PepePowMiner VERSION 0.1.8 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
