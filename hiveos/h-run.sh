@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-miner_dir="${MINER_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+# Resolve the installed package directory from this script. HiveOS can export a
+# generic MINER_DIR pointing at /hive/miners/custom, which must not be used here.
+miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${miner_dir}"
 
 if [[ ! -x ./pepepowminer ]]; then
@@ -9,10 +11,9 @@ if [[ ! -x ./pepepowminer ]]; then
   exit 1
 fi
 
-conf_file="${CUSTOM_CONFIG_FILENAME:-${miner_dir}/config.txt}"
+conf_file="${miner_dir}/config.txt"
 if [[ ! -s "${conf_file}" ]]; then
-  # HiveOS normally calls h-config.sh before h-run.sh. Regenerate the file if
-  # the agent skipped that callback or the package was reinstalled.
+  # HiveOS normally calls h-config.sh before h-run.sh. Regenerate if needed.
   # shellcheck disable=SC1091
   source ./h-config.sh
 fi
@@ -30,9 +31,10 @@ if ! declare -p PEPEPOW_ARGS >/dev/null 2>&1 || [[ ${#PEPEPOW_ARGS[@]} -eq 0 ]];
 fi
 
 {
+  echo "Miner directory: ${miner_dir}"
   printf './pepepowminer'
   printf ' %q' "${PEPEPOW_ARGS[@]}"
   echo
-} > run.txt
+} > "${miner_dir}/run.txt"
 
 exec ./pepepowminer "${PEPEPOW_ARGS[@]}"
