@@ -41,7 +41,7 @@ std::string encode_submit_word(std::uint32_t value) {
 
 void print_help() {
     std::cout
-        << "PepePowMiner v0.1.3-dev\n"
+        << "PepePowMiner v0.1.3\n"
         << "Usage:\n"
         << "  pepepowminer -o stratum+tcp://host:port -u wallet.worker [-p x]\n\n"
         << "Options:\n"
@@ -90,7 +90,9 @@ public:
 
 private:
     void run() {
-        constexpr std::uint64_t chunk_size = 4096;
+        // Larger batches reduce CUDA allocation, launch and copy overhead while
+        // keeping job-switch latency low enough for Stratum clean-job updates.
+        constexpr std::uint64_t chunk_size = 65536;
         while (!stopped_.load()) {
             WorkItem item;
             {
@@ -205,7 +207,7 @@ int main(int argc, char** argv) {
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = "PepePowMiner/0.1.3-dev";
+        config.agent = "PepePowMiner/0.1.3";
 
         pepepow::stratum::Client client(std::move(config));
         MiningWorker worker(*backend, client);
