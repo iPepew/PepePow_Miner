@@ -1,23 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-conf_file="${CUSTOM_CONFIG_FILENAME:-${MINER_DIR:-.}/config.txt}"
-args=()
-
-if [[ -n "${CUSTOM_URL:-}" ]]; then
-  args+=("-o" "${CUSTOM_URL}")
+# v0.1.3 passes HiveOS settings directly to h-run.sh.
+# Keep this hook for HiveOS compatibility, but do not generate config.txt.
+if [[ -z "${CUSTOM_URL:-}" ]]; then
+  echo "HiveOS pool URL is missing (CUSTOM_URL)" >&2
+  exit 1
 fi
-if [[ -n "${CUSTOM_TEMPLATE:-}" ]]; then
-  args+=("-u" "${CUSTOM_TEMPLATE}")
-fi
-args+=("-p" "${CUSTOM_PASS:-x}" "--pepepow")
-
-if [[ -n "${CUSTOM_USER_CONFIG:-}" ]]; then
-  # HiveOS custom arguments are intentionally appended last.
-  # shellcheck disable=SC2206
-  extra=( ${CUSTOM_USER_CONFIG} )
-  args+=("${extra[@]}")
+if [[ -z "${CUSTOM_TEMPLATE:-}" ]]; then
+  echo "HiveOS wallet/template is missing (CUSTOM_TEMPLATE)" >&2
+  exit 1
 fi
 
-printf '%q ' "${args[@]}" > "${conf_file}"
-printf '\n' >> "${conf_file}"
+exit 0
