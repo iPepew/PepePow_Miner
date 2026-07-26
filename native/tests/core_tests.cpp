@@ -71,13 +71,20 @@ int main() {
     for (const auto byte : direct_a) direct_nonzero = direct_nonzero || byte != 0;
     assert(direct_nonzero);
 
-    const auto diff1 = pepepow::mining::target_from_difficulty(1.0);
+    // One conventional diff1 corresponds to 1/65536 Stratum wire units.
+    const auto diff1 = pepepow::mining::target_from_difficulty(
+        1.0 / pepepow::mining::kStratumDifficultyWireScale);
     assert(diff1[0] == 0x00U && diff1[1] == 0x00U);
     assert(diff1[2] == 0xffU && diff1[3] == 0xffU);
     for (std::size_t index = 4; index < diff1.size(); ++index) assert(diff1[index] == 0U);
 
-    const auto diff2 = pepepow::mining::target_from_difficulty(2.0);
+    const auto diff2 = pepepow::mining::target_from_difficulty(
+        2.0 / pepepow::mining::kStratumDifficultyWireScale);
     assert(diff2 < diff1);
+
+    // The live pool value 98.304 must be dramatically harder than diff1.
+    const auto pool_target = pepepow::mining::target_from_difficulty(98.304);
+    assert(pool_target < diff2);
 
     pepepow::Hash256 zero_hash{};
     assert(pepepow::mining::hash_meets_target_be(zero_hash, diff1));

@@ -10,22 +10,20 @@
 namespace pepepow::mining {
 namespace {
 
-constexpr std::uint64_t kDifficultyScale = 1'000'000ULL;
+constexpr std::uint64_t kFixedPrecisionScale = 1'000'000ULL;
 constexpr std::array<std::uint8_t, 32> kDiff1Target{
     0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-// Multiplies a 256-bit big-endian value by a 32-bit scalar. The 320-bit
-// result leaves enough headroom for the fixed difficulty scale.
-std::array<std::uint8_t, 40> multiply_by_scale() noexcept {
+std::array<std::uint8_t, 40> multiply_by_fixed_precision() noexcept {
     std::array<std::uint8_t, 40> output{};
     std::uint64_t carry = 0;
 
     for (std::size_t source = kDiff1Target.size(); source-- > 0;) {
         const std::uint64_t product =
-            static_cast<std::uint64_t>(kDiff1Target[source]) * kDifficultyScale + carry;
+            static_cast<std::uint64_t>(kDiff1Target[source]) * kFixedPrecisionScale + carry;
         output[source + 8U] = static_cast<std::uint8_t>(product & 0xffU);
         carry = product >> 8U;
     }
@@ -37,8 +35,6 @@ std::array<std::uint8_t, 40> multiply_by_scale() noexcept {
     return output;
 }
 
-// Portable bitwise division of a 320-bit unsigned integer by uint64_t.
-// It avoids compiler-specific 128-bit integer extensions and works on MSVC.
 std::array<std::uint8_t, 40> divide_u320_by_u64(
     const std::array<std::uint8_t, 40>& numerator,
     std::uint64_t denominator) {
@@ -70,12 +66,17 @@ std::array<std::uint8_t, 40> divide_u320_by_u64(
 
 } // namespace
 
-Target256 target_from_difficulty(double difficulty) {
-    if (!std::isfinite(difficulty) || difficulty <= 0.0) {
+Target256 target_from_difficulty(double stratum_difficulty) {
+    if (!std::isfinite(stratum_difficulty) || stratum_difficulty <= 0.0) {
         throw std::invalid_argument("difficulty must be finite and greater than zero");
     }
 
-    const long double scaled_value = static_cast<long double>(difficulty) * kDifficultyScale;
+    const long double effective_difficulty =
+        static_cast<long double>(stratum_difficulty) *
+        static_cast<long double>(kStratumDifficultyWireScale);
+    const long double scaled_value =
+        effective_difficulty * static_cast<long double>(kFixedPrecisionScale);
+
     if (scaled_value > static_cast<long double>(std::numeric_limits<std::uint64_t>::max())) {
         throw std::overflow_error("difficulty is too large");
     }
@@ -85,10 +86,9 @@ Target256 target_from_difficulty(double difficulty) {
         throw std::invalid_argument("difficulty is below supported precision");
     }
 
-    const auto wide_target = divide_u320_by_u64(multiply_by_scale(), scaled_difficulty);
+    const auto wide_target =
+        divide_u320_by_u64(multiply_by_fixed_precision(), scaled_difficulty);
 
-    // Any nonzero high byte means the mathematical target is above uint256.
-    // Stratum targets are saturated to the maximum representable value.
     for (std::size_t index = 0; index < 8U; ++index) {
         if (wide_target[index] != 0U) {
             Target256 maximum{};
