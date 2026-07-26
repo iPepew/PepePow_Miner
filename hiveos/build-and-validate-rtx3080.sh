@@ -12,6 +12,7 @@ fi
 PACKAGE_NAME="pepepowminer-v${VERSION}"
 PACKAGE_DIR="${ROOT_DIR}/dist/${PACKAGE_NAME}"
 ARCHIVE_PATH="${ROOT_DIR}/dist/${PACKAGE_NAME}-hiveos.tar.gz"
+ARCHIVE_LIST="${ROOT_DIR}/dist/${PACKAGE_NAME}-archive-contents.txt"
 JOBS="${JOBS:-$(nproc)}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
 
@@ -65,7 +66,7 @@ configure_and_build_docker() {
     '
 }
 
-rm -rf "${BUILD_DIR}" "${PACKAGE_DIR}" "${ARCHIVE_PATH}"
+rm -rf "${BUILD_DIR}" "${PACKAGE_DIR}" "${ARCHIVE_PATH}" "${ARCHIVE_LIST}"
 if NVCC_PATH="$(find_nvcc)"; then configure_and_build_native "${NVCC_PATH}"; else configure_and_build_docker; fi
 
 ctest --test-dir "${BUILD_DIR}" --output-on-failure
@@ -102,7 +103,6 @@ if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hiv
   exit 1
 fi
 
-# Static shell validation and path self-tests.
 for script in "${PACKAGE_DIR}"/*.sh; do bash -n "${script}"; done
 "${PACKAGE_DIR}/pepepowminer" --help | grep -q -- '--diagnostic-log'
 "${PACKAGE_DIR}/forensic-audit.sh" "${PACKAGE_DIR}/build-forensic-audit.txt"
@@ -111,12 +111,17 @@ rm -f "${PACKAGE_DIR}/build-forensic-audit.txt"
 
 strip "${PACKAGE_DIR}/pepepowminer" 2>/dev/null || true
 tar -C "${ROOT_DIR}/dist" -czf "${ARCHIVE_PATH}" "${PACKAGE_NAME}"
+tar -tzf "${ARCHIVE_PATH}" > "${ARCHIVE_LIST}"
 
 echo "== HiveOS archive contents =="
-tar -tzf "${ARCHIVE_PATH}"
+cat "${ARCHIVE_LIST}"
 for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh VERSION; do
-  tar -tzf "${ARCHIVE_PATH}" | grep -qx "${PACKAGE_NAME}/${entry}" || { echo "Missing ${entry}" >&2; exit 1; }
+  if ! grep -Fxq "${PACKAGE_NAME}/${entry}" "${ARCHIVE_LIST}"; then
+    echo "Missing ${entry}" >&2
+    exit 1
+  fi
 done
 
+rm -f "${ARCHIVE_LIST}"
 sha256sum "${ARCHIVE_PATH}"
 echo "PASS: PepePow Forensic Debug Edition ${VERSION} package completed"
