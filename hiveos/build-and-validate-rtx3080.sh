@@ -96,7 +96,8 @@ grep -qx "CUSTOM_CONFIG_FILENAME=/hive/miners/custom/${PACKAGE_NAME}/config.txt"
 grep -qx "${VERSION}" "${PACKAGE_DIR}/VERSION"
 
 MINER_DIR="${PACKAGE_DIR}" source "${PACKAGE_DIR}/h-stats.sh"
-[[ "${stats}" == *"\"ver\":\"${VERSION}\""* ]] || { echo "h-stats version mismatch: ${stats}" >&2; exit 1; }
+[[ "${stats}" == *'"ver":""'* ]] || { echo "h-stats must suppress duplicate HiveOS version suffix: ${stats}" >&2; exit 1; }
+[[ "${stats}" != *"${VERSION}"* ]] || { echo "h-stats must not duplicate package version in HiveOS UI: ${stats}" >&2; exit 1; }
 [[ "${stats}" == *'"hs":[0]'* ]] || { echo "h-stats must explicitly reset stale hashrate: ${stats}" >&2; exit 1; }
 if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${PACKAGE_DIR}"; then
   echo "Stale version or unsafe parent-directory path found in package" >&2
