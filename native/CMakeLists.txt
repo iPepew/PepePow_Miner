@@ -68,7 +68,7 @@ if(PEPEPOW_ENABLE_CUDA)
         CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON
         CUDA_ARCHITECTURES "86"
-        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_SEPARABLE_COMPILATION OFF
     )
     target_compile_options(pepepow_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
