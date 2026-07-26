@@ -11,8 +11,11 @@ using Target256 = std::array<std::uint8_t, 32>;
 
 inline constexpr double kStratumDifficultyWireScale = 65536.0;
 
-// PEPEPOW Stratum sends difficulty in wire units. One displayed Stratum unit
-// corresponds to 65536 conventional diff1 units for target calculation.
+// PEPEPOW pools expose difficulty in wire units. The conventional difficulty
+// used for target calculation is wire_difficulty / 65536.
+// Examples observed on a live pool:
+//   98.304 -> 0.00150000
+//   32     -> 0.00048828125
 // The PEPEPOW diff1 baseline is:
 // 0000ffff00000000000000000000000000000000000000000000000000000000.
 // Returned bytes are big-endian, matching the conventional target display.
