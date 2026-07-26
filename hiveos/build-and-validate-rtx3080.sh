@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build-rtx3080"
-VERSION="${VERSION:-0.1.2}"
+VERSION="${VERSION:-0.1.3}"
 PACKAGE_NAME="pepepowminer-v${VERSION}"
 PACKAGE_DIR="${ROOT_DIR}/dist/${PACKAGE_NAME}"
 ARCHIVE_PATH="${ROOT_DIR}/dist/${PACKAGE_NAME}-hiveos.tar.gz"
@@ -24,7 +24,6 @@ find_nvcc() {
         command -v nvcc
         return 0
     fi
-
     local candidate
     for candidate in \
         /usr/local/cuda/bin/nvcc \
@@ -44,11 +43,9 @@ find_nvcc() {
 configure_and_build_native() {
     local nvcc_path="$1"
     command -v cmake >/dev/null 2>&1 || { echo "cmake is required for native build" >&2; exit 1; }
-
     export PATH="$(dirname "${nvcc_path}"):${PATH}"
     echo "== Native CUDA build =="
     "${nvcc_path}" --version
-
     cmake -S "${ROOT_DIR}/native" -B "${BUILD_DIR}" \
         -DCMAKE_BUILD_TYPE=Release \
         -DPEPEPOW_ENABLE_CUDA=ON \
@@ -56,7 +53,6 @@ configure_and_build_native() {
         -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
         -DCMAKE_CUDA_ARCHITECTURES=86 \
         -DCMAKE_CUDA_COMPILER="${nvcc_path}"
-
     cmake --build "${BUILD_DIR}" --config Release --parallel "${JOBS}"
 }
 
@@ -66,7 +62,6 @@ configure_and_build_docker() {
         echo "Install CUDA Toolkit or Docker, then rerun this script." >&2
         exit 1
     }
-
     echo "== Docker CUDA build =="
     echo "CUDA image: ${CUDA_IMAGE}"
     docker pull "${CUDA_IMAGE}"
@@ -120,7 +115,6 @@ install -m 0755 "${ROOT_DIR}/hiveos/h-config.sh" "${PACKAGE_DIR}/h-config.sh"
 install -m 0755 "${ROOT_DIR}/hiveos/h-stats.sh" "${PACKAGE_DIR}/h-stats.sh"
 install -m 0644 "${ROOT_DIR}/hiveos/h-manifest.conf" "${PACKAGE_DIR}/h-manifest.conf"
 sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${VERSION}/" "${PACKAGE_DIR}/h-manifest.conf"
-
 strip "${PACKAGE_DIR}/pepepowminer" 2>/dev/null || true
 
 tar -C "${ROOT_DIR}/dist" -czf "${ARCHIVE_PATH}" "${PACKAGE_NAME}"
