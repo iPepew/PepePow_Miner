@@ -27,7 +27,7 @@ void signal_handler(int) {
 
 void print_help() {
     std::cout
-        << "PepePowMiner v0.1.1-rc1\n"
+        << "PepePowMiner v0.1.4\n"
         << "Usage:\n"
         << "  pepepowminer -o stratum+tcp://host:port -u wallet.worker [-p x]\n\n"
         << "Options:\n"
@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = "PepePowMiner/0.1.1-rc1";
+        config.agent = "PepePowMiner/0.1.4";
 
         pepepow::stratum::Client client(std::move(config));
         MiningWorker worker(*backend, client);
