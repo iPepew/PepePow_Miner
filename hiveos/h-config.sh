@@ -5,14 +5,13 @@ if [[ -r /hive-config/wallet.conf ]]; then
   source /hive-config/wallet.conf
 fi
 
-# HiveOS may export MINER_DIR=/hive/miners/custom for all custom miners.
-# That is the parent directory, not this package directory. Always resolve the
-# installed package from the script location.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 miner_dir="${script_dir}"
 conf_file="${miner_dir}/config.txt"
 setup_file="${miner_dir}/setup.txt"
 diagnostic_log="${miner_dir}/pepepow-debug.log"
+proxy_log="${miner_dir}/stratum-proxy.log"
+proxy_port="${PEPEPOW_PROXY_PORT:-49333}"
 
 pool="${CUSTOM_URL:-}"
 user="${CUSTOM_TEMPLATE:-}"
@@ -28,7 +27,12 @@ if [[ -z "${user}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-args=("-o" "${pool}" "-u" "${user}" "-p" "${pass}" "--pepepow" "--diagnostic" "--diagnostic-log" "${diagnostic_log}")
+# PEPEPOW/HooHash V110 is the only supported algorithm in this build, so the
+# historic --pepepow compatibility flag is intentionally not injected.
+# Route through the local forensic proxy. It records exact Stratum RX/TX and
+# converts the header-order nonce into the submit-order nonce expected by pools.
+args=("-o" "stratum+tcp://127.0.0.1:${proxy_port}" "-u" "${user}" "-p" "${pass}"
+      "--diagnostic" "--diagnostic-log" "${diagnostic_log}")
 
 if [[ -n "${extra_raw}" ]]; then
   eval "extra=( ${extra_raw} )"
@@ -41,17 +45,24 @@ mkdir -p "${miner_dir}"
   printf 'PEPEPOW_ARGS=('
   printf ' %q' "${args[@]}"
   echo ' )'
+  printf 'PEPEPOW_UPSTREAM=%q\n' "${pool}"
+  printf 'PEPEPOW_PROXY_LOG=%q\n' "${proxy_log}"
+  printf 'PEPEPOW_PROXY_PORT=%q\n' "${proxy_port}"
 } > "${conf_file}"
 
 {
   echo "Miner directory: ${miner_dir}"
-  echo "Pool: ${pool}"
+  echo "Upstream pool: ${pool}"
+  echo "Local proxy: stratum+tcp://127.0.0.1:${proxy_port}"
   echo "User: ${user}"
   echo "Password: ${pass}"
   echo "Extra config: ${extra_raw}"
+  echo "Compatibility --pepepow injection: disabled"
+  echo "Submit nonce rewrite: header little-endian -> Stratum big-endian"
   echo "Diagnostic mode: enabled"
   echo "Diagnostic log: ${diagnostic_log}"
-  printf 'Final command: ./pepepowminer'
+  echo "Proxy log: ${proxy_log}"
+  printf 'Final miner command: ./pepepowminer'
   printf ' %q' "${args[@]}"
   echo
 } > "${setup_file}"
