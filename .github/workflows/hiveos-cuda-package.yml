@@ -9,6 +9,11 @@ on:
       - "native/**"
       - "hiveos/**"
       - ".github/workflows/hiveos-cuda-package.yml"
+  pull_request:
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - ".github/workflows/hiveos-cuda-package.yml"
   workflow_dispatch:
 
 permissions:
