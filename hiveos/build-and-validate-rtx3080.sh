@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build-rtx3080"
-PACKAGE_NAME="pepepowminer-v0.1.1"
+PACKAGE_NAME="pepepowminer-v0.1.1-rc2"
 PACKAGE_DIR="${ROOT_DIR}/dist/${PACKAGE_NAME}"
 ARCHIVE_PATH="${ROOT_DIR}/dist/pepepowminer-v0.1.1-rc2-hiveos.tar.gz"
 JOBS="${JOBS:-$(nproc)}"
