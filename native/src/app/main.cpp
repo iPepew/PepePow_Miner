@@ -1,11 +1,22 @@
 #include "pepepow/core/backend.hpp"
+#include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
+#ifdef PEPEPOW_HAS_CUDA
+#include "pepepow/cuda/header80_backend.hpp"
+#endif
 
+#include <atomic>
+#include <condition_variable>
 #include <csignal>
+#include <cstdint>
 #include <exception>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace {
 pepepow::stratum::Client* active_client = nullptr;
@@ -16,7 +27,7 @@ void signal_handler(int) {
 
 void print_help() {
     std::cout
-        << "PepePowMiner v0.2.0-dev\n"
+        << "PepePowMiner v0.1.1-rc1\n"
         << "Usage:\n"
         << "  pepepowminer -o stratum+tcp://host:port -u wallet.worker [-p x]\n\n"
         << "Options:\n"
@@ -28,7 +39,98 @@ void print_help() {
         << "      --list-gpu       List detected devices and exit\n"
         << "  -h, --help           Show this help\n";
 }
-}
+
+struct WorkItem {
+    pepepow::stratum::Job stratum_job;
+    std::string extranonce2;
+    std::uint64_t generation{0};
+};
+
+class MiningWorker {
+public:
+    MiningWorker(pepepow::MiningBackend& backend, pepepow::stratum::Client& client)
+        : backend_(backend), client_(client), thread_([this] { run(); }) {}
+
+    ~MiningWorker() { stop(); }
+
+    MiningWorker(const MiningWorker&) = delete;
+    MiningWorker& operator=(const MiningWorker&) = delete;
+
+    void set_job(const pepepow::stratum::Job& job) {
+        std::lock_guard lock(mutex_);
+        const std::string extranonce2(job.extranonce2_size * 2U, '0');
+        latest_ = WorkItem{job, extranonce2, ++generation_};
+        condition_.notify_one();
+    }
+
+    void stop() {
+        bool expected = false;
+        if (!stopped_.compare_exchange_strong(expected, true)) return;
+        {
+            std::lock_guard lock(mutex_);
+            ++generation_;
+        }
+        condition_.notify_all();
+        if (thread_.joinable()) thread_.join();
+    }
+
+private:
+    void run() {
+        constexpr std::uint64_t chunk_size = 4096;
+        while (!stopped_.load()) {
+            WorkItem item;
+            {
+                std::unique_lock lock(mutex_);
+                condition_.wait(lock, [this] { return stopped_.load() || latest_.has_value(); });
+                if (stopped_.load()) break;
+                item = *latest_;
+                latest_.reset();
+            }
+
+            try {
+                auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, item.extranonce2);
+                const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
+                std::uint64_t nonce = 0;
+
+                std::cout << "Mining job " << mining_job.job_id
+                          << " difficulty=" << item.stratum_job.difficulty
+                          << " backend=" << backend_.name() << '\n';
+
+                while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
+                    const std::uint64_t remaining = 0x100000000ULL - nonce;
+                    const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
+                    const auto candidate = backend_.search(
+                        mining_job,
+                        pepepow::SearchRange{nonce, count},
+                        target);
+
+                    if (candidate.has_value()) {
+                        pepepow::stratum::Share share;
+                        share.job_id = item.stratum_job.job_id;
+                        share.extranonce2 = item.extranonce2;
+                        share.ntime = item.stratum_job.ntime;
+                        share.nonce = pepepow::stratum::encode_u32_le_hex(candidate->nonce);
+                        std::cout << "Share candidate nonce=" << share.nonce << '\n';
+                        client_.submit(share);
+                    }
+                    nonce += count;
+                }
+            } catch (const std::exception& error) {
+                std::cerr << "Worker error: " << error.what() << '\n';
+            }
+        }
+    }
+
+    pepepow::MiningBackend& backend_;
+    pepepow::stratum::Client& client_;
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::optional<WorkItem> latest_;
+    std::atomic_uint64_t generation_{0};
+    std::atomic_bool stopped_{false};
+    std::thread thread_;
+};
+} // namespace
 
 int main(int argc, char** argv) {
     try {
@@ -55,12 +157,25 @@ int main(int argc, char** argv) {
             else throw std::invalid_argument("unknown argument: " + argument);
         }
 
-        pepepow::CpuReferenceBackend backend;
-        const auto devices = backend.enumerate_devices();
+        std::unique_ptr<pepepow::MiningBackend> backend;
+#ifdef PEPEPOW_HAS_CUDA
+        backend = std::make_unique<pepepow::Header80CudaBackend>(0);
+#else
+        backend = std::make_unique<pepepow::CpuReferenceBackend>();
+#endif
+
+        const auto devices = backend->enumerate_devices();
         if (list_gpu) {
-            for (const auto& device : devices) std::cout << '[' << device.index << "] " << device.name << '\n';
+            for (const auto& device : devices) {
+                std::cout << '[' << device.index << "] " << device.name;
+                if (device.compute_major > 0) {
+                    std::cout << " sm_" << device.compute_major << device.compute_minor;
+                }
+                std::cout << '\n';
+            }
             return 0;
         }
+        if (devices.empty()) throw std::runtime_error("no mining device available");
 
         if (pool.empty() || username.empty()) {
             print_help();
@@ -72,24 +187,20 @@ int main(int argc, char** argv) {
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
+        config.agent = "PepePowMiner/0.1.1-rc1";
 
         pepepow::stratum::Client client(std::move(config));
+        MiningWorker worker(*backend, client);
         active_client = &client;
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
-        client.set_job_handler([](const pepepow::stratum::Job& job) {
-            const std::string extranonce2(job.extranonce2_size * 2U, '0');
-            const auto mining_job = pepepow::stratum::build_mining_job(job, extranonce2);
-            std::cout << "Prepared job " << mining_job.job_id
-                      << " ntime=" << job.ntime
-                      << " difficulty=" << job.difficulty << '\n';
-#ifdef PEPEPOW_HAS_CUDA
-            std::cout << "CUDA worker integration pending for this job\n";
-#endif
+        client.set_job_handler([&worker](const pepepow::stratum::Job& job) {
+            worker.set_job(job);
         });
 
         client.run();
+        worker.stop();
         active_client = nullptr;
         return 0;
     } catch (const std::exception& error) {

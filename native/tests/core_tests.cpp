@@ -2,6 +2,7 @@
 #include "pepepow/crypto/blake3.hpp"
 #include "pepepow/crypto/hoohash_reference.hpp"
 #include "pepepow/crypto/pow.hpp"
+#include "pepepow/mining/target.hpp"
 
 #include <array>
 #include <cassert>
@@ -69,6 +70,20 @@ int main() {
     bool direct_nonzero = false;
     for (const auto byte : direct_a) direct_nonzero = direct_nonzero || byte != 0;
     assert(direct_nonzero);
+
+    const auto diff1 = pepepow::mining::target_from_difficulty(1.0);
+    assert(diff1[0] == 0x00U && diff1[1] == 0x00U);
+    assert(diff1[2] == 0xffU && diff1[3] == 0xffU);
+    for (std::size_t index = 4; index < diff1.size(); ++index) assert(diff1[index] == 0U);
+
+    const auto diff2 = pepepow::mining::target_from_difficulty(2.0);
+    assert(diff2 < diff1);
+
+    pepepow::Hash256 zero_hash{};
+    assert(pepepow::mining::hash_meets_target_be(zero_hash, diff1));
+    pepepow::Hash256 max_hash{};
+    max_hash.fill(0xffU);
+    assert(!pepepow::mining::hash_meets_target_be(max_hash, diff1));
 
     return 0;
 }

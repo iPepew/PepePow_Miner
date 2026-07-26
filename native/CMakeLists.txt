@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(PepePowMiner VERSION 0.2.0 LANGUAGES C CXX)
+project(PepePowMiner VERSION 0.1.1 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
@@ -12,6 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
+find_package(Threads REQUIRED)
 set(BLAKE3_SIMD_TYPE "none" CACHE STRING "Use portable BLAKE3 for deterministic reference builds" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
 FetchContent_Declare(
@@ -35,12 +36,13 @@ add_library(pepepow_core
     src/crypto/blake3.cpp
     src/crypto/hoohash_reference.cpp
     src/crypto/pow.cpp
+    src/mining/target.cpp
     src/network/stratum_client.cpp
 )
 
 target_include_directories(pepepow_core PUBLIC include)
 target_compile_features(pepepow_core PUBLIC cxx_std_20)
-target_link_libraries(pepepow_core PUBLIC BLAKE3::blake3 nlohmann_json::nlohmann_json)
+target_link_libraries(pepepow_core PUBLIC BLAKE3::blake3 nlohmann_json::nlohmann_json Threads::Threads)
 if(WIN32)
     target_link_libraries(pepepow_core PUBLIC ws2_32)
 endif()
@@ -55,6 +57,7 @@ if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
     add_library(pepepow_cuda
         src/cuda/cuda_backend.cu
+        src/cuda/header80_backend.cu
         src/cuda/hoohash_matrix_reference.cu
         src/cuda/pow_pipeline_reference.cu
         src/cuda/warp_divergence_probe.cu
@@ -64,8 +67,8 @@ if(PEPEPOW_ENABLE_CUDA)
     set_target_properties(pepepow_cuda PROPERTIES
         CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON
-        CUDA_ARCHITECTURES "70;75;80;86;89"
-        CUDA_SEPARABLE_COMPILATION ON
+        CUDA_ARCHITECTURES "86"
+        CUDA_SEPARABLE_COMPILATION OFF
     )
     target_compile_options(pepepow_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
@@ -112,5 +115,9 @@ if(PEPEPOW_BUILD_TESTS)
         add_executable(pepepow_cuda_tests tests/cuda_tests.cpp)
         target_link_libraries(pepepow_cuda_tests PRIVATE pepepow_cuda)
         add_test(NAME pepepow_cuda_tests COMMAND pepepow_cuda_tests)
+
+        add_executable(pepepow_cuda_header80_validation tests/cuda_header80_validation.cpp)
+        target_link_libraries(pepepow_cuda_header80_validation PRIVATE pepepow_cuda)
+        add_test(NAME pepepow_cuda_header80_validation COMMAND pepepow_cuda_header80_validation)
     endif()
 endif()
