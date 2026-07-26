@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# HiveOS sources this script with wallet variables in scope. Loading wallet.conf
-# again also makes the script safe when h-run.sh invokes it directly.
 if [[ -r /hive-config/wallet.conf ]]; then
   # shellcheck disable=SC1091
   source /hive-config/wallet.conf
@@ -25,11 +23,9 @@ if [[ -z "${user}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-args=("-o" "${pool}" "-u" "${user}" "-p" "${pass}" "--pepepow")
+args=("-o" "${pool}" "-u" "${user}" "-p" "${pass}" "--pepepow" "--diagnostic")
 
 if [[ -n "${extra_raw}" ]]; then
-  # HiveOS supplies custom arguments as a shell-style string. Parse quoted
-  # values once, then persist every argument shell-escaped in config.txt.
   eval "extra=( ${extra_raw} )"
   args+=("${extra[@]}")
 fi
@@ -47,6 +43,7 @@ mkdir -p "$(dirname "${conf_file}")"
   echo "User: ${user}"
   echo "Password: ${pass}"
   echo "Extra config: ${extra_raw}"
+  echo "Diagnostic mode: enabled"
   printf 'Final command: ./pepepowminer'
   printf ' %q' "${args[@]}"
   echo

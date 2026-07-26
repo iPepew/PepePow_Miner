@@ -16,8 +16,8 @@ inline constexpr double kStratumDifficultyWireScale = 65536.0;
 // Examples observed on a live pool:
 //   98.304 -> 0.00150000
 //   32     -> 0.00048828125
-// The PEPEPOW diff1 baseline is:
-// 0000ffff00000000000000000000000000000000000000000000000000000000.
+// The conventional diff1 baseline is:
+// 00000000ffff0000000000000000000000000000000000000000000000000000.
 // Returned bytes are big-endian, matching the conventional target display.
 [[nodiscard]] Target256 target_from_difficulty(double stratum_difficulty);
 

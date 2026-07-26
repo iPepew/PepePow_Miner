@@ -71,22 +71,32 @@ int main() {
     for (const auto byte : direct_a) direct_nonzero = direct_nonzero || byte != 0;
     assert(direct_nonzero);
 
-    // The function receives Stratum wire difficulty and normalizes it by 65536.
-    // Therefore wire difficulty 65536 corresponds to conventional diff1.
     const auto diff1 = pepepow::mining::target_from_difficulty(
         pepepow::mining::kStratumDifficultyWireScale);
     assert(diff1[0] == 0x00U && diff1[1] == 0x00U);
-    assert(diff1[2] == 0xffU && diff1[3] == 0xffU);
-    for (std::size_t index = 4; index < diff1.size(); ++index) assert(diff1[index] == 0U);
+    assert(diff1[2] == 0x00U && diff1[3] == 0x00U);
+    assert(diff1[4] == 0xffU && diff1[5] == 0xffU);
+    for (std::size_t index = 6; index < diff1.size(); ++index) assert(diff1[index] == 0U);
 
     const auto diff2 = pepepow::mining::target_from_difficulty(
         2.0 * pepepow::mining::kStratumDifficultyWireScale);
     assert(diff2 < diff1);
 
-    // Live pool wire difficulty 98.304 normalizes to conventional difficulty 0.0015,
-    // so its target is easier (larger) than conventional diff1.
     const auto pool_target = pepepow::mining::target_from_difficulty(98.304);
     assert(pool_target > diff1);
+    assert(pool_target[0] == 0x00U);
+    assert(pool_target[1] == 0x00U);
+    assert(pool_target[2] >= 0x02U && pool_target[2] <= 0x03U);
+
+    pepepow::Hash256 accepted_like{
+        0x00,0x00,0x01,0xf7,0xda,0x52,0x4f,0x1f,0x43,0x5e,0xba,0xf9,0x5b,0x10,0x49,0xc7,
+        0x20,0xa5,0xed,0x84,0x4e,0x26,0x2a,0x48,0x6c,0xab,0xa0,0x5b,0x84,0x04,0x65,0xde};
+    assert(pepepow::mining::hash_meets_target_be(accepted_like, pool_target));
+
+    pepepow::Hash256 rejected_like{
+        0x00,0x3a,0x27,0x0b,0xe1,0x9d,0xdc,0xa9,0xaf,0xbd,0x12,0x0f,0x4b,0x4a,0xb9,0xe4,
+        0x58,0x3c,0x97,0x63,0x4b,0x9c,0x37,0x03,0xad,0xfe,0x20,0x15,0xa1,0x67,0x32,0x75};
+    assert(!pepepow::mining::hash_meets_target_be(rejected_like, pool_target));
 
     pepepow::Hash256 zero_hash{};
     assert(pepepow::mining::hash_meets_target_be(zero_hash, diff1));
