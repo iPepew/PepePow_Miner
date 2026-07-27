@@ -11,6 +11,7 @@ diagnostic_log="${miner_dir}/pepepow-debug.log"
 status_file="${miner_dir}/miner-status.env"
 miner_pid_file="${miner_dir}/miner.pid"
 proxy_pid_file="${miner_dir}/proxy.pid"
+proxy_console_log="${miner_dir}/proxy-console.log"
 
 if [[ ! -x ./pepepowminer ]]; then
   echo "pepepowminer binary is missing or not executable" >&2
@@ -41,7 +42,7 @@ fi
 : "${PEPEPOW_PROXY_LOG:?missing PEPEPOW_PROXY_LOG in config.txt}"
 : "${PEPEPOW_PROXY_PORT:?missing PEPEPOW_PROXY_PORT in config.txt}"
 
-for file in "${diagnostic_log}" "${console_log}" "${PEPEPOW_PROXY_LOG}"; do
+for file in "${diagnostic_log}" "${console_log}" "${PEPEPOW_PROXY_LOG}" "${proxy_console_log}"; do
   if [[ -s "${file}" ]]; then
     cp -f "${file}" "${file}.previous" 2>/dev/null || true
   fi
@@ -54,12 +55,12 @@ rm -f "${status_file}" "${miner_pid_file}" "${proxy_pid_file}" "${exit_file}"
   echo "PWD=$(pwd)"
   echo "PACKAGE_DIR=${miner_dir}"
   echo "PROTOCOL=HooHashV110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY proxy=passive"
-  echo "OPTIMIZATION=BLAKE3_MIDSTATE GPU_TARGET_FILTER PERSISTENT_RESULT LIVE_HASHRATE SHORT_BATCH"
+  echo "OPTIMIZATION=BLAKE3_MIDSTATE GPU_TARGET_FILTER PERSISTENT_RESULT LIVE_HASHRATE FULL_BATCH AUTOTUNED_CUDA"
   echo "LIFECYCLE=DIRECT_FILE_OUTPUT PID_TRACKING GRACEFUL_SIGNAL_FORWARDING NO_TEE_PIPE"
   echo "== VERSION =="
   ./pepepowminer --version 2>&1 || true
   echo "== FILE =="
-  file ./pepepowminer 2>&1 || true
+  if command -v file >/dev/null 2>&1; then file ./pepepowminer 2>&1 || true; else echo "file utility unavailable"; fi
   echo "== LDD =="
   ldd ./pepepowminer 2>&1 || true
   echo "== READELF DYNAMIC =="
@@ -74,7 +75,8 @@ rm -f "${status_file}" "${miner_pid_file}" "${proxy_pid_file}" "${exit_file}"
   --upstream "${PEPEPOW_UPSTREAM}" \
   --listen-host 127.0.0.1 \
   --listen-port "${PEPEPOW_PROXY_PORT}" \
-  --log "${PEPEPOW_PROXY_LOG}" &
+  --log "${PEPEPOW_PROXY_LOG}" \
+  >> "${proxy_console_log}" 2>&1 &
 proxy_pid=$!
 echo "${proxy_pid}" > "${proxy_pid_file}"
 
@@ -111,7 +113,7 @@ trap cleanup EXIT
 
 sleep 1
 if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-  echo "Passive Stratum proxy failed to start; see ${PEPEPOW_PROXY_LOG}" >&2
+  echo "Passive Stratum proxy failed to start; see ${proxy_console_log}" >&2
   echo "exit_code=70 utc=$(date -u +%Y-%m-%dT%H:%M:%SZ) reason=proxy_start_failure" > "${exit_file}"
   exit 70
 fi
@@ -121,9 +123,11 @@ fi
   echo "Proxy PID: ${proxy_pid}"
   echo "Proxy mode: passive"
   echo "Proxy upstream: ${PEPEPOW_UPSTREAM}"
-  echo "Proxy log: ${PEPEPOW_PROXY_LOG}"
+  echo "Proxy protocol log: ${PEPEPOW_PROXY_LOG}"
+  echo "Proxy console log: ${proxy_console_log}"
   echo "Protocol: network nBits target divided by Stratum difficulty"
-  echo "Optimizations: BLAKE3 midstate; GPU target filter; persistent result; native hashrate"
+  echo "Optimizations: BLAKE3 midstate; GPU target filter; persistent result; 524K batch; CUDA profile autotune"
+  echo "HiveOS stats: per-GPU hashrate, temperature, fan and PCI bus"
   echo "Lifecycle: direct log output; no miner-to-tee pipe; graceful signal forwarding"
   echo "Console log: ${console_log}"
   echo "Runtime status: ${status_file}"
