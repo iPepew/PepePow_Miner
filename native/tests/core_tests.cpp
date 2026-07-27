@@ -3,6 +3,7 @@
 #include "pepepow/crypto/hoohash_reference.hpp"
 #include "pepepow/crypto/pow.hpp"
 #include "pepepow/mining/target.hpp"
+#include "pepepow/stratum/client.hpp"
 
 #include <array>
 #include <cassert>
@@ -23,8 +24,13 @@ int main() {
     }
 
     const auto header = pepepow::build_header80(job);
-    assert(header[0] == 0x44U);
-    assert(header[79] == 0xddU);
+    assert(header[0] == 0x44U && header[1] == 0x33U && header[2] == 0x22U && header[3] == 0x11U);
+    assert(header[68] == 0x88U && header[69] == 0x77U && header[70] == 0x66U && header[71] == 0x55U);
+    assert(header[72] == 0xccU && header[73] == 0xbbU && header[74] == 0xaaU && header[75] == 0x99U);
+
+    // Protocol invariant: nonce is BE32 in Header80, but LE hex in mining.submit.
+    assert(header[76] == 0xddU && header[77] == 0xeeU && header[78] == 0xffU && header[79] == 0x00U);
+    assert(pepepow::stratum::encode_u32_le_hex(job.nonce) == "00ffeedd");
 
     pepepow::crypto::Hash256 seed{};
     for (std::size_t i = 0; i < seed.size(); ++i) seed[i] = static_cast<std::uint8_t>(i);
@@ -63,7 +69,7 @@ int main() {
     assert(direct_a == direct_b);
 
     auto next_header = header;
-    next_header[76] ^= 0x01U;
+    next_header[79] ^= 0x01U;
     const auto direct_next = pepepow::crypto::calculate_header80_pow(next_header);
     assert(direct_a != direct_next);
 
