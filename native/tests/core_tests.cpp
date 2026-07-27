@@ -11,6 +11,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
+#include <iostream>
+#include <stdexcept>
+#include <string_view>
 
 namespace {
 
@@ -19,6 +23,35 @@ std::uint32_t load_le32(const std::uint8_t* value) noexcept {
            (static_cast<std::uint32_t>(value[1]) << 8U) |
            (static_cast<std::uint32_t>(value[2]) << 16U) |
            (static_cast<std::uint32_t>(value[3]) << 24U);
+}
+
+std::uint8_t hex_nibble(char value) {
+    if (value >= '0' && value <= '9') return static_cast<std::uint8_t>(value - '0');
+    if (value >= 'a' && value <= 'f') return static_cast<std::uint8_t>(value - 'a' + 10);
+    if (value >= 'A' && value <= 'F') return static_cast<std::uint8_t>(value - 'A' + 10);
+    throw std::invalid_argument("invalid hex digit");
+}
+
+template <std::size_t N>
+std::array<std::uint8_t, N> parse_hex(std::string_view text) {
+    if (text.size() != N * 2U) throw std::invalid_argument("unexpected hex length");
+    std::array<std::uint8_t, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = static_cast<std::uint8_t>(
+            (hex_nibble(text[index * 2U]) << 4U) | hex_nibble(text[index * 2U + 1U]));
+    }
+    return output;
+}
+
+template <typename Container>
+void print_hex(const Container& value) {
+    std::ios old_state(nullptr);
+    old_state.copyfmt(std::cerr);
+    std::cerr << std::hex << std::setfill('0');
+    for (const auto byte : value) {
+        std::cerr << std::setw(2) << static_cast<unsigned>(byte);
+    }
+    std::cerr.copyfmt(old_state);
 }
 
 } // namespace
@@ -66,6 +99,26 @@ int main() {
         0x48,0xc5,0x58,0x46,0x5d,0x79,0xdb,0x03,0xfd,0x35,0x9c,0x6c,0xd5,0xbd,0x9d,0x85};
     assert(abc_hash == expected_abc);
 
+    // Independent, externally known HooHash V110 vector. Unlike the previous
+    // self-derived check, this fails if both our CPU and CUDA paths agree on the
+    // same incorrect implementation.
+    const auto authoritative_header = parse_hex<80>(
+        "0040002038e31388c54124146478ff691985eecd02610db91efbc9cd7aabca4900000000"
+        "07647f0508057dbf8c99ddaa87543c04e31dfe3f383e7386903d50c91728fabe8"
+        "30be16971e3021da96d9d33");
+    const auto authoritative_expected = parse_hex<32>(
+        "00000001fb895a82973fca52938848908d6a6cb3c0dfb93995dc61020ced0a6b");
+    const auto authoritative_actual = pepepow::crypto::calculate_header80_pow(authoritative_header);
+    if (authoritative_actual != authoritative_expected) {
+        std::cerr << "AUTHORITATIVE_VECTOR_FAIL\nexpected=";
+        print_hex(authoritative_expected);
+        std::cerr << "\nactual=";
+        print_hex(authoritative_actual);
+        std::cerr << '\n';
+        return 1;
+    }
+    std::cout << "PASS: authoritative HooHash V110 vector matched\n";
+
     pepepow::crypto::PowInput input{};
     input.previous_header = {0xa4,0x9d,0xbc,0x7d,0x44,0xae,0x83,0x25,0x38,0x23,0x59,0x2f,0xd3,0x88,0xf2,0x19,
                              0xf3,0xcb,0x83,0x63,0x9d,0x54,0xc9,0xe4,0xc3,0x15,0x4d,0xb3,0x6f,0x2b,0x51,0x57};
@@ -82,9 +135,6 @@ int main() {
     const auto direct_b = pepepow::crypto::calculate_header80_pow(header);
     assert(direct_a == direct_b);
 
-    // Independent pool-reference reconstruction. This guards against both bugs
-    // found by live pool traces: seeding the matrix from prevhash and passing the
-    // wrong numeric nonce into the nonlinear matrix stage.
     auto masked_header = header;
     std::fill(masked_header.begin() + 76, masked_header.end(), 0U);
     const auto pool_matrix_seed = pepepow::crypto::blake3_hash(masked_header);
