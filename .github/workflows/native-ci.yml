@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - "native/**"
+      - "hiveos/prepare-v040-source.py"
       - ".github/workflows/native-ci.yml"
   pull_request:
     paths:
       - "native/**"
+      - "hiveos/prepare-v040-source.py"
       - ".github/workflows/native-ci.yml"
   workflow_dispatch:
 
@@ -29,6 +31,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Prepare release source
+        run: python hiveos/prepare-v040-source.py
 
       - name: Configure
         run: cmake -S native -B native/build -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
