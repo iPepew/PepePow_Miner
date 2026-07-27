@@ -1,0 +1,31 @@
+name: Release source lint
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile hiveos/prepare-v040-source.py hiveos/stratum-replay-proxy.py
+          for script in hiveos/*.sh; do bash -n "$script"; done
+      - name: Apply release source profile
+        run: |
+          set -euo pipefail
+          python3 hiveos/prepare-v040-source.py
+          ! grep -P '[\x{1F300}-\x{1FAFF}]|•' native/src/app/main.cpp
+          grep -F 'GPU_COUNT=1' native/src/app/main.cpp
+          grep -F 'GPU0_HPS=' native/src/app/main.cpp
+          grep -F 'chunk_size = 524288' native/src/app/main.cpp
+          grep -F 'PEPEPOW_CUDA_THREADS' native/src/cuda/header80_backend.cu
+      - name: Configure CPU reference build
+        run: |
+          set -euo pipefail
+          cmake -S native -B build-lint -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON
+          cmake --build build-lint --parallel 2
+          ctest --test-dir build-lint --output-on-failure
