@@ -67,7 +67,7 @@ configure_and_build_docker() {
     '
 }
 
-# Static pool-reference guards fail before the expensive CUDA build.
+# Static consensus guards fail before the expensive CUDA build.
 grep -Fq 'write_be32(header, 76, job.nonce);' "${ROOT_DIR}/native/src/core/header_builder.cpp" || {
   echo "Header80 nonce bytes are not BE32" >&2; exit 1;
 }
@@ -86,11 +86,33 @@ grep -Fq 'const std::uint32_t mix_nonce = load_le32(header.data() + 76);' "${ROO
 grep -Fq 'const std::uint32_t mix_nonce = load_le32(header + 76);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
   echo "CUDA HooHash nonce is not LE32 from Header80" >&2; exit 1;
 }
+
+# HooHash uses large FP64 operands. Parentheses here change rounding and are
+# consensus-critical; x + 1 + factor is not equivalent.
+grep -Fq 'return fn(x + (1.0 + two));' "${ROOT_DIR}/native/src/crypto/hoohash_reference.cpp" || {
+  echo "CPU HooHash addition does not preserve consensus parentheses" >&2; exit 1;
+}
+grep -Fq 'return fn(x - (1.0 + two));' "${ROOT_DIR}/native/src/crypto/hoohash_reference.cpp" || {
+  echo "CPU HooHash subtraction does not preserve consensus parentheses" >&2; exit 1;
+}
+grep -Fq 'if (two < 0.25) y = x + (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA HooHash addition does not preserve consensus parentheses" >&2; exit 1;
+}
+grep -Fq 'else if (two < 0.50) y = x - (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA HooHash subtraction does not preserve consensus parentheses" >&2; exit 1;
+}
+
 grep -Fq 'const auto pool_reference_hash' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
   echo "Pool-reference regression test is missing" >&2; exit 1;
 }
 grep -Fq 'encode_u32_le_hex(job.nonce) == "00ffeedd"' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
   echo "Stratum submit nonce LE regression test is missing" >&2; exit 1;
+}
+grep -Fq '7eca26c772b9ba046d0166ba569ef980ef9177b6a5c39a4aeac846bb6b5392cf' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
+  echo "Live CPU consensus vectors are missing" >&2; exit 1;
+}
+grep -Fq 'PASS: 5 consensus HooHash vectors match on CPU/CUDA' "${ROOT_DIR}/native/tests/cuda_header80_validation.cpp" || {
+  echo "Live CUDA consensus vector gate is missing" >&2; exit 1;
 }
 if grep -Fq -- '--rewrite-submit-nonce' "${ROOT_DIR}/hiveos/h-run.sh"; then
   echo "h-run.sh must keep the Stratum proxy passive" >&2
@@ -163,7 +185,7 @@ fi
 
 rm -f "${ARCHIVE_LIST}"
 SHA256="$(sha256sum "${ARCHIVE_PATH}" | awk '{print $1}')"
-printf '\nPASS: PepePow Pool Reference Edition %s package completed\n' "${VERSION}"
+printf '\nPASS: PepePow Consensus Math Edition %s package completed\n' "${VERSION}"
 printf 'ARCHIVE=%s\n' "${ARCHIVE_PATH}"
 printf 'SHA256=%s\n' "${SHA256}"
 printf 'DOWNLOAD_COMMAND=cd %q && python3 -m http.server 8080 --bind 0.0.0.0\n' "${ROOT_DIR}/dist"
