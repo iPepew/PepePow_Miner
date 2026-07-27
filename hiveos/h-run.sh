@@ -41,8 +41,6 @@ fi
 : "${PEPEPOW_PROXY_LOG:?missing PEPEPOW_PROXY_LOG in config.txt}"
 : "${PEPEPOW_PROXY_PORT:?missing PEPEPOW_PROXY_PORT in config.txt}"
 
-# Preserve the previous run for forensics, then expose only current-run counters
-# and hashrate to HiveOS.
 for file in "${diagnostic_log}" "${console_log}" "${PEPEPOW_PROXY_LOG}"; do
   if [[ -s "${file}" ]]; then
     cp -f "${file}" "${file}.previous" 2>/dev/null || true
@@ -138,8 +136,6 @@ fi
 miner_pid=$!
 echo "${miner_pid}" > "${miner_pid_file}"
 
-# Display the attractive miner console without placing the miner itself in a
-# pipe. Closing Hive Shell can kill tail, but cannot deliver SIGPIPE to mining.
 if tail --help 2>&1 | grep -q -- '--pid'; then
   tail -n +1 -F --pid="${miner_pid}" "${console_log}" &
 else
@@ -149,7 +145,7 @@ tail_pid=$!
 
 set +e
 raw_status=0
-while kill -0 "${miner_pid}" 2>/dev/null; do
+while true; do
   wait "${miner_pid}"
   raw_status=$?
   if ! kill -0 "${miner_pid}" 2>/dev/null; then
