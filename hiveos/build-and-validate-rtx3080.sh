@@ -102,7 +102,25 @@ grep -Fq 'PASS: 5 consensus HooHash vectors match on CPU/CUDA' "${ROOT_DIR}/nati
   echo "Live CUDA consensus vector gate is missing" >&2; exit 1;
 }
 
-# Performance and HiveOS telemetry guards.
+# Live pool target boundary guards. Logs proved that the pool measures share
+# difficulty from each job's compact nBits target, not from fixed Bitcoin diff1.
+grep -Fq 'Target256 target_from_compact' "${ROOT_DIR}/native/src/mining/target.cpp" || {
+  echo "Compact nBits target decoder is missing" >&2; exit 1;
+}
+grep -Fq 'item.stratum_job.difficulty, mining_job.bits);' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "Runtime target is not derived from current job nBits" >&2; exit 1;
+}
+grep -Fq 'target_source=nbits_div_difficulty' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "nBits target telemetry is missing" >&2; exit 1;
+}
+grep -Fq '000001b62bf412b224e8d3135e55c861e063756ec774c1034d554f81eaf2624e' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
+  echo "Live low-difficulty boundary regression vector is missing" >&2; exit 1;
+}
+grep -Fq 'PASS: live nBits share-target boundaries matched' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
+  echo "Live share-target boundary test is missing" >&2; exit 1;
+}
+
+# Performance guards.
 grep -Fq 'blake3_header80_from_midstate' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
   echo "CUDA BLAKE3 midstate optimization is missing" >&2; exit 1;
 }
@@ -112,12 +130,39 @@ grep -Fq 'hash_meets_target_be(final_hash)' "${ROOT_DIR}/native/src/cuda/header8
 grep -Fq 'device_result_' "${ROOT_DIR}/native/include/pepepow/cuda/header80_backend.hpp" || {
   echo "Persistent CUDA result buffer is missing" >&2; exit 1;
 }
+grep -Fq 'constexpr std::uint64_t chunk_size = 262144;' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "Stale-resistant CUDA batch size is missing" >&2; exit 1;
+}
+
+# Terminal UI, HiveOS telemetry and lifecycle guards.
+grep -Fq '🐸 PepeW Miner' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "PepeW terminal banner is missing" >&2; exit 1;
+}
+grep -Fq 'PepeW — твоя монета. Твои правила.' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "PepeW slogan is missing" >&2; exit 1;
+}
 grep -Fq 'HASHRATE hps=' "${ROOT_DIR}/native/src/app/main.cpp" || {
   echo "Native hashrate telemetry is missing" >&2; exit 1;
 }
-grep -Fq "grep ' HASHRATE hps='" "${ROOT_DIR}/hiveos/h-stats.sh" || {
-  echo "HiveOS hashrate parser is missing" >&2; exit 1;
+grep -Fq 'miner-status.env' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "Atomic runtime status writer is missing" >&2; exit 1;
 }
+grep -Fq 'miner-status.env' "${ROOT_DIR}/hiveos/h-stats.sh" || {
+  echo "HiveOS runtime status parser is missing" >&2; exit 1;
+}
+grep -Fq 'readlink -f "/proc/${candidate}/exe"' "${ROOT_DIR}/hiveos/h-stats.sh" || {
+  echo "HiveOS real process validation is missing" >&2; exit 1;
+}
+grep -Fq 'NO_TEE_PIPE' "${ROOT_DIR}/hiveos/h-run.sh" || {
+  echo "Stable no-pipe lifecycle marker is missing" >&2; exit 1;
+}
+grep -Fq 'miner.pid' "${ROOT_DIR}/hiveos/h-run.sh" || {
+  echo "Real miner PID tracking is missing" >&2; exit 1;
+}
+if grep -Eq 'pepepowminer .*\|[[:space:]]*tee|\.\/pepepowminer .*\|[[:space:]]*tee' "${ROOT_DIR}/hiveos/h-run.sh"; then
+  echo "Miner output must not be piped through tee" >&2
+  exit 1
+fi
 if grep -Fq -- '--rewrite-submit-nonce' "${ROOT_DIR}/hiveos/h-run.sh"; then
   echo "h-run.sh must keep the Stratum proxy passive" >&2
   exit 1
@@ -136,7 +181,7 @@ grep -q 'PERFORMANCE_BENCHMARK' <<<"${BENCHMARK_OUTPUT}" || { echo "Header80 ben
 BUILD_ID="$("${BUILD_DIR}/pepepowminer" --version)"
 echo "BUILD_ID=${BUILD_ID}"
 [[ "${BUILD_ID}" == *"${VERSION}"* ]] || { echo "Binary version mismatch: ${BUILD_ID}" >&2; exit 1; }
-[[ "${BUILD_ID}" == *"PepePow Performance Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
+[[ "${BUILD_ID}" == *"PepeW Performance & Stability Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
 
 mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
@@ -192,7 +237,7 @@ fi
 
 rm -f "${ARCHIVE_LIST}"
 SHA256="$(sha256sum "${ARCHIVE_PATH}" | awk '{print $1}')"
-printf '\nPASS: PepePow Performance Edition %s package completed\n' "${VERSION}"
+printf '\nPASS: PepeW Performance & Stability Edition %s package completed\n' "${VERSION}"
 printf 'ARCHIVE=%s\n' "${ARCHIVE_PATH}"
 printf 'SHA256=%s\n' "${SHA256}"
 printf 'DOWNLOAD_COMMAND=cd %q && python3 -m http.server 8080 --bind 0.0.0.0\n' "${ROOT_DIR}/dist"
