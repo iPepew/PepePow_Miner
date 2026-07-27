@@ -7,6 +7,7 @@ cd "${miner_dir}"
 console_log="${miner_dir}/miner-console.log"
 runtime_log="${miner_dir}/runtime-diagnostics.txt"
 exit_file="${miner_dir}/miner-exit-status.txt"
+diagnostic_log="${miner_dir}/pepepow-debug.log"
 
 if [[ ! -x ./pepepowminer ]]; then
   echo "pepepowminer binary is missing or not executable" >&2
@@ -37,11 +38,20 @@ fi
 : "${PEPEPOW_PROXY_LOG:?missing PEPEPOW_PROXY_LOG in config.txt}"
 : "${PEPEPOW_PROXY_PORT:?missing PEPEPOW_PROXY_PORT in config.txt}"
 
+# HiveOS statistics must describe only the current miner process. Keep the old
+# diagnostics for forensics, then start clean accepted/rejected/hashrate counters.
+if [[ -s "${diagnostic_log}" ]]; then
+  cp -f "${diagnostic_log}" "${diagnostic_log}.previous" 2>/dev/null || true
+fi
+: > "${diagnostic_log}"
+: > "${PEPEPOW_PROXY_LOG}"
+
 {
   echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "PWD=$(pwd)"
   echo "PACKAGE_DIR=${miner_dir}"
   echo "PROTOCOL=HooHashV110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX proxy=passive"
+  echo "OPTIMIZATION=BLAKE3_MIDSTATE GPU_TARGET_FILTER PERSISTENT_RESULT LIVE_HASHRATE"
   echo "== VERSION =="
   ./pepepowminer --version 2>&1 || true
   echo "== FILE =="
@@ -90,6 +100,7 @@ fi
   echo "Proxy upstream: ${PEPEPOW_UPSTREAM}"
   echo "Proxy log: ${PEPEPOW_PROXY_LOG}"
   echo "Protocol: matrix seed BLAKE3(masked Header80); Header80 nonce BE32; HooHash nonce LE32; mining.submit nonce LE hex"
+  echo "Optimizations: BLAKE3 first-block midstate; GPU target filtering; persistent result buffer; native hashrate"
   echo "Console log: ${console_log}"
   echo "Runtime diagnostics: ${runtime_log}"
   printf './pepepowminer'
