@@ -41,7 +41,7 @@ fi
   echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "PWD=$(pwd)"
   echo "PACKAGE_DIR=${miner_dir}"
-  echo "PROTOCOL=HooHashV110 header_nonce=BE32 submit_nonce=LE_HEX proxy=passive"
+  echo "PROTOCOL=HooHashV110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX proxy=passive"
   echo "== VERSION =="
   ./pepepowminer --version 2>&1 || true
   echo "== FILE =="
@@ -89,7 +89,7 @@ fi
   echo "Proxy mode: passive"
   echo "Proxy upstream: ${PEPEPOW_UPSTREAM}"
   echo "Proxy log: ${PEPEPOW_PROXY_LOG}"
-  echo "Protocol: Header80 nonce BE32; mining.submit nonce LE hex"
+  echo "Protocol: matrix seed BLAKE3(masked Header80); Header80 nonce BE32; HooHash nonce LE32; mining.submit nonce LE hex"
   echo "Console log: ${console_log}"
   echo "Runtime diagnostics: ${runtime_log}"
   printf './pepepowminer'
@@ -117,8 +117,6 @@ set -e
 status=${raw_status}
 reason="process_exit"
 if [[ ${raw_status} -eq 141 ]]; then
-  # HiveOS may close the console pipe during an ordinary miner stop. Preserve
-  # the raw value for diagnostics, but do not trigger an endless restart loop.
   status=0
   reason="sigpipe_console_close_normalized"
 fi
