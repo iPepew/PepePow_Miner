@@ -5,11 +5,23 @@
 #include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+
+namespace {
+
+std::uint32_t load_le32(const std::uint8_t* value) noexcept {
+    return static_cast<std::uint32_t>(value[0]) |
+           (static_cast<std::uint32_t>(value[1]) << 8U) |
+           (static_cast<std::uint32_t>(value[2]) << 16U) |
+           (static_cast<std::uint32_t>(value[3]) << 24U);
+}
+
+} // namespace
 
 int main() {
     pepepow::MiningJob job{};
@@ -28,9 +40,11 @@ int main() {
     assert(header[68] == 0x88U && header[69] == 0x77U && header[70] == 0x66U && header[71] == 0x55U);
     assert(header[72] == 0xccU && header[73] == 0xbbU && header[74] == 0xaaU && header[75] == 0x99U);
 
-    // Protocol invariant: nonce is BE32 in Header80, but LE hex in mining.submit.
+    // Pool protocol invariant: the submit nonce is LE hex, the pool reverses it
+    // into BE32 Header80 bytes, then decodes those bytes as LE32 for HooHash.
     assert(header[76] == 0xddU && header[77] == 0xeeU && header[78] == 0xffU && header[79] == 0x00U);
     assert(pepepow::stratum::encode_u32_le_hex(job.nonce) == "00ffeedd");
+    assert(load_le32(header.data() + 76) == 0x00ffeeddU);
 
     pepepow::crypto::Hash256 seed{};
     for (std::size_t i = 0; i < seed.size(); ++i) seed[i] = static_cast<std::uint8_t>(i);
@@ -67,6 +81,19 @@ int main() {
     const auto direct_a = pepepow::crypto::calculate_header80_pow(header);
     const auto direct_b = pepepow::crypto::calculate_header80_pow(header);
     assert(direct_a == direct_b);
+
+    // Independent pool-reference reconstruction. This guards against both bugs
+    // found by live pool traces: seeding the matrix from prevhash and passing the
+    // wrong numeric nonce into the nonlinear matrix stage.
+    auto masked_header = header;
+    std::fill(masked_header.begin() + 76, masked_header.end(), 0U);
+    const auto pool_matrix_seed = pepepow::crypto::blake3_hash(masked_header);
+    const auto pool_header_hash = pepepow::crypto::blake3_hash(header);
+    const auto pool_matrix = pepepow::crypto::generate_hoohash_matrix(pool_matrix_seed);
+    const auto pool_mixed = pepepow::crypto::hoohash_matrix_mix(
+        pool_matrix, pool_header_hash, load_le32(header.data() + 76));
+    const auto pool_reference_hash = pepepow::crypto::blake3_hash(pool_mixed);
+    assert(direct_a == pool_reference_hash);
 
     auto next_header = header;
     next_header[79] ^= 0x01U;
