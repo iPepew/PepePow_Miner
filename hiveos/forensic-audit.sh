@@ -33,10 +33,8 @@ log_file="${self_dir}/pepepow-debug.log"
     echo "cwd=$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
     echo "exe=$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
     echo "elapsed=$(ps -o etimes= -p "${pid}" 2>/dev/null | tr -d ' ')"
-    echo "open package files:"
-    ls -l "/proc/${pid}/fd" 2>/dev/null | grep -F "${self_dir}" || true
   else
-    echo "ERROR: miner process not found"
+    echo "miner process not running"
   fi
   echo
 
@@ -48,11 +46,15 @@ log_file="${self_dir}/pepepow-debug.log"
   echo
 
   echo "== HiveOS stats callback =="
-  MINER_DIR="${self_dir}" bash -c 'source "$MINER_DIR/h-stats.sh"; echo "khs=$khs"; echo "$stats"' 2>&1 || true
+  MINER_DIR="${self_dir}" bash -c 'source "$MINER_DIR/h-stats.sh"; echo "hps=${hps:-0}"; echo "$stats"' 2>&1 || true
+  echo
+
+  echo "== Optimization markers =="
+  grep -E 'OPTIMIZATION=|Optimizations:' "${self_dir}/runtime-diagnostics.txt" "${self_dir}/run.txt" 2>/dev/null || true
   echo
 
   echo "== Path contamination scan =="
-  grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${self_dir}" 2>/dev/null || true
+  grep -R --line-number -E '0\.1\.4|0\.3\.7-consensus-math|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${self_dir}" 2>/dev/null || true
   echo
 
   echo "== GPU =="
@@ -67,11 +69,12 @@ log_file="${self_dir}/pepepow-debug.log"
     echo "candidate=$(grep -c 'CANDIDATE ' "${log_file}" || true)"
     echo "gpu_cpu_mismatch=$(grep -c 'match=0' "${log_file}" || true)"
     echo "target_fail=$(grep -c 'target_ok=0' "${log_file}" || true)"
-    echo "reconnects=$(grep -c 'Stratum connection error' "${log_file}" || true)"
+    echo "latest hashrate:"
+    grep ' HASHRATE hps=' "${log_file}" | tail -n 20 || true
     echo "latest records:"
-    grep -E 'BUILD_ID|JOB |JOB_HEADER|CANDIDATE|SHARE_TRACE|SUBMIT|Share accepted|Share rejected|WORKER_ERROR|Fatal' "${log_file}" | tail -n 250 || true
+    grep -E 'BUILD_ID|JOB |JOB_HEADER|HASHRATE|CANDIDATE|SHARE_TRACE|SUBMIT|Share accepted|Share rejected|WORKER_ERROR|Fatal' "${log_file}" | tail -n 300 || true
   else
-    echo "ERROR: diagnostic log missing: ${log_file}"
+    echo "diagnostic log missing: ${log_file}"
   fi
 } > "${out}"
 
