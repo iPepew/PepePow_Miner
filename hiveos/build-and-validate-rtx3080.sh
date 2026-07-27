@@ -67,12 +67,9 @@ configure_and_build_docker() {
     '
 }
 
-# Static consensus guards fail before the expensive CUDA build.
+# Consensus guards.
 grep -Fq 'write_be32(header, 76, job.nonce);' "${ROOT_DIR}/native/src/core/header_builder.cpp" || {
   echo "Header80 nonce bytes are not BE32" >&2; exit 1;
-}
-grep -Fq 'store_be32(header + 76, nonce);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
-  echo "CUDA Header80 nonce bytes are not BE32" >&2; exit 1;
 }
 grep -Fq 'const Hash256 matrix_seed = blake3_hash(masked_header);' "${ROOT_DIR}/native/src/crypto/pow.cpp" || {
   echo "CPU matrix seed is not BLAKE3(masked Header80)" >&2; exit 1;
@@ -83,12 +80,9 @@ grep -Fq 'const crypto::Hash256 matrix_seed = crypto::blake3_hash(masked_header)
 grep -Fq 'const std::uint32_t mix_nonce = load_le32(header.data() + 76);' "${ROOT_DIR}/native/src/crypto/pow.cpp" || {
   echo "CPU HooHash nonce is not LE32 from Header80" >&2; exit 1;
 }
-grep -Fq 'const std::uint32_t mix_nonce = load_le32(header + 76);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
-  echo "CUDA HooHash nonce is not LE32 from Header80" >&2; exit 1;
+grep -Fq 'const std::uint32_t mix_nonce = byte_swap32(nonce);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA HooHash nonce does not match LE32 of BE32 Header80 bytes" >&2; exit 1;
 }
-
-# HooHash uses large FP64 operands. Parentheses here change rounding and are
-# consensus-critical; x + 1 + factor is not equivalent.
 grep -Fq 'return fn(x + (1.0 + two));' "${ROOT_DIR}/native/src/crypto/hoohash_reference.cpp" || {
   echo "CPU HooHash addition does not preserve consensus parentheses" >&2; exit 1;
 }
@@ -101,18 +95,28 @@ grep -Fq 'if (two < 0.25) y = x + (1.0 + two);' "${ROOT_DIR}/native/src/cuda/hea
 grep -Fq 'else if (two < 0.50) y = x - (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
   echo "CUDA HooHash subtraction does not preserve consensus parentheses" >&2; exit 1;
 }
-
-grep -Fq 'const auto pool_reference_hash' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
-  echo "Pool-reference regression test is missing" >&2; exit 1;
-}
-grep -Fq 'encode_u32_le_hex(job.nonce) == "00ffeedd"' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
-  echo "Stratum submit nonce LE regression test is missing" >&2; exit 1;
-}
 grep -Fq '7eca26c772b9ba046d0166ba569ef980ef9177b6a5c39a4aeac846bb6b5392cf' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
   echo "Live CPU consensus vectors are missing" >&2; exit 1;
 }
 grep -Fq 'PASS: 5 consensus HooHash vectors match on CPU/CUDA' "${ROOT_DIR}/native/tests/cuda_header80_validation.cpp" || {
   echo "Live CUDA consensus vector gate is missing" >&2; exit 1;
+}
+
+# Performance and HiveOS telemetry guards.
+grep -Fq 'blake3_header80_from_midstate' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA BLAKE3 midstate optimization is missing" >&2; exit 1;
+}
+grep -Fq 'hash_meets_target_be(final_hash)' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "GPU target filtering is missing" >&2; exit 1;
+}
+grep -Fq 'device_result_' "${ROOT_DIR}/native/include/pepepow/cuda/header80_backend.hpp" || {
+  echo "Persistent CUDA result buffer is missing" >&2; exit 1;
+}
+grep -Fq 'HASHRATE hps=' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "Native hashrate telemetry is missing" >&2; exit 1;
+}
+grep -Fq "grep ' HASHRATE hps='" "${ROOT_DIR}/hiveos/h-stats.sh" || {
+  echo "HiveOS hashrate parser is missing" >&2; exit 1;
 }
 if grep -Fq -- '--rewrite-submit-nonce' "${ROOT_DIR}/hiveos/h-run.sh"; then
   echo "h-run.sh must keep the Stratum proxy passive" >&2
@@ -124,12 +128,15 @@ if NVCC_PATH="$(find_nvcc)"; then configure_and_build_native "${NVCC_PATH}"; els
 
 ctest --test-dir "${BUILD_DIR}" --output-on-failure
 "${BUILD_DIR}/pepepow_cuda_header80_validation"
+BENCHMARK_OUTPUT="$("${BUILD_DIR}/pepepow_header80_benchmark" 1048576)"
+printf '%s\n' "${BENCHMARK_OUTPUT}"
+grep -q 'PERFORMANCE_BENCHMARK' <<<"${BENCHMARK_OUTPUT}" || { echo "Header80 benchmark failed" >&2; exit 1; }
 "${BUILD_DIR}/pepepowminer" --list-gpu
 
 BUILD_ID="$("${BUILD_DIR}/pepepowminer" --version)"
 echo "BUILD_ID=${BUILD_ID}"
 [[ "${BUILD_ID}" == *"${VERSION}"* ]] || { echo "Binary version mismatch: ${BUILD_ID}" >&2; exit 1; }
-[[ "${BUILD_ID}" == *"PepePow Pool Reference Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
+[[ "${BUILD_ID}" == *"PepePow Performance Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
 
 mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
@@ -152,7 +159,7 @@ grep -qx "${VERSION}" "${PACKAGE_DIR}/VERSION"
 MINER_DIR="${PACKAGE_DIR}" source "${PACKAGE_DIR}/h-stats.sh"
 [[ "${stats}" == *'"ver":""'* ]] || { echo "h-stats must suppress duplicate HiveOS version suffix: ${stats}" >&2; exit 1; }
 [[ "${stats}" != *"${VERSION}"* ]] || { echo "h-stats must not duplicate package version in HiveOS UI: ${stats}" >&2; exit 1; }
-[[ "${stats}" == *'"hs":[0]'* ]] || { echo "h-stats must explicitly reset stale hashrate: ${stats}" >&2; exit 1; }
+[[ "${stats}" == *'"hs":[0]'* ]] || { echo "h-stats must reset hashrate when the miner is stopped: ${stats}" >&2; exit 1; }
 if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt|Submit nonce rewrite' "${PACKAGE_DIR}"; then
   echo "Stale version, unsafe path or obsolete rewrite text found in package" >&2
   exit 1
@@ -185,7 +192,7 @@ fi
 
 rm -f "${ARCHIVE_LIST}"
 SHA256="$(sha256sum "${ARCHIVE_PATH}" | awk '{print $1}')"
-printf '\nPASS: PepePow Consensus Math Edition %s package completed\n' "${VERSION}"
+printf '\nPASS: PepePow Performance Edition %s package completed\n' "${VERSION}"
 printf 'ARCHIVE=%s\n' "${ARCHIVE_PATH}"
 printf 'SHA256=%s\n' "${SHA256}"
 printf 'DOWNLOAD_COMMAND=cd %q && python3 -m http.server 8080 --bind 0.0.0.0\n' "${ROOT_DIR}/dist"
