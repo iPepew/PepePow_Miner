@@ -7,6 +7,10 @@ namespace pepepow {
 class Header80CudaBackend final : public MiningBackend {
 public:
     explicit Header80CudaBackend(int device_index = 0);
+    ~Header80CudaBackend() override;
+
+    Header80CudaBackend(const Header80CudaBackend&) = delete;
+    Header80CudaBackend& operator=(const Header80CudaBackend&) = delete;
 
     [[nodiscard]] std::string_view name() const noexcept override;
     [[nodiscard]] std::vector<DeviceInfo> enumerate_devices() const override;
@@ -17,6 +21,7 @@ public:
 
 private:
     int device_index_{0};
+    void* device_result_{nullptr};
 };
 
 } // namespace pepepow
