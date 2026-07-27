@@ -1,6 +1,7 @@
 #include "pepepow/cuda/header80_backend.hpp"
 
 #include "pepepow/core/header_builder.hpp"
+#include "pepepow/crypto/blake3.hpp"
 #include "pepepow/crypto/hoohash_reference.hpp"
 #include "pepepow/mining/target.hpp"
 
@@ -233,8 +234,10 @@ __global__ void header80_pow_kernel(
     #pragma unroll
     for (int i = 0; i < static_cast<int>(kHeaderSize); ++i) header[i] = base_header[i];
 
-    // HooHash V110 uses BE32 nonce bytes inside Header80.
+    // Stratum submits the little-endian hex form, while the pool reconstructs
+    // BE32 nonce bytes in Header80 and decodes those bytes as LE32 for HooHash.
     store_be32(header + 76, nonce);
+    const std::uint32_t mix_nonce = load_le32(header + 76);
 
     std::uint8_t first_pass[32];
     std::uint8_t mixed[32];
@@ -244,7 +247,7 @@ __global__ void header80_pow_kernel(
     #pragma unroll
     for (int i = 0; i < 8; ++i) hash_mod ^= load_be32(first_pass + i * 4);
 
-    const double nonce_mod = static_cast<double>(nonce & 0xffU);
+    const double nonce_mod = static_cast<double>(mix_nonce & 0xffU);
     double sw = 0.0;
     #pragma unroll 1
     for (int pair = 0; pair < 32; ++pair) {
@@ -292,13 +295,28 @@ std::optional<ShareCandidate> Header80CudaBackend::search(
     MiningJob base_job = job;
     base_job.nonce = static_cast<std::uint32_t>(range.begin);
     const Header80 header = build_header80(base_job);
-    const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(job.previous_hash);
+
+    Header80 masked_header = header;
+    std::fill(masked_header.begin() + 76, masked_header.end(), 0U);
+    const crypto::Hash256 matrix_seed = crypto::blake3_hash(masked_header);
 
     check_cuda_header80(cudaSetDevice(device_index_), "cudaSetDevice(header80)");
-    check_cuda_header80(
-        cudaMemcpyToSymbol(kHeader80Matrix, matrix.data()->data(),
-                           kMatrixElements * sizeof(double), 0, cudaMemcpyHostToDevice),
-        "cudaMemcpyToSymbol(header80 matrix)");
+
+    // The matrix is constant for all nonce ranges of one work header. Avoid
+    // regenerating and uploading 32 KiB for every 4K-nonce search chunk.
+    static thread_local bool matrix_cached = false;
+    static thread_local int matrix_device = -1;
+    static thread_local crypto::Hash256 cached_matrix_seed{};
+    if (!matrix_cached || matrix_device != device_index_ || cached_matrix_seed != matrix_seed) {
+        const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(matrix_seed);
+        check_cuda_header80(
+            cudaMemcpyToSymbol(kHeader80Matrix, matrix.data()->data(),
+                               kMatrixElements * sizeof(double), 0, cudaMemcpyHostToDevice),
+            "cudaMemcpyToSymbol(header80 matrix)");
+        cached_matrix_seed = matrix_seed;
+        matrix_device = device_index_;
+        matrix_cached = true;
+    }
 
     std::uint8_t* device_header = nullptr;
     std::uint8_t* device_hashes = nullptr;
