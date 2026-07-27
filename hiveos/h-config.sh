@@ -27,10 +27,8 @@ if [[ -z "${user}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-# PEPEPOW/HooHash V110 is the only supported algorithm in this build, so the
-# historic --pepepow compatibility flag is intentionally not injected.
-# Route through the local forensic proxy. It records exact Stratum RX/TX and
-# converts the header-order nonce into the submit-order nonce expected by pools.
+# PEPEPOW/HooHash V110 is the only supported algorithm in this build. The local
+# proxy is passive and records exact Stratum traffic without changing submits.
 args=("-o" "stratum+tcp://127.0.0.1:${proxy_port}" "-u" "${user}" "-p" "${pass}"
       "--diagnostic" "--diagnostic-log" "${diagnostic_log}")
 
@@ -58,7 +56,8 @@ mkdir -p "${miner_dir}"
   echo "Password: ${pass}"
   echo "Extra config: ${extra_raw}"
   echo "Compatibility --pepepow injection: disabled"
-  echo "Submit nonce rewrite: header little-endian -> Stratum big-endian"
+  echo "Proxy submit rewriting: disabled"
+  echo "Pool reference: matrix_seed=BLAKE3(masked_header), header_nonce=BE32, mix_nonce=LE32, submit_nonce=LE_HEX"
   echo "Diagnostic mode: enabled"
   echo "Diagnostic log: ${diagnostic_log}"
   echo "Proxy log: ${proxy_log}"
