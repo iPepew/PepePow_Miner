@@ -10,10 +10,11 @@ mkdir -p "${work}"
 "${self_dir}/forensic-audit.sh" "${work}/forensic-audit.txt" || true
 "${self_dir}/diagnostic-summary.sh" "${self_dir}/pepepow-debug.log" "${work}/diagnostic-summary.txt" || true
 
-for f in VERSION h-manifest.conf h-config.sh h-run.sh h-stats.sh config.txt setup.txt run.txt \
+for f in VERSION BUILD_PROFILE h-manifest.conf h-config.sh h-run.sh h-stats.sh config.txt setup.txt run.txt \
          miner-status.env miner.pid proxy.pid \
          pepepow-debug.log pepepow-debug.log.previous \
          stratum-proxy.log stratum-proxy.log.previous stratum-replay-proxy.py \
+         proxy-console.log proxy-console.log.previous \
          miner-console.log miner-console.log.previous \
          runtime-diagnostics.txt miner-exit-status.txt; do
   [[ -e "${self_dir}/${f}" ]] && cp -a "${self_dir}/${f}" "${work}/${f}"
@@ -31,6 +32,7 @@ fi
 {
   MINER_DIR="${self_dir}" source "${self_dir}/h-stats.sh" 2>/dev/null || true
   printf '%s\n' "${stats:-unavailable}"
+  printf 'total_khs=%s\n' "${khs:-0}"
 } > "${work}/hiveos-current-stats.json"
 
 {
@@ -65,7 +67,7 @@ ps auxww > "${work}/ps.txt" 2>&1 || true
 screen -ls > "${work}/screen-ls.txt" 2>&1 || true
 nvidia-smi -q > "${work}/nvidia-smi-q.txt" 2>&1 || true
 nvidia-smi dmon -c 3 > "${work}/nvidia-dmon.txt" 2>&1 || true
-nvidia-smi --query-gpu=timestamp,name,utilization.gpu,utilization.memory,clocks.sm,clocks.mem,power.draw,power.limit,temperature.gpu,memory.used,memory.total --format=csv \
+nvidia-smi --query-gpu=timestamp,index,pci.bus_id,name,utilization.gpu,utilization.memory,clocks.sm,clocks.mem,power.draw,power.limit,temperature.gpu,fan.speed,memory.used,memory.total --format=csv \
   > "${work}/nvidia-performance.csv" 2>&1 || true
 dmesg -T | tail -n 1000 > "${work}/dmesg-tail.txt" 2>&1 || true
 journalctl -n 1000 --no-pager > "${work}/journal-tail.txt" 2>&1 || true
