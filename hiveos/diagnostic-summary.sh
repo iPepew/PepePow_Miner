@@ -6,7 +6,7 @@ diagnostic_log="${1:-${miner_dir}/pepepow-debug.log}"
 out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
 
 {
-  echo "PepePow Miner crash/diagnostic summary"
+  echo "PepePow Miner performance/diagnostic summary"
   date -u +"UTC: %Y-%m-%dT%H:%M:%SZ"
   echo "Miner directory: ${miner_dir}"
   echo "Diagnostic log: ${diagnostic_log}"
@@ -17,8 +17,21 @@ out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
   echo "== Exit status =="
   cat "${miner_dir}/miner-exit-status.txt" 2>&1 || true
   echo
+  echo "== HiveOS current stats =="
+  MINER_DIR="${miner_dir}" source "${miner_dir}/h-stats.sh" 2>/dev/null || true
+  printf '%s\n' "${stats:-unavailable}"
+  echo
+  echo "== Native hashrate samples =="
+  grep ' HASHRATE hps=' "${diagnostic_log}" 2>/dev/null | tail -n 120 || true
+  echo
+  echo "== Share totals =="
+  printf 'accepted=%s\n' "$(grep -c 'Share accepted' "${diagnostic_log}" 2>/dev/null || true)"
+  printf 'rejected=%s\n' "$(grep -c 'Share rejected' "${diagnostic_log}" 2>/dev/null || true)"
+  printf 'candidates=%s\n' "$(grep -c 'CANDIDATE' "${diagnostic_log}" 2>/dev/null || true)"
+  printf 'cpu_gpu_mismatch=%s\n' "$(grep -c 'match=0' "${diagnostic_log}" 2>/dev/null || true)"
+  echo
   echo "== GPU =="
-  nvidia-smi --query-gpu=index,name,uuid,driver_version,compute_cap,pci.bus_id --format=csv,noheader 2>&1 || true
+  nvidia-smi --query-gpu=index,name,uuid,driver_version,compute_cap,pci.bus_id,utilization.gpu,clocks.sm,clocks.mem,power.draw,temperature.gpu --format=csv,noheader 2>&1 || true
   echo
   echo "== HiveOS package =="
   cat "${miner_dir}/h-manifest.conf" 2>&1 || true
@@ -42,7 +55,7 @@ out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
   tail -n 500 "${miner_dir}/stratum-proxy.log" 2>&1 || true
   echo
   echo "== Key runtime records =="
-  grep -E 'BUILD_ID|JOB |JOB_HEADER|CANDIDATE|SHARE_TRACE|SUBMIT|STRATUM|Share accepted|Share rejected|CUDA candidate|Worker error|Fatal|FINAL_STATS' "${diagnostic_log}" 2>/dev/null | tail -n 1000 || true
+  grep -E 'BUILD_ID|POOL_REFERENCE|JOB |JOB_HEADER|HASHRATE|CANDIDATE|SHARE_TRACE|SUBMIT|STRATUM|Share accepted|Share rejected|WORKER_ERROR|Fatal|FINAL_STATS' "${diagnostic_log}" 2>/dev/null | tail -n 1500 || true
 } > "${out_file}"
 
 echo "${out_file}"
