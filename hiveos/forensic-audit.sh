@@ -5,12 +5,15 @@ self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 out="${1:-${self_dir}/forensic-audit.txt}"
 version="unknown"
 [[ -r "${self_dir}/VERSION" ]] && version="$(head -n1 "${self_dir}/VERSION" | tr -d '\r\n')"
-
-pid="$(pgrep -f "${self_dir}/pepepowminer" | head -n1 || true)"
 log_file="${self_dir}/pepepow-debug.log"
 
+pid="$(tr -dc '0-9' < "${self_dir}/miner.pid" 2>/dev/null || true)"
+if [[ ! "${pid}" =~ ^[1-9][0-9]*$ ]] || ! kill -0 "${pid}" 2>/dev/null; then
+  pid=""
+fi
+
 {
-  echo "PepePow Forensic Audit"
+  echo "PepeW Forensic Audit"
   date -u +"UTC: %Y-%m-%dT%H:%M:%SZ"
   echo "Expected package dir: ${self_dir}"
   echo "Expected version: ${version}"
@@ -20,6 +23,10 @@ log_file="${self_dir}/pepepow-debug.log"
   "${self_dir}/pepepowminer" --version 2>&1 || true
   cat "${self_dir}/VERSION" 2>/dev/null || true
   cat "${self_dir}/h-manifest.conf" 2>/dev/null || true
+  echo
+
+  echo "== CUDA autotune profile =="
+  cat "${self_dir}/BUILD_PROFILE" 2>/dev/null || true
   echo
 
   echo "== File ownership and permissions =="
@@ -39,14 +46,14 @@ log_file="${self_dir}/pepepow-debug.log"
   echo
 
   echo "== HiveOS generated files =="
-  for f in config.txt setup.txt run.txt; do
+  for f in config.txt setup.txt run.txt miner-status.env; do
     echo "--- ${f} ---"
     cat "${self_dir}/${f}" 2>/dev/null || echo "MISSING: ${self_dir}/${f}"
   done
   echo
 
   echo "== HiveOS stats callback =="
-  MINER_DIR="${self_dir}" bash -c 'source "$MINER_DIR/h-stats.sh"; echo "hps=${hps:-0}"; echo "$stats"' 2>&1 || true
+  MINER_DIR="${self_dir}" bash -c 'source "$MINER_DIR/h-stats.sh"; echo "total_khs=${khs:-0}"; echo "$stats"' 2>&1 || true
   echo
 
   echo "== Optimization markers =="
@@ -54,11 +61,11 @@ log_file="${self_dir}/pepepow-debug.log"
   echo
 
   echo "== Path contamination scan =="
-  grep -R --line-number -E '0\.1\.4|0\.3\.7-consensus-math|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${self_dir}" 2>/dev/null || true
+  grep -R --line-number -E '0\.1\.4|0\.3\.7-consensus-math|0\.3\.9-PR|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${self_dir}" 2>/dev/null || true
   echo
 
   echo "== GPU =="
-  nvidia-smi --query-gpu=index,name,pci.bus_id,uuid,driver_version,compute_cap,temperature.gpu,power.draw,clocks.sm,clocks.mem,utilization.gpu --format=csv,noheader 2>&1 || true
+  nvidia-smi --query-gpu=index,name,pci.bus_id,uuid,driver_version,compute_cap,temperature.gpu,fan.speed,power.draw,power.limit,clocks.sm,clocks.mem,utilization.gpu --format=csv,noheader 2>&1 || true
   echo
 
   echo "== Diagnostic log status =="
