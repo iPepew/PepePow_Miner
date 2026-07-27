@@ -117,6 +117,13 @@ __device__ __forceinline__ void store_le32(std::uint8_t* p, std::uint32_t v) {
     p[3] = static_cast<std::uint8_t>(v >> 24U);
 }
 
+__device__ __forceinline__ void store_be32(std::uint8_t* p, std::uint32_t v) {
+    p[0] = static_cast<std::uint8_t>(v >> 24U);
+    p[1] = static_cast<std::uint8_t>(v >> 16U);
+    p[2] = static_cast<std::uint8_t>(v >> 8U);
+    p[3] = static_cast<std::uint8_t>(v);
+}
+
 __device__ void blake3_80(const std::uint8_t input[80], std::uint8_t output[32]) {
     std::uint32_t cv[8], block[16], compressed[16];
     #pragma unroll
@@ -225,7 +232,9 @@ __global__ void header80_pow_kernel(
     std::uint8_t header[kHeaderSize];
     #pragma unroll
     for (int i = 0; i < static_cast<int>(kHeaderSize); ++i) header[i] = base_header[i];
-    store_le32(header + 76, nonce);
+
+    // HooHash V110 uses BE32 nonce bytes inside Header80.
+    store_be32(header + 76, nonce);
 
     std::uint8_t first_pass[32];
     std::uint8_t mixed[32];
