@@ -7,7 +7,6 @@
 namespace pepepow::crypto {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
-constexpr double kEpsilon = 1e-9;
 constexpr double kTransformMultiplier = 0.000001;
 
 [[nodiscard]] std::uint64_t load_le64(const std::uint8_t* p) noexcept {
@@ -20,10 +19,7 @@ constexpr double kTransformMultiplier = 0.000001;
 
 [[nodiscard]] double medium(double x) { return std::exp(std::sin(x) + std::cos(x)); }
 [[nodiscard]] double intermediate(double x) {
-    if (std::fabs(x - kPi / 2.0) < kEpsilon ||
-        std::fabs(x - 3.0 * kPi / 2.0) < kEpsilon) {
-        return 0.0;
-    }
+    if (x == kPi / 2.0 || x == 3.0 * kPi / 2.0) return 0.0;
     const double s = std::sin(x);
     return s * s;
 }
@@ -45,18 +41,14 @@ constexpr double kTransformMultiplier = 0.000001;
 
 [[nodiscard]] double for_complex(double x) {
     double rounds = 1.0;
-    const double transformed = complex_nonlinear(x);
-
-    // Match the authoritative V110 implementation exactly. It keeps the first
-    // non-finite result and only scales the input until the guard returns zero.
-    if (std::isnan(transformed) || std::isinf(transformed)) {
-        while (true) {
-            x *= 0.1;
-            if (x <= 1e-13) return 0.0 * rounds;
-            rounds += 1.0;
-        }
+    double out = complex_nonlinear(x);
+    while (std::isnan(out) || std::isinf(out)) {
+        x *= 0.1;
+        if (x <= 1e-13) return 0.0;
+        rounds += 1.0;
+        out = complex_nonlinear(x);
     }
-    return transformed * rounds;
+    return out * rounds;
 }
 
 [[nodiscard]] std::uint32_t load_be32(const std::uint8_t* p) noexcept {
