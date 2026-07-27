@@ -16,11 +16,11 @@ void store_le64(std::uint8_t* out, std::uint64_t value) noexcept {
     }
 }
 
-std::uint32_t load_le32(const std::uint8_t* value) noexcept {
-    return static_cast<std::uint32_t>(value[0]) |
-           (static_cast<std::uint32_t>(value[1]) << 8U) |
-           (static_cast<std::uint32_t>(value[2]) << 16U) |
-           (static_cast<std::uint32_t>(value[3]) << 24U);
+std::uint32_t load_be32(const std::uint8_t* value) noexcept {
+    return (static_cast<std::uint32_t>(value[0]) << 24U) |
+           (static_cast<std::uint32_t>(value[1]) << 16U) |
+           (static_cast<std::uint32_t>(value[2]) << 8U) |
+           static_cast<std::uint32_t>(value[3]);
 }
 
 } // namespace
@@ -43,7 +43,9 @@ Hash256 calculate_header80_pow(const Header80& header) {
     Hash256 matrix_seed{};
     std::copy_n(header.begin() + 4, matrix_seed.size(), matrix_seed.begin());
 
-    const std::uint32_t nonce = load_le32(header.data() + 76);
+    // HooHash V110 stores the nonce as BE32 in Header80. Decode the same
+    // numeric nonce used by the CUDA kernel and by the matrix-mix stage.
+    const std::uint32_t nonce = load_be32(header.data() + 76);
     const Hash256 first_pass = blake3_hash(header);
     const HoohashMatrix matrix = generate_hoohash_matrix(matrix_seed);
     const Hash256 mixed = hoohash_matrix_mix(matrix, first_pass, nonce);
