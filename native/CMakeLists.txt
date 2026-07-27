@@ -11,6 +11,7 @@ option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
+set(PEPEPOW_CUDA_THREADS "128" CACHE STRING "CUDA threads per Header80 search block")
 
 execute_process(COMMAND git rev-parse --short=12 HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.." OUTPUT_VARIABLE PEPEPOW_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(PEPEPOW_GIT_COMMIT STREQUAL "")
@@ -52,6 +53,9 @@ endif()
 
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
+    if(NOT PEPEPOW_CUDA_THREADS MATCHES "^(64|128|256)$")
+        message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be 64, 128 or 256")
+    endif()
     add_library(pepepow_cuda
         src/cuda/cuda_backend.cu
         src/cuda/header80_backend.cu
@@ -60,6 +64,7 @@ if(PEPEPOW_ENABLE_CUDA)
         src/cuda/warp_divergence_probe.cu)
     target_include_directories(pepepow_cuda PUBLIC include "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
+    target_compile_definitions(pepepow_cuda PRIVATE PEPEPOW_CUDA_THREADS=${PEPEPOW_CUDA_THREADS})
     set_target_properties(pepepow_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "86" CUDA_SEPARABLE_COMPILATION OFF)
     target_compile_options(pepepow_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     if(PEPEPOW_CUDA_PTXAS_VERBOSE)
