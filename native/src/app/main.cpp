@@ -73,7 +73,7 @@ private:
 void signal_handler(int) { if (active_client != nullptr) active_client->stop(); }
 
 std::string build_identity() {
-    return std::string("PepePow Debug Edition ") + PEPEPOW_VERSION +
+    return std::string("PepePow Protocol Reference Edition ") + PEPEPOW_VERSION +
            " commit=" + PEPEPOW_GIT_COMMIT + " build=Release";
 }
 
@@ -85,7 +85,6 @@ void print_help() {
               << "  -O, --pool2 URL         Fallback pool\n"
               << "  -u, --user LOGIN        Wallet or wallet.worker\n"
               << "  -p, --pass PASSWORD     Pool password, default x\n"
-              << "      --pepepow           Select PEPEPOW/HooHash V110 mode\n"
               << "      --diagnostic        Enable full job/share diagnostics\n"
               << "      --diagnostic-log P  Diagnostic log path\n"
               << "      --list-gpu          List detected devices and exit\n"
@@ -190,6 +189,8 @@ private:
                         auto validation_job = mining_job;
                         validation_job.nonce = candidate->nonce;
                         const auto header = pepepow::build_header80(validation_job);
+                        const std::string header_hex = hex_of(header);
+                        const std::string nonce_header_be = header_hex.substr(76U * 2U, 8U);
                         const auto cpu_hash = pepepow::crypto::calculate_header80_pow(header);
                         const bool gpu_cpu_match = cpu_hash == candidate->hash;
                         const bool target_ok = pepepow::mining::hash_meets_target_be(cpu_hash, target);
@@ -197,7 +198,8 @@ private:
 
                         log_.write("CANDIDATE job=" + item.stratum_job.job_id +
                                    " nonce_u32=" + std::to_string(candidate->nonce) +
-                                   " nonce_wire=" + nonce_wire +
+                                   " nonce_header_be=" + nonce_header_be +
+                                   " nonce_submit_le=" + nonce_wire +
                                    " xnonce2=" + item.extranonce2 +
                                    " gpu_hash=" + hex_of(candidate->hash) +
                                    " cpu_hash=" + hex_of(cpu_hash) +
@@ -206,11 +208,12 @@ private:
 
                         if (diagnostic_) {
                             log_.write("SHARE_TRACE job=" + item.stratum_job.job_id +
-                                       " header80=" + hex_of(header) +
+                                       " header80=" + header_hex +
                                        " hash_be=" + hex_of(cpu_hash) +
                                        " target_be=" + hex_of(target) +
                                        " ntime=" + item.stratum_job.ntime +
-                                       " nonce_wire=" + nonce_wire +
+                                       " nonce_header_be=" + nonce_header_be +
+                                       " nonce_submit_le=" + nonce_wire +
                                        " xnonce2=" + item.extranonce2);
                         }
 
@@ -253,7 +256,7 @@ int main(int argc, char** argv) {
         bool list_gpu = false;
         bool diagnostic = std::getenv("PEPEPOW_DIAGNOSTIC") != nullptr;
         std::string diagnostic_log = std::getenv("PEPEPOW_DIAGNOSTIC_LOG") ?
-            std::getenv("PEPEPOW_DIAGNOSTIC_LOG") : "/tmp/pepepow-debug-edition.log";
+            std::getenv("PEPEPOW_DIAGNOSTIC_LOG") : "/tmp/pepepow-protocol-reference.log";
 
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
@@ -291,13 +294,14 @@ int main(int argc, char** argv) {
 
         DiagnosticLog log(diagnostic_log);
         log.write("BUILD_ID " + build_identity() + " diagnostic=" + std::to_string(diagnostic) + " log=" + log.path());
+        log.write("PROTOCOL_REFERENCE hoohash=V110 header_nonce=BE32 submit_nonce=LE_HEX proxy=passive");
 
         pepepow::stratum::Config config;
         config.primary = pepepow::stratum::parse_endpoint(pool);
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = std::string("PepePowDebugEdition/") + PEPEPOW_VERSION;
+        config.agent = std::string("PepePowProtocolReference/") + PEPEPOW_VERSION;
 
         pepepow::stratum::Client client(std::move(config));
         client.set_log_handler([&log](const std::string& line) { log.write("STRATUM " + line); });
