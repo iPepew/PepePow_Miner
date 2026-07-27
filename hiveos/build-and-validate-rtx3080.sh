@@ -67,12 +67,27 @@ configure_and_build_docker() {
     '
 }
 
-# Static protocol guards fail before an expensive CUDA build if the invariant is lost.
+# Static pool-reference guards fail before the expensive CUDA build.
 grep -Fq 'write_be32(header, 76, job.nonce);' "${ROOT_DIR}/native/src/core/header_builder.cpp" || {
-  echo "CPU Header80 nonce is not BE32" >&2; exit 1;
+  echo "Header80 nonce bytes are not BE32" >&2; exit 1;
 }
 grep -Fq 'store_be32(header + 76, nonce);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
-  echo "CUDA Header80 nonce is not BE32" >&2; exit 1;
+  echo "CUDA Header80 nonce bytes are not BE32" >&2; exit 1;
+}
+grep -Fq 'const Hash256 matrix_seed = blake3_hash(masked_header);' "${ROOT_DIR}/native/src/crypto/pow.cpp" || {
+  echo "CPU matrix seed is not BLAKE3(masked Header80)" >&2; exit 1;
+}
+grep -Fq 'const crypto::Hash256 matrix_seed = crypto::blake3_hash(masked_header);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA matrix seed is not BLAKE3(masked Header80)" >&2; exit 1;
+}
+grep -Fq 'const std::uint32_t mix_nonce = load_le32(header.data() + 76);' "${ROOT_DIR}/native/src/crypto/pow.cpp" || {
+  echo "CPU HooHash nonce is not LE32 from Header80" >&2; exit 1;
+}
+grep -Fq 'const std::uint32_t mix_nonce = load_le32(header + 76);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA HooHash nonce is not LE32 from Header80" >&2; exit 1;
+}
+grep -Fq 'const auto pool_reference_hash' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
+  echo "Pool-reference regression test is missing" >&2; exit 1;
 }
 grep -Fq 'encode_u32_le_hex(job.nonce) == "00ffeedd"' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
   echo "Stratum submit nonce LE regression test is missing" >&2; exit 1;
@@ -92,7 +107,7 @@ ctest --test-dir "${BUILD_DIR}" --output-on-failure
 BUILD_ID="$("${BUILD_DIR}/pepepowminer" --version)"
 echo "BUILD_ID=${BUILD_ID}"
 [[ "${BUILD_ID}" == *"${VERSION}"* ]] || { echo "Binary version mismatch: ${BUILD_ID}" >&2; exit 1; }
-[[ "${BUILD_ID}" == *"PepePow Protocol Reference Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
+[[ "${BUILD_ID}" == *"PepePow Pool Reference Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
 
 mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
@@ -116,13 +131,14 @@ MINER_DIR="${PACKAGE_DIR}" source "${PACKAGE_DIR}/h-stats.sh"
 [[ "${stats}" == *'"ver":""'* ]] || { echo "h-stats must suppress duplicate HiveOS version suffix: ${stats}" >&2; exit 1; }
 [[ "${stats}" != *"${VERSION}"* ]] || { echo "h-stats must not duplicate package version in HiveOS UI: ${stats}" >&2; exit 1; }
 [[ "${stats}" == *'"hs":[0]'* ]] || { echo "h-stats must explicitly reset stale hashrate: ${stats}" >&2; exit 1; }
-if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt' "${PACKAGE_DIR}"; then
-  echo "Stale version or unsafe parent-directory path found in package" >&2
+if grep -R --line-number -E '0\.1\.4|/hive/miners/custom/pepepow-debug\.log|/hive/miners/custom/diagnostic-summary\.txt|Submit nonce rewrite' "${PACKAGE_DIR}"; then
+  echo "Stale version, unsafe path or obsolete rewrite text found in package" >&2
   exit 1
 fi
 
 for script in "${PACKAGE_DIR}"/*.sh; do bash -n "${script}"; done
 python3 -m py_compile "${PACKAGE_DIR}/stratum-replay-proxy.py"
+rm -rf "${PACKAGE_DIR}/__pycache__"
 "${PACKAGE_DIR}/pepepowminer" --help | grep -q -- '--diagnostic-log'
 "${PACKAGE_DIR}/forensic-audit.sh" "${PACKAGE_DIR}/build-forensic-audit.txt"
 grep -q "Expected package dir: ${PACKAGE_DIR}" "${PACKAGE_DIR}/build-forensic-audit.txt"
@@ -140,10 +156,14 @@ for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagno
     exit 1
   fi
 done
+if grep -Fq '__pycache__' "${ARCHIVE_LIST}"; then
+  echo "Python cache files must not be packaged" >&2
+  exit 1
+fi
 
 rm -f "${ARCHIVE_LIST}"
 SHA256="$(sha256sum "${ARCHIVE_PATH}" | awk '{print $1}')"
-printf '\nPASS: PepePow Protocol Reference Edition %s package completed\n' "${VERSION}"
+printf '\nPASS: PepePow Pool Reference Edition %s package completed\n' "${VERSION}"
 printf 'ARCHIVE=%s\n' "${ARCHIVE_PATH}"
 printf 'SHA256=%s\n' "${SHA256}"
 printf 'DOWNLOAD_COMMAND=cd %q && python3 -m http.server 8080 --bind 0.0.0.0\n' "${ROOT_DIR}/dist"
