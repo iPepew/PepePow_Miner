@@ -5,23 +5,29 @@ CUDA miner for PEPEPOW HooHash V110 with HiveOS integration.
 ## Current prerelease
 
 ```text
-v0.3.9-PR
+v0.4.0-PR
 ```
 
 The short `-PR` suffix keeps the custom miner name readable in the HiveOS mobile interface.
 
-## v0.3.9-PR highlights
+## v0.4.0-PR highlights
 
 - validated HooHash V110 consensus path;
 - live pool target derived from each job's `nBits` and Stratum difficulty;
 - BLAKE3 Header80 midstate optimization;
 - pool target comparison directly on the GPU;
 - persistent CUDA result allocation;
+- restored 524,288-nonce runtime batches;
+- automatic RTX 3080 benchmark selection across CUDA launch profiles;
+- benchmarked 64-thread, 128-thread and 128-thread/80-register profiles;
+- selected profile recorded in `BUILD_PROFILE`;
+- per-GPU HiveOS hashrate array;
+- matching temperature, fan and PCI bus arrays;
 - native rolling hashrate telemetry;
 - atomic `miner-status.env` state for HiveOS;
 - real miner PID tracking and uptime;
-- no miner-to-`tee` pipe and no SIGPIPE restart path;
-- compact color terminal interface;
+- proxy protocol traffic isolated from the visible miner console;
+- ASCII-safe colored terminal interface;
 - current-run accepted and rejected counters;
 - one-command forensic collection.
 
@@ -29,24 +35,46 @@ The short `-PR` suffix keeps the custom miner name readable in the HiveOS mobile
 
 ```text
 =========================================
-            🐸 PepeW Miner 🐸
+              PepeW Miner
 =========================================
 
-Version   : v0.3.9-PR
+Version   : v0.4.0-PR
 Algorithm : HooHash V110
-GPU       : NVIDIA CUDA
+GPU 0     : NVIDIA CUDA
 
-"PepeW — твоя монета. Твои правила."
+"PepeW - твоя монета. Твои правила."
 
 =========================================
 ```
+
+Runtime records use terminal-safe labels:
+
+```text
+[POOL] Connected
+[READY] Pool authorization complete
+[JOB] new work
+[MINING] GPU0 1.250 MH/s | A 25 | R 0 | Uptime 00:03:15
+[ACCEPTED] share accepted
+```
+
+## HiveOS telemetry
+
+`h-stats.sh` reports one entry per active mining device:
+
+- `hs` and `hs_units` for per-GPU speed;
+- `temp` for GPU temperature;
+- `fan` for fan percentage;
+- `bus_numbers` for stable mapping to the HiveOS GPU row;
+- total `khs`, uptime, accepted and rejected shares.
+
+The runtime status schema already separates `GPU0_HPS`, allowing later multi-GPU expansion without changing the HiveOS data format.
 
 ## HiveOS
 
 Pool URL:
 
 ```text
-stratum+tcp://pool.pepepow.net:39333
+stratum+tcp://stratum-eu.pepepow.foztor.net:13232
 ```
 
 Wallet template:
