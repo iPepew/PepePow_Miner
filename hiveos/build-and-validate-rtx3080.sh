@@ -135,8 +135,14 @@ grep -Fq 'constexpr std::uint64_t chunk_size = 262144;' "${ROOT_DIR}/native/src/
 }
 
 # Terminal UI, HiveOS telemetry and lifecycle guards.
-grep -Fq '🐸 PepeW Miner' "${ROOT_DIR}/native/src/app/main.cpp" || {
-  echo "PepeW terminal banner is missing" >&2; exit 1;
+# The banner title is intentionally split by ANSI color insertions in C++, so
+# validate the semantic title and frog glyph independently instead of requiring
+# one contiguous source-code literal.
+grep -Fq 'PepeW Miner' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "PepeW terminal title is missing" >&2; exit 1;
+}
+grep -Fq '🐸' "${ROOT_DIR}/native/src/app/main.cpp" || {
+  echo "PepeW terminal frog marker is missing" >&2; exit 1;
 }
 grep -Fq 'PepeW — твоя монета. Твои правила.' "${ROOT_DIR}/native/src/app/main.cpp" || {
   echo "PepeW slogan is missing" >&2; exit 1;
