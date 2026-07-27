@@ -1,5 +1,6 @@
 #include "pepepow/core/backend.hpp"
 #include "pepepow/core/header_builder.hpp"
+#include "pepepow/crypto/blake3.hpp"
 #include "pepepow/crypto/pow.hpp"
 #include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
@@ -8,6 +9,7 @@
 #include "pepepow/cuda/header80_backend.hpp"
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -73,7 +75,7 @@ private:
 void signal_handler(int) { if (active_client != nullptr) active_client->stop(); }
 
 std::string build_identity() {
-    return std::string("PepePow Protocol Reference Edition ") + PEPEPOW_VERSION +
+    return std::string("PepePow Pool Reference Edition ") + PEPEPOW_VERSION +
            " commit=" + PEPEPOW_GIT_COMMIT + " build=Release";
 }
 
@@ -110,6 +112,13 @@ std::string hex_of(const Container& value) {
     return stream.str();
 }
 
+std::uint32_t load_le32(const std::uint8_t* value) noexcept {
+    return static_cast<std::uint32_t>(value[0]) |
+           (static_cast<std::uint32_t>(value[1]) << 8U) |
+           (static_cast<std::uint32_t>(value[2]) << 16U) |
+           (static_cast<std::uint32_t>(value[3]) << 24U);
+}
+
 struct WorkItem { pepepow::stratum::Job stratum_job; std::string extranonce2; std::uint64_t generation{0}; };
 
 class MiningWorker {
@@ -143,7 +152,9 @@ public:
 
 private:
     void run() {
-        constexpr std::uint64_t chunk_size = 4096;
+        // Large enough to amortize CUDA launch/allocation overhead while keeping
+        // clean-job response latency well below one second on the validation GPU.
+        constexpr std::uint64_t chunk_size = 262144;
         while (!stopped_.load()) {
             WorkItem item;
             {
@@ -174,7 +185,11 @@ private:
                 if (diagnostic_) {
                     auto initial = mining_job;
                     initial.nonce = 0;
-                    log_.write("JOB_HEADER nonce=00000000 header80=" + hex_of(pepepow::build_header80(initial)) +
+                    const auto initial_header = pepepow::build_header80(initial);
+                    auto masked_header = initial_header;
+                    std::fill(masked_header.begin() + 76, masked_header.end(), 0U);
+                    log_.write("JOB_HEADER nonce=00000000 header80=" + hex_of(initial_header) +
+                               " matrix_seed_blake3=" + hex_of(pepepow::crypto::blake3_hash(masked_header)) +
                                " prevhash_wire=" + item.stratum_job.prevhash +
                                " coinb1=" + item.stratum_job.coinb1 +
                                " coinb2=" + item.stratum_job.coinb2 +
@@ -191,6 +206,7 @@ private:
                         const auto header = pepepow::build_header80(validation_job);
                         const std::string header_hex = hex_of(header);
                         const std::string nonce_header_be = header_hex.substr(76U * 2U, 8U);
+                        const std::uint32_t mix_nonce = load_le32(header.data() + 76);
                         const auto cpu_hash = pepepow::crypto::calculate_header80_pow(header);
                         const bool gpu_cpu_match = cpu_hash == candidate->hash;
                         const bool target_ok = pepepow::mining::hash_meets_target_be(cpu_hash, target);
@@ -199,6 +215,7 @@ private:
                         log_.write("CANDIDATE job=" + item.stratum_job.job_id +
                                    " nonce_u32=" + std::to_string(candidate->nonce) +
                                    " nonce_header_be=" + nonce_header_be +
+                                   " nonce_mix_le_u32=" + std::to_string(mix_nonce) +
                                    " nonce_submit_le=" + nonce_wire +
                                    " xnonce2=" + item.extranonce2 +
                                    " gpu_hash=" + hex_of(candidate->hash) +
@@ -213,6 +230,7 @@ private:
                                        " target_be=" + hex_of(target) +
                                        " ntime=" + item.stratum_job.ntime +
                                        " nonce_header_be=" + nonce_header_be +
+                                       " nonce_mix_le_u32=" + std::to_string(mix_nonce) +
                                        " nonce_submit_le=" + nonce_wire +
                                        " xnonce2=" + item.extranonce2);
                         }
@@ -256,7 +274,7 @@ int main(int argc, char** argv) {
         bool list_gpu = false;
         bool diagnostic = std::getenv("PEPEPOW_DIAGNOSTIC") != nullptr;
         std::string diagnostic_log = std::getenv("PEPEPOW_DIAGNOSTIC_LOG") ?
-            std::getenv("PEPEPOW_DIAGNOSTIC_LOG") : "/tmp/pepepow-protocol-reference.log";
+            std::getenv("PEPEPOW_DIAGNOSTIC_LOG") : "/tmp/pepepow-pool-reference.log";
 
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
@@ -294,14 +312,14 @@ int main(int argc, char** argv) {
 
         DiagnosticLog log(diagnostic_log);
         log.write("BUILD_ID " + build_identity() + " diagnostic=" + std::to_string(diagnostic) + " log=" + log.path());
-        log.write("PROTOCOL_REFERENCE hoohash=V110 header_nonce=BE32 submit_nonce=LE_HEX proxy=passive");
+        log.write("POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX proxy=passive");
 
         pepepow::stratum::Config config;
         config.primary = pepepow::stratum::parse_endpoint(pool);
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = std::string("PepePowProtocolReference/") + PEPEPOW_VERSION;
+        config.agent = std::string("PepePowPoolReference/") + PEPEPOW_VERSION;
 
         pepepow::stratum::Client client(std::move(config));
         client.set_log_handler([&log](const std::string& line) { log.write("STRATUM " + line); });
