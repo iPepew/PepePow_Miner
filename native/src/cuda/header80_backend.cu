@@ -162,8 +162,10 @@ __device__ __forceinline__ double nonlinear(double x) {
     const double one = one_base - floor(one_base);
     const double two = two_base - floor(two_base);
     double y;
-    if (two < 0.25) y = x + 1.0 + two;
-    else if (two < 0.50) y = x - 1.0 - two;
+    // Consensus-critical parenthesization. Do not rewrite these as
+    // (x + 1.0) + two or (x - 1.0) - two.
+    if (two < 0.25) y = x + (1.0 + two);
+    else if (two < 0.50) y = x - (1.0 + two);
     else if (two < 0.75) y = x * (1.0 + two);
     else y = x / (1.0 + two);
     if (one < 0.33) {
