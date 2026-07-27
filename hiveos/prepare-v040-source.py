@@ -3,7 +3,8 @@
 
 The script is intentionally idempotent. It converts the terminal UI to
 Hive-shell-safe text, restores the higher-throughput runtime batch, publishes
-per-device status fields, and makes the CUDA launch width a build-time profile.
+per-device status fields, makes process-ID reporting portable, and makes the
+CUDA launch width a build-time profile.
 """
 
 from __future__ import annotations
@@ -25,6 +26,27 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 def prepare_main() -> None:
     text = MAIN.read_text(encoding="utf-8")
+
+    text = replace_once(
+        text,
+        '#include <unistd.h>',
+        '#ifdef _WIN32\n#include <process.h>\n#else\n#include <unistd.h>\n#endif',
+        "portable process headers",
+    )
+    text = replace_once(
+        text,
+        'pepepow::stratum::Client* active_client = nullptr;\n\nconstexpr std::string_view kReset',
+        'pepepow::stratum::Client* active_client = nullptr;\n\n'
+        'unsigned long long current_process_id() noexcept {\n'
+        '#ifdef _WIN32\n'
+        '    return static_cast<unsigned long long>(_getpid());\n'
+        '#else\n'
+        '    return static_cast<unsigned long long>(::getpid());\n'
+        '#endif\n'
+        '}\n\n'
+        'constexpr std::string_view kReset',
+        "portable process-id helper",
+    )
 
     text = replace_once(
         text,
@@ -84,6 +106,12 @@ def prepare_main() -> None:
         '                   << "ACCEPTED=" << stats.accepted << \'\\n\'',
         "per-device runtime status",
     )
+    text = replace_once(
+        text,
+        '                   << "PID=" << static_cast<unsigned long long>(::getpid()) << \'\\n\'',
+        '                   << "PID=" << current_process_id() << \'\\n\'',
+        "portable process-id use",
+    )
 
     text = replace_once(
         text,
@@ -108,7 +136,13 @@ def prepare_main() -> None:
     present = [value for value in forbidden if value in text]
     if present:
         raise SystemExit(f"unsupported terminal glyphs remain: {present}")
-    for required in ("GPU_COUNT=1", "GPU0_HPS=", "chunk_size = 524288", "[MINING]"):
+    for required in (
+        "GPU_COUNT=1",
+        "GPU0_HPS=",
+        "chunk_size = 524288",
+        "[MINING]",
+        "current_process_id()",
+    ):
         if required not in text:
             raise SystemExit(f"release source preparation missing marker: {required}")
 
@@ -129,11 +163,8 @@ def prepare_cuda() -> None:
         '    constexpr unsigned int threads = static_cast<unsigned int>(PEPEPOW_CUDA_THREADS);',
         "CUDA launch-width use",
     )
-    for required in ("PEPEPOW_CUDA_THREADS", "--fmad=false"):
-        if required == "--fmad=false":
-            continue
-        if required not in text:
-            raise SystemExit(f"CUDA release source missing marker: {required}")
+    if "PEPEPOW_CUDA_THREADS" not in text:
+        raise SystemExit("CUDA release source missing launch-width marker")
     CUDA.write_text(text, encoding="utf-8")
 
 
