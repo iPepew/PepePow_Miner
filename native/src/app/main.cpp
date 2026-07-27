@@ -46,6 +46,12 @@ std::string now_iso() {
     return out.str();
 }
 
+std::string fixed_number(double value, int precision) {
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(precision) << value;
+    return out.str();
+}
+
 class DiagnosticLog {
 public:
     explicit DiagnosticLog(std::string path) : path_(std::move(path)) {
@@ -75,7 +81,7 @@ private:
 void signal_handler(int) { if (active_client != nullptr) active_client->stop(); }
 
 std::string build_identity() {
-    return std::string("PepePow Pool Reference Edition ") + PEPEPOW_VERSION +
+    return std::string("PepePow Performance Edition ") + PEPEPOW_VERSION +
            " commit=" + PEPEPOW_GIT_COMMIT + " build=Release";
 }
 
@@ -152,9 +158,14 @@ public:
 
 private:
     void run() {
-        // Large enough to amortize CUDA launch/allocation overhead while keeping
-        // clean-job response latency well below one second on the validation GPU.
-        constexpr std::uint64_t chunk_size = 262144;
+        // GPU target filtering removes the large device-to-host hash copy. A
+        // 524K batch keeps the GPU fed while retaining sub-second stale-job
+        // response on the validation card.
+        constexpr std::uint64_t chunk_size = 524288;
+        constexpr double rate_interval_seconds = 3.0;
+        auto rate_window_start = std::chrono::steady_clock::now();
+        std::uint64_t rate_hashes = 0;
+
         while (!stopped_.load()) {
             WorkItem item;
             {
@@ -200,6 +211,20 @@ private:
                     const std::uint64_t remaining = 0x100000000ULL - nonce;
                     const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
                     const auto candidate = backend_.search(mining_job, pepepow::SearchRange{nonce, count}, target);
+
+                    rate_hashes += count;
+                    const auto rate_now = std::chrono::steady_clock::now();
+                    const double rate_seconds = std::chrono::duration<double>(rate_now - rate_window_start).count();
+                    if (rate_seconds >= rate_interval_seconds) {
+                        const double hashes_per_second = static_cast<double>(rate_hashes) / rate_seconds;
+                        log_.write("HASHRATE hps=" + std::to_string(static_cast<std::uint64_t>(hashes_per_second)) +
+                                   " khs=" + fixed_number(hashes_per_second / 1000.0, 2) +
+                                   " mhs=" + fixed_number(hashes_per_second / 1000000.0, 3) +
+                                   " window_s=" + fixed_number(rate_seconds, 2));
+                        rate_hashes = 0;
+                        rate_window_start = rate_now;
+                    }
+
                     if (candidate.has_value()) {
                         auto validation_job = mining_job;
                         validation_job.nonce = candidate->nonce;
@@ -274,7 +299,7 @@ int main(int argc, char** argv) {
         bool list_gpu = false;
         bool diagnostic = std::getenv("PEPEPOW_DIAGNOSTIC") != nullptr;
         std::string diagnostic_log = std::getenv("PEPEPOW_DIAGNOSTIC_LOG") ?
-            std::getenv("PEPEPOW_DIAGNOSTIC_LOG") : "/tmp/pepepow-pool-reference.log";
+            std::getenv("PEPEPOW_DIAGNOSTIC_LOG") : "/tmp/pepepow-performance.log";
 
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
@@ -312,14 +337,14 @@ int main(int argc, char** argv) {
 
         DiagnosticLog log(diagnostic_log);
         log.write("BUILD_ID " + build_identity() + " diagnostic=" + std::to_string(diagnostic) + " log=" + log.path());
-        log.write("POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX proxy=passive");
+        log.write("POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX proxy=passive gpu_target_filter=1 blake3_midstate=1");
 
         pepepow::stratum::Config config;
         config.primary = pepepow::stratum::parse_endpoint(pool);
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = std::string("PepePowPoolReference/") + PEPEPOW_VERSION;
+        config.agent = std::string("PepePow/") + PEPEPOW_VERSION;
 
         pepepow::stratum::Client client(std::move(config));
         client.set_log_handler([&log](const std::string& line) { log.write("STRATUM " + line); });
