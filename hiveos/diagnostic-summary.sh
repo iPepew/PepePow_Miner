@@ -14,6 +14,9 @@ out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
   echo "== Build identity =="
   "${miner_dir}/pepepowminer" --version 2>&1 || true
   echo
+  echo "== CUDA autotune profile =="
+  cat "${miner_dir}/BUILD_PROFILE" 2>&1 || true
+  echo
   echo "== Exit status =="
   cat "${miner_dir}/miner-exit-status.txt" 2>&1 || true
   echo
@@ -25,6 +28,7 @@ out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
   echo "== HiveOS current stats =="
   MINER_DIR="${miner_dir}" source "${miner_dir}/h-stats.sh" 2>/dev/null || true
   printf '%s\n' "${stats:-unavailable}"
+  printf 'total_khs=%s\n' "${khs:-0}"
   echo
   echo "== Native hashrate samples =="
   grep ' HASHRATE hps=' "${diagnostic_log}" 2>/dev/null | tail -n 120 || true
@@ -41,7 +45,7 @@ out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
   grep -E 'target_source=nbits_div_difficulty|target_be=' "${diagnostic_log}" 2>/dev/null | tail -n 200 || true
   echo
   echo "== GPU =="
-  nvidia-smi --query-gpu=index,name,uuid,driver_version,compute_cap,pci.bus_id,utilization.gpu,clocks.sm,clocks.mem,power.draw,temperature.gpu --format=csv,noheader 2>&1 || true
+  nvidia-smi --query-gpu=index,name,uuid,driver_version,compute_cap,pci.bus_id,utilization.gpu,clocks.sm,clocks.mem,power.draw,power.limit,temperature.gpu,fan.speed --format=csv,noheader 2>&1 || true
   echo
   echo "== HiveOS package =="
   cat "${miner_dir}/h-manifest.conf" 2>&1 || true
@@ -58,8 +62,11 @@ out_file="${2:-${miner_dir}/diagnostic-summary.txt}"
   echo "== Miner console tail =="
   tail -n 1000 "${miner_dir}/miner-console.log" 2>&1 || true
   echo
-  echo "== Proxy tail =="
+  echo "== Proxy protocol tail =="
   tail -n 500 "${miner_dir}/stratum-proxy.log" 2>&1 || true
+  echo
+  echo "== Proxy console tail =="
+  tail -n 300 "${miner_dir}/proxy-console.log" 2>&1 || true
   echo
   echo "== Key runtime records =="
   grep -E 'BUILD_ID|POOL_REFERENCE|JOB |JOB_HEADER|HASHRATE|CANDIDATE|SHARE_TRACE|SUBMIT|STRATUM|Share accepted|Share rejected|WORKER_ERROR|Fatal|FINAL_STATS' "${diagnostic_log}" 2>/dev/null | tail -n 1500 || true
