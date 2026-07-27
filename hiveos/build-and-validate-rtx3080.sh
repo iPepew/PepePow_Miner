@@ -17,7 +17,7 @@ JOBS="${JOBS:-$(nproc)}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
 
 command -v nvidia-smi >/dev/null 2>&1 || { echo "nvidia-smi is required" >&2; exit 1; }
-command -v python3 >/dev/null 2>&1 || { echo "python3 is required for the forensic Stratum proxy" >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required for the passive Stratum proxy" >&2; exit 1; }
 
 echo "== NVIDIA device =="
 nvidia-smi --query-gpu=name,compute_cap,driver_version,memory.total --format=csv,noheader
@@ -67,6 +67,21 @@ configure_and_build_docker() {
     '
 }
 
+# Static protocol guards fail before an expensive CUDA build if the invariant is lost.
+grep -Fq 'write_be32(header, 76, job.nonce);' "${ROOT_DIR}/native/src/core/header_builder.cpp" || {
+  echo "CPU Header80 nonce is not BE32" >&2; exit 1;
+}
+grep -Fq 'store_be32(header + 76, nonce);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || {
+  echo "CUDA Header80 nonce is not BE32" >&2; exit 1;
+}
+grep -Fq 'encode_u32_le_hex(job.nonce) == "00ffeedd"' "${ROOT_DIR}/native/tests/core_tests.cpp" || {
+  echo "Stratum submit nonce LE regression test is missing" >&2; exit 1;
+}
+if grep -Fq -- '--rewrite-submit-nonce' "${ROOT_DIR}/hiveos/h-run.sh"; then
+  echo "h-run.sh must keep the Stratum proxy passive" >&2
+  exit 1
+fi
+
 rm -rf "${BUILD_DIR}" "${PACKAGE_DIR}" "${ARCHIVE_PATH}" "${ARCHIVE_LIST}"
 if NVCC_PATH="$(find_nvcc)"; then configure_and_build_native "${NVCC_PATH}"; else configure_and_build_docker; fi
 
@@ -77,11 +92,11 @@ ctest --test-dir "${BUILD_DIR}" --output-on-failure
 BUILD_ID="$("${BUILD_DIR}/pepepowminer" --version)"
 echo "BUILD_ID=${BUILD_ID}"
 [[ "${BUILD_ID}" == *"${VERSION}"* ]] || { echo "Binary version mismatch: ${BUILD_ID}" >&2; exit 1; }
-[[ "${BUILD_ID}" == *"PepePow Debug Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
+[[ "${BUILD_ID}" == *"PepePow Protocol Reference Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
 
 mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
-for script in h-run.sh h-config.sh h-stats.sh diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh; do
+for script in h-run.sh h-config.sh h-stats.sh diagnostic-summary.sh forensic-audit.sh collect-forensics.sh collect-and-serve.sh capture-stratum.sh; do
   install -m 0755 "${ROOT_DIR}/hiveos/${script}" "${PACKAGE_DIR}/${script}"
 done
 install -m 0755 "${ROOT_DIR}/hiveos/stratum-replay-proxy.py" "${PACKAGE_DIR}/stratum-replay-proxy.py"
@@ -108,7 +123,6 @@ fi
 
 for script in "${PACKAGE_DIR}"/*.sh; do bash -n "${script}"; done
 python3 -m py_compile "${PACKAGE_DIR}/stratum-replay-proxy.py"
-"${PACKAGE_DIR}/stratum-replay-proxy.py" --help | grep -q -- '--rewrite-submit-nonce'
 "${PACKAGE_DIR}/pepepowminer" --help | grep -q -- '--diagnostic-log'
 "${PACKAGE_DIR}/forensic-audit.sh" "${PACKAGE_DIR}/build-forensic-audit.txt"
 grep -q "Expected package dir: ${PACKAGE_DIR}" "${PACKAGE_DIR}/build-forensic-audit.txt"
@@ -120,7 +134,7 @@ tar -tzf "${ARCHIVE_PATH}" > "${ARCHIVE_LIST}"
 
 echo "== HiveOS archive contents =="
 cat "${ARCHIVE_LIST}"
-for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh forensic-audit.sh collect-forensics.sh capture-stratum.sh stratum-replay-proxy.py VERSION; do
+for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagnostic-summary.sh forensic-audit.sh collect-forensics.sh collect-and-serve.sh capture-stratum.sh stratum-replay-proxy.py VERSION; do
   if ! grep -Fxq "${PACKAGE_NAME}/${entry}" "${ARCHIVE_LIST}"; then
     echo "Missing ${entry}" >&2
     exit 1
@@ -128,5 +142,8 @@ for entry in pepepowminer h-run.sh h-config.sh h-stats.sh h-manifest.conf diagno
 done
 
 rm -f "${ARCHIVE_LIST}"
-sha256sum "${ARCHIVE_PATH}"
-echo "PASS: PepePow Forensic Debug Edition ${VERSION} package completed"
+SHA256="$(sha256sum "${ARCHIVE_PATH}" | awk '{print $1}')"
+printf '\nPASS: PepePow Protocol Reference Edition %s package completed\n' "${VERSION}"
+printf 'ARCHIVE=%s\n' "${ARCHIVE_PATH}"
+printf 'SHA256=%s\n' "${SHA256}"
+printf 'DOWNLOAD_COMMAND=cd %q && python3 -m http.server 8080 --bind 0.0.0.0\n' "${ROOT_DIR}/dist"
