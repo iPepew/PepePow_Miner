@@ -4,6 +4,10 @@ set -euo pipefail
 miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${miner_dir}"
 
+console_log="${miner_dir}/miner-console.log"
+runtime_log="${miner_dir}/runtime-diagnostics.txt"
+exit_file="${miner_dir}/miner-exit-status.txt"
+
 if [[ ! -x ./pepepowminer ]]; then
   echo "pepepowminer binary is missing or not executable" >&2
   exit 1
@@ -33,6 +37,26 @@ fi
 : "${PEPEPOW_PROXY_LOG:?missing PEPEPOW_PROXY_LOG in config.txt}"
 : "${PEPEPOW_PROXY_PORT:?missing PEPEPOW_PROXY_PORT in config.txt}"
 
+{
+  echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "PWD=$(pwd)"
+  echo "PACKAGE_DIR=${miner_dir}"
+  echo "== VERSION =="
+  ./pepepowminer --version 2>&1 || true
+  echo "== FILE =="
+  file ./pepepowminer 2>&1 || true
+  echo "== LDD =="
+  ldd ./pepepowminer 2>&1 || true
+  echo "== READELF DYNAMIC =="
+  readelf -d ./pepepowminer 2>&1 || true
+  echo "== LOADER CACHE =="
+  ldconfig -p 2>&1 || true
+  echo "== GPU =="
+  nvidia-smi -q 2>&1 || true
+  echo "== ENVIRONMENT =="
+  env | sort
+} > "${runtime_log}"
+
 rm -f "${miner_dir}/proxy.pid"
 ./stratum-replay-proxy.py \
   --upstream "${PEPEPOW_UPSTREAM}" \
@@ -52,11 +76,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Fail early if the proxy does not stay alive.
 sleep 1
 if ! kill -0 "${proxy_pid}" 2>/dev/null; then
-  echo "Forensic Stratum proxy failed to start; see ${PEPEPOW_PROXY_LOG}" >&2
-  exit 1
+  echo "Forensic Stratum proxy failed to start; see ${PEPEPOW_PROXY_LOG}" | tee -a "${console_log}" >&2
+  echo "exit_code=70 utc=$(date -u +%Y-%m-%dT%H:%M:%SZ) reason=proxy_start_failure" > "${exit_file}"
+  exit 70
 fi
 
 {
@@ -64,15 +88,30 @@ fi
   echo "Proxy PID: ${proxy_pid}"
   echo "Proxy upstream: ${PEPEPOW_UPSTREAM}"
   echo "Proxy log: ${PEPEPOW_PROXY_LOG}"
+  echo "Console log: ${console_log}"
+  echo "Runtime diagnostics: ${runtime_log}"
   printf './pepepowminer'
   printf ' %q' "${PEPEPOW_ARGS[@]}"
   echo
 } > "${miner_dir}/run.txt"
 
+{
+  echo "===== START $(date -u +%Y-%m-%dT%H:%M:%SZ) ====="
+  cat "${miner_dir}/run.txt"
+} >> "${console_log}"
+
 set +e
-./pepepowminer "${PEPEPOW_ARGS[@]}"
-status=$?
+set +o pipefail
+./pepepowminer "${PEPEPOW_ARGS[@]}" 2>&1 | tee -a "${console_log}"
+status=${PIPESTATUS[0]}
+set -o pipefail
 set -e
+
+{
+  echo "===== EXIT $(date -u +%Y-%m-%dT%H:%M:%SZ) code=${status} ====="
+} | tee -a "${console_log}"
+printf 'exit_code=%s utc=%s\n' "${status}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${exit_file}"
+
 cleanup
 trap - EXIT INT TERM
 exit "${status}"
