@@ -35,15 +35,21 @@ fi
   printf 'total_khs=%s\n' "${khs:-0}"
 } > "${work}/hiveos-current-stats.json"
 
+read_pid_file() {
+  local file="$1"
+  [[ -r "${file}" ]] || return 0
+  tr -dc '0-9' < "${file}" 2>/dev/null || true
+}
+
 {
   echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "miner.pid=$(cat "${self_dir}/miner.pid" 2>/dev/null || true)"
-  echo "proxy.pid=$(cat "${self_dir}/proxy.pid" 2>/dev/null || true)"
+  echo "miner.pid=$(read_pid_file "${self_dir}/miner.pid")"
+  echo "proxy.pid=$(read_pid_file "${self_dir}/proxy.pid")"
   echo "status:"
   cat "${self_dir}/miner-status.env" 2>/dev/null || true
   echo "processes:"
   for pid_file in miner.pid proxy.pid; do
-    pid="$(tr -dc '0-9' < "${self_dir}/${pid_file}" 2>/dev/null || true)"
+    pid="$(read_pid_file "${self_dir}/${pid_file}")"
     if [[ "${pid}" =~ ^[1-9][0-9]*$ ]]; then
       ps -o pid,ppid,stat,etimes,%cpu,%mem,cmd -p "${pid}" 2>&1 || true
       echo "exe=$(readlink -f "/proc/${pid}/exe" 2>/dev/null || true)"
