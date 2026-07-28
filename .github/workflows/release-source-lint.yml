@@ -12,17 +12,25 @@ jobs:
       - name: Check scripts
         run: |
           set -euo pipefail
-          python3 -m py_compile hiveos/prepare-v040-source.py hiveos/stratum-replay-proxy.py
+          python3 -m py_compile \
+            hiveos/prepare-v040-source.py \
+            hiveos/prepare-v050-source.py \
+            hiveos/stratum-replay-proxy.py
           for script in hiveos/*.sh; do bash -n "$script"; done
-      - name: Apply release source profile
+      - name: Apply v0.5.0 release source profile
         run: |
           set -euo pipefail
-          python3 hiveos/prepare-v040-source.py
+          python3 hiveos/prepare-v050-source.py
           ! grep -P '[\x{1F300}-\x{1FAFF}]|•' native/src/app/main.cpp
+          grep -F 'https://t.me/pepepow_ru' native/src/app/main.cpp
           grep -F 'GPU_COUNT=1' native/src/app/main.cpp
           grep -F 'GPU0_HPS=' native/src/app/main.cpp
           grep -F 'chunk_size = 524288' native/src/app/main.cpp
-          grep -F 'PEPEPOW_CUDA_THREADS' native/src/cuda/header80_backend.cu
+          grep -F 'header80_backend_v050.cu' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_SCALED_MATRIX' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_MIN_BLOCKS' native/CMakeLists.txt
+          grep -F 'device_matrix_' native/include/pepepow/cuda/header80_backend.hpp
+          grep -F 'PASS: 512 word-pipeline CPU/CUDA samples match' native/tests/cuda_header80_validation.cpp
       - name: Configure CPU reference build
         run: |
           set -euo pipefail
