@@ -15,6 +15,16 @@ JOBS="${JOBS:-$(nproc)}"
 CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
 DEPS_DIR="${ROOT_DIR}/.deps-v040"
 
+if [[ "${VERSION}" == "0.4.1-PR" ]]; then
+  PREPARE_SCRIPT="${ROOT_DIR}/hiveos/prepare-v041-source.py"
+  EXPECTED_EDITION="PepeW Matrix Cache Edition"
+  RELEASE_EDITION="PepeW Matrix Cache Autotune Edition"
+else
+  PREPARE_SCRIPT="${ROOT_DIR}/hiveos/prepare-v040-source.py"
+  EXPECTED_EDITION="PepeW Performance & Stability Edition"
+  RELEASE_EDITION="PepeW RTX 3080 Autotune Edition"
+fi
+
 command -v nvidia-smi >/dev/null 2>&1 || { echo "nvidia-smi is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
@@ -24,8 +34,8 @@ if ! nvidia-smi --query-gpu=compute_cap --format=csv,noheader | grep -qx '8.6'; 
   echo "Warning: validation target is RTX 3080 / compute capability 8.6" >&2
 fi
 
-chmod +x "${ROOT_DIR}/hiveos/prepare-v040-source.py"
-python3 "${ROOT_DIR}/hiveos/prepare-v040-source.py"
+chmod +x "${PREPARE_SCRIPT}"
+python3 "${PREPARE_SCRIPT}"
 
 # Consensus and release-profile guards run before the expensive builds.
 grep -Fq 'write_be32(header, 76, job.nonce);' "${ROOT_DIR}/native/src/core/header_builder.cpp" || { echo "Header80 nonce bytes are not BE32" >&2; exit 1; }
@@ -49,6 +59,14 @@ grep -Fq 'bus_numbers' "${ROOT_DIR}/hiveos/h-stats.sh" || { echo "HiveOS PCI bus
 grep -Fq '"temp":%s' "${ROOT_DIR}/hiveos/h-stats.sh" || { echo "HiveOS temperature array is missing" >&2; exit 1; }
 grep -Fq '"fan":%s' "${ROOT_DIR}/hiveos/h-stats.sh" || { echo "HiveOS fan array is missing" >&2; exit 1; }
 grep -Fq 'proxy-console.log' "${ROOT_DIR}/hiveos/h-run.sh" || { echo "Proxy console isolation is missing" >&2; exit 1; }
+
+if [[ "${VERSION}" == "0.4.1-PR" ]]; then
+  grep -Fq 'PEPEPOW_CUDA_CHEAP_LUT' "${ROOT_DIR}/native/CMakeLists.txt" || { echo "Matrix-cache CMake option is missing" >&2; exit 1; }
+  grep -Fq 'device_cheap_table_' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "Persistent matrix-cache buffer is missing" >&2; exit 1; }
+  grep -Fq 'PASS: 256 deterministic CPU/CUDA samples match' "${ROOT_DIR}/native/tests/cuda_header80_validation.cpp" || { echo "Deterministic CUDA validation gate is missing" >&2; exit 1; }
+  grep -Fq 'cheap_matrix_lut=autotune' "${ROOT_DIR}/native/src/app/main.cpp" || { echo "Matrix-cache telemetry marker is missing" >&2; exit 1; }
+fi
+
 if grep -Pq '[\x{1F300}-\x{1FAFF}]|•' "${ROOT_DIR}/native/src/app/main.cpp"; then
   echo "Unsupported terminal emoji or bullet remains in main.cpp" >&2
   exit 1
@@ -169,7 +187,7 @@ printf 'AUTOTUNE_SELECTED profile=%s hps=%s build=%s\n' "${best_profile}" "${bes
 BUILD_ID="$("${SELECTED_BUILD_DIR}/pepepowminer" --version)"
 echo "BUILD_ID=${BUILD_ID}"
 [[ "${BUILD_ID}" == *"${VERSION}"* ]] || { echo "Binary version mismatch: ${BUILD_ID}" >&2; exit 1; }
-[[ "${BUILD_ID}" == *"PepeW Performance & Stability Edition"* ]] || { echo "Wrong binary edition: ${BUILD_ID}" >&2; exit 1; }
+[[ "${BUILD_ID}" == *"${EXPECTED_EDITION}"* ]] || { echo "Wrong binary edition: expected=${EXPECTED_EDITION} actual=${BUILD_ID}" >&2; exit 1; }
 
 mkdir -p "${PACKAGE_DIR}"
 install -m 0755 "${SELECTED_BUILD_DIR}/pepepowminer" "${PACKAGE_DIR}/pepepowminer"
@@ -183,6 +201,7 @@ install -m 0644 "${ROOT_DIR}/VERSION" "${PACKAGE_DIR}/VERSION"
 {
   echo "selected_profile=${best_profile}"
   echo "selected_hps=${best_hps}"
+  echo "edition=${EXPECTED_EDITION}"
   for profile in "${profiles[@]}"; do
     echo "${profile}_hps=$(cat "${PROFILE_ROOT}/${profile}/profile.hps")"
   done
@@ -228,7 +247,7 @@ fi
 
 rm -f "${ARCHIVE_LIST}"
 SHA256="$(sha256sum "${ARCHIVE_PATH}" | awk '{print $1}')"
-printf '\nPASS: PepeW RTX 3080 Autotune Edition %s package completed\n' "${VERSION}"
+printf '\nPASS: %s %s package completed\n' "${RELEASE_EDITION}" "${VERSION}"
 printf 'AUTOTUNE_PROFILE=%s\n' "${best_profile}"
 printf 'AUTOTUNE_HPS=%s\n' "${best_hps}"
 printf 'ARCHIVE=%s\n' "${ARCHIVE_PATH}"
