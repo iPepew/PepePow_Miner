@@ -55,10 +55,12 @@ rm -f "${status_file}" "${miner_pid_file}" "${proxy_pid_file}" "${exit_file}"
   echo "PWD=$(pwd)"
   echo "PACKAGE_DIR=${miner_dir}"
   echo "PROTOCOL=HooHashV110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY proxy=passive"
-  echo "OPTIMIZATION=BLAKE3_MIDSTATE GPU_TARGET_FILTER PERSISTENT_RESULT LIVE_HASHRATE FULL_BATCH AUTOTUNED_CUDA"
+  echo "OPTIMIZATION=BLAKE3_MIDSTATE GPU_TARGET_FILTER PERSISTENT_RESULT LIVE_HASHRATE SPLIT_PIPELINE FAST_FRACTION PREFER_L1 AUTOTUNED_CUDA"
   echo "LIFECYCLE=DIRECT_FILE_OUTPUT PID_TRACKING GRACEFUL_SIGNAL_FORWARDING NO_TEE_PIPE"
   echo "== VERSION =="
   ./pepepowminer --version 2>&1 || true
+  echo "== BUILD PROFILE =="
+  cat ./BUILD_PROFILE 2>&1 || true
   echo "== FILE =="
   if command -v file >/dev/null 2>&1; then file ./pepepowminer 2>&1 || true; else echo "file utility unavailable"; fi
   echo "== LDD =="
@@ -126,7 +128,7 @@ fi
   echo "Proxy protocol log: ${PEPEPOW_PROXY_LOG}"
   echo "Proxy console log: ${proxy_console_log}"
   echo "Protocol: network nBits target divided by Stratum difficulty"
-  echo "Optimizations: BLAKE3 midstate; GPU target filter; persistent result; 524K batch; CUDA profile autotune"
+  echo "Optimizations: split BLAKE3/HooHash pipeline; exact fast fraction; PreferL1; persistent work buffer; 348160 batch; RTX 3080 autotune"
   echo "HiveOS stats: per-GPU hashrate, temperature, fan and PCI bus"
   echo "Lifecycle: direct log output; no miner-to-tee pipe; graceful signal forwarding"
   echo "Console log: ${console_log}"
