@@ -7,7 +7,10 @@ version="unknown"
 [[ -r "${self_dir}/VERSION" ]] && version="$(head -n1 "${self_dir}/VERSION" | tr -d '\r\n')"
 log_file="${self_dir}/pepepow-debug.log"
 
-pid="$(tr -dc '0-9' < "${self_dir}/miner.pid" 2>/dev/null || true)"
+pid=""
+if [[ -r "${self_dir}/miner.pid" ]]; then
+  pid="$(tr -dc '0-9' < "${self_dir}/miner.pid" 2>/dev/null || true)"
+fi
 if [[ ! "${pid}" =~ ^[1-9][0-9]*$ ]] || ! kill -0 "${pid}" 2>/dev/null; then
   pid=""
 fi
@@ -57,7 +60,8 @@ fi
   echo
 
   echo "== Optimization markers =="
-  grep -E 'OPTIMIZATION=|Optimizations:' "${self_dir}/runtime-diagnostics.txt" "${self_dir}/run.txt" 2>/dev/null || true
+  grep -E 'OPTIMIZATION=|Optimizations:|selected_profile=|selected_hps=|uplift_pct=' \
+    "${self_dir}/runtime-diagnostics.txt" "${self_dir}/run.txt" "${self_dir}/BUILD_PROFILE" 2>/dev/null || true
   echo
 
   echo "== Path contamination scan =="
