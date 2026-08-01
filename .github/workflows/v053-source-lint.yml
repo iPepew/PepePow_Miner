@@ -1,0 +1,39 @@
+name: v0.5.3 source lint
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile hiveos/prepare-v053-source.py hiveos/fix-v053-generator.py
+          bash -n hiveos/build-v053.sh
+          bash -n hiveos/build-v053-bitfraction.sh
+          bash -n tools/collect-profiler-pack-v4.sh
+          bash -n tools/collect-v053-profiler.sh
+      - name: Apply v0.5.3 source profile
+        run: |
+          set -euo pipefail
+          python3 hiveos/fix-v053-generator.py
+          python3 hiveos/prepare-v053-source.py
+          grep -F 'PepeW Bit Fraction Edition' native/src/app/main.cpp
+          grep -F 'header80_backend_v053.cu' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_BIT_SW_FRACTION' native/CMakeLists.txt
+          grep -F 'positive_fraction_div1024_bits' native/src/cuda/header80_backend_v053.cu
+          grep -F 'positive_fraction_bits(value / 1024.0)' native/src/cuda/header80_backend_v053.cu
+          grep -F 'doubled_one' native/src/cuda/header80_backend_v053.cu
+          grep -F 'nibble_to_double' native/src/cuda/header80_backend_v053.cu
+          ! grep -F 'if (value == 0.0) return;' native/src/cuda/header80_backend_v053.cu
+          grep -F 'PASS: 8192 bit-fraction CPU/CUDA samples match' native/tests/cuda_header80_validation.cpp
+      - name: Configure CPU reference build
+        run: |
+          set -euo pipefail
+          cmake -S native -B build-lint -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON
+          cmake --build build-lint --parallel 2
+          ctest --test-dir build-lint --output-on-failure
