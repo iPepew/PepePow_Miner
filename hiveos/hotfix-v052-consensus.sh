@@ -4,6 +4,29 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+python3 - <<'PY'
+from pathlib import Path
+
+root = Path.cwd()
+prepare_path = root / "hiveos/prepare-v052-source.py"
+cuda_path = root / "native/src/cuda/header80_backend_v052.cu"
+builder_path = root / "hiveos/build-v052-exact-conversions.sh"
+
+# The first hotfix removed the unsafe CUDA marker, but the source preparer still
+# required it during its idempotent validation pass. Remove that stale
+# requirement before running the preparer again.
+prepare = prepare_path.read_text(encoding="utf-8")
+prepare = prepare.replace(
+    '        "if (value == 0.0) return;",\n',
+    '',
+)
+prepare = prepare.replace(
+    '        V052: ("u32_to_double_exact", "positive_fraction_bits", "positive_double_to_u64_rz", "if (value == 0.0) return;"),',
+    '        V052: ("u32_to_double_exact", "positive_fraction_bits", "positive_double_to_u64_rz", "hash_mod_fp64 = u32_to_double_exact(hash_mod)"),',
+)
+prepare_path.write_text(prepare, encoding="utf-8")
+PY
+
 python3 hiveos/prepare-v052-source.py
 
 python3 - <<'PY'
@@ -87,8 +110,11 @@ if old_meta in builder:
     builder = builder.replace(old_meta, new_meta, 1)
 
 builder_path.write_text(builder, encoding="utf-8")
-print("PASS: v0.5.2 consensus hotfix applied")
+print("PASS: v0.5.2 consensus hotfix v2 applied")
 PY
+
+# Validate the now-patched idempotent source checker before the expensive build.
+python3 hiveos/prepare-v052-source.py
 
 exec env \
   BENCH_RUNS="${BENCH_RUNS:-3}" \
