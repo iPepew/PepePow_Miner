@@ -22,11 +22,16 @@ if [[ "${DEEP_PROFILE}" == "1" && -f "${SOURCE_ROOT}/native/CMakeLists.txt" ]]; 
     fi
   fi
   benchmark="${SOURCE_ROOT}/build-profiles-v053/${selected}/pepepow_header80_benchmark"
+  profiler_dir="${SOURCE_ROOT}/build-rtx3080-v053"
+  profiler_link="${profiler_dir}/pepepow_header80_benchmark"
   if [[ -n "${selected}" && -x "${benchmark}" ]]; then
-    mkdir -p "${SOURCE_ROOT}/build-rtx3080-v053"
-    ln -sfn "${benchmark}" "${SOURCE_ROOT}/build-rtx3080-v053/pepepow_header80_benchmark"
+    mkdir -p "${profiler_dir}"
+    # BusyBox/GNU ln can reject replacing an existing symlink when both paths
+    # resolve to the same inode. Remove the old link explicitly first.
+    rm -f "${profiler_link}"
+    ln -s "${benchmark}" "${profiler_link}"
     printf 'selected_profile=%s\nbenchmark=%s\n' "${selected}" "${benchmark}" \
-      > "${SOURCE_ROOT}/build-rtx3080-v053/PROFILER_SELECTION.txt"
+      > "${profiler_dir}/PROFILER_SELECTION.txt"
   fi
 fi
 
