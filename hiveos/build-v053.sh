@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
+python3 hiveos/fix-v053-generator.py
+
 python3 - <<'PY'
 from pathlib import Path
 root=Path.cwd()
