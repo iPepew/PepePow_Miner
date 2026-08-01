@@ -12,18 +12,21 @@ jobs:
       - name: Check scripts
         run: |
           set -euo pipefail
-          python3 -m py_compile hiveos/prepare-v053-source.py
+          python3 -m py_compile hiveos/prepare-v053-source.py hiveos/fix-v053-generator.py
+          bash -n hiveos/build-v053.sh
           bash -n hiveos/build-v053-bitfraction.sh
           bash -n tools/collect-profiler-pack-v4.sh
           bash -n tools/collect-v053-profiler.sh
       - name: Apply v0.5.3 source profile
         run: |
           set -euo pipefail
+          python3 hiveos/fix-v053-generator.py
           python3 hiveos/prepare-v053-source.py
           grep -F 'PepeW Bit Fraction Edition' native/src/app/main.cpp
           grep -F 'header80_backend_v053.cu' native/CMakeLists.txt
           grep -F 'PEPEPOW_CUDA_BIT_SW_FRACTION' native/CMakeLists.txt
           grep -F 'positive_fraction_div1024_bits' native/src/cuda/header80_backend_v053.cu
+          grep -F 'positive_fraction_bits(value / 1024.0)' native/src/cuda/header80_backend_v053.cu
           grep -F 'doubled_one' native/src/cuda/header80_backend_v053.cu
           grep -F 'nibble_to_double' native/src/cuda/header80_backend_v053.cu
           ! grep -F 'if (value == 0.0) return;' native/src/cuda/header80_backend_v053.cu
