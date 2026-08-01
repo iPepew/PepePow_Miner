@@ -1,0 +1,45 @@
+name: v0.5.5 source lint
+
+on:
+  pull_request:
+    paths:
+      - 'hiveos/prepare-v055-source.py'
+      - 'hiveos/build-v055*.sh'
+      - 'tools/collect-v055-profiler.sh'
+      - 'tools/collect-profiler-pack-v4.sh'
+      - '.github/workflows/v055-source-lint.yml'
+  push:
+    branches:
+      - 'optimize/v0.5.5-ilp'
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile hiveos/prepare-v055-source.py
+          bash -n hiveos/build-v055-ilp.sh
+          bash -n hiveos/build-v055.sh
+          bash -n tools/collect-v055-profiler.sh
+          bash -n tools/collect-profiler-pack-v4.sh
+      - name: Apply v0.5.5 source profile
+        run: |
+          set -euo pipefail
+          python3 hiveos/prepare-v055-source.py
+          test "$(cat VERSION)" = "0.5.5-PR"
+          grep -F 'PepeW ILP Edition' native/src/app/main.cpp
+          grep -F 'header80_backend_v055.cu' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_ILP_NONCES' native/CMakeLists.txt
+          grep -F 'matrix_row_ilp' native/src/cuda/header80_backend_v055.cu
+          grep -F 'hoohash_mix_kernel_ilp' native/src/cuda/header80_backend_v055.cu
+          grep -F 'mix_blocks' native/src/cuda/header80_backend_v055.cu
+          grep -F 'ILP_NONCES' hiveos/h-run.sh
+      - name: Configure CPU reference build
+        run: |
+          set -euo pipefail
+          cmake -S native -B build-cpu -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON
+          cmake --build build-cpu --parallel 2
+          ctest --test-dir build-cpu --output-on-failure
