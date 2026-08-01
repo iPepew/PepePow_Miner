@@ -1,0 +1,38 @@
+name: v0.5.4 source lint
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile hiveos/prepare-v054-source.py
+          bash -n hiveos/build-v054-lookup-split.sh
+          bash -n hiveos/build-v054.sh
+      - name: Apply v0.5.4 source profile
+        run: |
+          set -euo pipefail
+          python3 hiveos/prepare-v054-source.py
+          test "$(cat VERSION)" = "0.5.4-PR"
+          grep -F 'PepeW Lookup Split Edition' native/src/app/main.cpp
+          grep -F 'header80_backend_v054.cu' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_SCALED_NIBBLE_TABLE' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_ASSUME_FINITE' native/CMakeLists.txt
+          grep -F 'kScaledNibbleElements' native/src/cuda/header80_backend_v054.cu
+          grep -F 'scaled_nibble_table' native/src/cuda/header80_backend_v054.cu
+          grep -F 'HooHash V110 bounds x' native/src/cuda/header80_backend_v054.cu
+          grep -F 'device_scaled_nibble_' native/include/pepepow/cuda/header80_backend.hpp
+          grep -F 'PASS: 16384 lookup-split CPU/CUDA samples match' native/tests/cuda_header80_validation.cpp
+          ! grep -F 'if (value == 0.0) return;' native/src/cuda/header80_backend_v054.cu
+      - name: Configure CPU reference build
+        run: |
+          set -euo pipefail
+          cmake -S native -B build-lint -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON
+          cmake --build build-lint --parallel 2
+          ctest --test-dir build-lint --output-on-failure
