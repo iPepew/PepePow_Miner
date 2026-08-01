@@ -33,7 +33,11 @@ elif restored not in cuda:
     raise SystemExit("Cannot locate zero-nibble accumulator block")
 cuda_path.write_text(cuda, encoding="utf-8")
 
-builder = builder_path.read_text(encoding="utf-8")nbuilder = builder.replace(" positive_double_to_u64_rz 'if (value == 0.0) return;' 'hash_mod_fp64 = u32_to_double_exact(hash_mod)'", " positive_double_to_u64_rz 'hash_mod_fp64 = u32_to_double_exact(hash_mod)'")
+builder = builder_path.read_text(encoding="utf-8")
+builder = builder.replace(
+    " positive_double_to_u64_rz 'if (value == 0.0) return;' 'hash_mod_fp64 = u32_to_double_exact(hash_mod)'",
+    " positive_double_to_u64_rz 'hash_mod_fp64 = u32_to_double_exact(hash_mod)'",
+)
 
 old_validation = '''  ctest --test-dir "${dir}" --output-on-failure
   "${dir}/pepepow_cuda_header80_validation"
