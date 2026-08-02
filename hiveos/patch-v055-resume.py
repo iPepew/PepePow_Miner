@@ -2,9 +2,13 @@
 """Patch the v0.5.5 autotuner for resumable RTX 3080 sweeps.
 
 The first v0.5.5 rig run used an unsupported 32-thread candidate after the
-expensive ILP1..4 stage. This patch replaces it with the supported 160-thread
-candidate and adds RESUME=1 support so completed, consensus-gated profiles are
-reused instead of rebuilt.
+expensive ILP1..4 stage. A subsequent resume also re-ran the historical source
+preparation chain on an already prepared tree, which is intentionally not
+idempotent. This patch:
+
+* replaces the unsupported 32-thread candidate with 160 threads;
+* reuses completed, consensus-gated profiles when RESUME=1;
+* skips source preparation during RESUME=1 (or SKIP_SOURCE_PREPARE=1).
 """
 from __future__ import annotations
 
@@ -23,6 +27,19 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 text = TARGET.read_text(encoding="utf-8")
+
+text = replace_once(
+    text,
+    'chmod +x "${PREPARE_SCRIPT}"\n'
+    'python3 "${PREPARE_SCRIPT}"\n',
+    'if [[ "${RESUME:-0}" == "1" || "${SKIP_SOURCE_PREPARE:-0}" == "1" ]]; then\n'
+    '  echo "SOURCE_PREPARE_SKIPPED: using existing v0.5.5 prepared source tree"\n'
+    'else\n'
+    '  chmod +x "${PREPARE_SCRIPT}"\n'
+    '  python3 "${PREPARE_SCRIPT}"\n'
+    'fi\n',
+    "resume source preparation guard",
+)
 
 text = replace_once(
     text,
@@ -62,4 +79,4 @@ text = replace_once(
 )
 
 TARGET.write_text(text, encoding="utf-8")
-print("PASS: v0.5.5 resume/thread-sweep hotfix applied")
+print("PASS: v0.5.5 resume/source-preparation/thread-sweep hotfix applied")
