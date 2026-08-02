@@ -52,7 +52,8 @@ IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){
 [[ -n "${IP}" ]] || IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 
 TMP="$(mktemp)"
-trap 'rm -f "${TMP}"' EXIT
+RESPONSE_FILE="$(mktemp)"
+trap 'rm -f "${TMP}" "${RESPONSE_FILE}"' EXIT
 {
   echo "DOWNLOAD_STATUS=READY"
   echo "ARCHIVE=${ARCHIVE}"
@@ -67,16 +68,17 @@ trap 'rm -f "${TMP}"' EXIT
 } > "${TMP}"
 
 if [[ "${PUBLIC_UPLOAD}" == "1" ]] && command -v curl >/dev/null 2>&1; then
-  RESPONSE="$(curl -fsS --connect-timeout 20 --max-time 180 \
+  if curl -fsS --connect-timeout 20 --max-time 180 \
     -X POST https://tempfile.org/api/upload/local \
     -F "files=@${ARCHIVE}" \
     -F "files=@${SHA_FILE}" \
-    -F "expiryHours=${EXPIRY_HOURS}" 2>/dev/null || true)"
-  if [[ -n "${RESPONSE}" ]]; then
-    PARSED="$(python3 - "${ARCHIVE_NAME}" "${SHA_NAME}" <<'PY' <<<"${RESPONSE}" 2>/dev/null || true
+    -F "expiryHours=${EXPIRY_HOURS}" \
+    -o "${RESPONSE_FILE}" 2>/dev/null; then
+    PARSED="$(python3 - "${ARCHIVE_NAME}" "${SHA_NAME}" "${RESPONSE_FILE}" <<'PY' 2>/dev/null || true
 import json, sys
-archive_name, sha_name = sys.argv[1:3]
-data = json.load(sys.stdin)
+archive_name, sha_name, response_path = sys.argv[1:4]
+with open(response_path, encoding="utf-8") as fh:
+    data = json.load(fh)
 files = data.get("files", [])
 by_name = {item.get("name"): item.get("url") for item in files}
 archive_url = by_name.get(archive_name, "")
