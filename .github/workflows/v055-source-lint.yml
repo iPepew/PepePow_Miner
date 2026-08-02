@@ -39,10 +39,12 @@ jobs:
           grep -F 'hoohash_mix_kernel_ilp' native/src/cuda/header80_backend_v055.cu
           grep -F 'mix_blocks' native/src/cuda/header80_backend_v055.cu
           grep -F 'ILP_NONCES' hiveos/h-run.sh
+          grep -F 'SOURCE_PREPARE_SKIPPED: using existing v0.5.5 prepared source tree' hiveos/build-v055-ilp.sh
           grep -F 'RESUME=1: preserving completed profile directories' hiveos/build-v055-ilp.sh
           grep -F 'PROFILE_REUSE' hiveos/build-v055-ilp.sh
           grep -F 'for threads in 96 128 160 192; do' hiveos/build-v055-ilp.sh
           ! grep -Fq 'for threads in 32 96 128 192; do' hiveos/build-v055-ilp.sh
+          python3 hiveos/patch-v055-resume.py
       - name: Configure CPU reference build
         run: |
           set -euo pipefail
