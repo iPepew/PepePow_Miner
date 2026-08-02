@@ -26,9 +26,10 @@ jobs:
           bash -n hiveos/build-v056-cold-path.sh
           bash -n tools/collect-v056-profiler.sh
 
-      - name: Apply source profile twice
+      - name: Bootstrap v0.5.4 and apply v0.5.6 twice
         run: |
           set -euo pipefail
+          python3 hiveos/prepare-v054-source.py
           python3 hiveos/prepare-v056-source.py
           python3 hiveos/prepare-v056-source.py
           test "$(cat VERSION)" = "0.5.6-PR"
