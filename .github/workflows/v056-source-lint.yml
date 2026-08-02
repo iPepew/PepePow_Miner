@@ -1,0 +1,51 @@
+name: v0.5.6 source lint
+
+on:
+  push:
+    branches:
+      - optimize/v0.5.6-cold-path
+  pull_request:
+    paths:
+      - 'hiveos/prepare-v056-source.py'
+      - 'hiveos/build-v056*.sh'
+      - 'tools/collect-v056-profiler.sh'
+      - 'docs/v0.5.4-nsight-deep-analysis.md'
+      - '.github/workflows/v056-source-lint.yml'
+
+jobs:
+  lint-and-cpu-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate scripts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile hiveos/prepare-v056-source.py
+          bash -n hiveos/build-v056.sh
+          bash -n hiveos/build-v056-cold-path.sh
+          bash -n tools/collect-v056-profiler.sh
+
+      - name: Apply source profile twice
+        run: |
+          set -euo pipefail
+          python3 hiveos/prepare-v056-source.py
+          python3 hiveos/prepare-v056-source.py
+          test "$(cat VERSION)" = "0.5.6-PR"
+          grep -F 'PepeW Cold Path Edition' native/src/app/main.cpp
+          grep -F 'header80_backend_v056.cu' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_COLD_NONLINEAR_MODE' native/CMakeLists.txt
+          grep -F 'PEPEPOW_CUDA_USE_LAUNCH_BOUNDS' native/CMakeLists.txt
+          grep -F 'nonlinear_medium' native/src/cuda/header80_backend_v056.cu
+          grep -F 'PEPEPOW_SAFE_NONLINEAR_ATTR' native/src/cuda/header80_backend_v056.cu
+          grep -F 'PEPEPOW_HEADER80_LAUNCH_BOUNDS' native/src/cuda/header80_backend_v056.cu
+          grep -F 'real register-cap autotune' hiveos/h-run.sh
+
+      - name: Build CPU reference and tests
+        run: |
+          set -euo pipefail
+          cmake -S native -B build-cpu \
+            -DPEPEPOW_ENABLE_CUDA=OFF \
+            -DPEPEPOW_BUILD_TESTS=ON
+          cmake --build build-cpu --parallel 2
+          ctest --test-dir build-cpu --output-on-failure
