@@ -7,7 +7,7 @@
 set -euo pipefail
 umask 077
 
-SCRIPT_VERSION="4.0.0"
+SCRIPT_VERSION="4.1.0"
 DURATION="${DURATION:-600}"
 INTERVAL="${INTERVAL:-1}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp}"
@@ -55,8 +55,21 @@ if [[ -n "${miner_dir}" && -d "${miner_dir}" ]]; then
   for name in VERSION BUILD_PROFILE h-manifest.conf h-run.sh h-config.sh h-stats.sh runtime-diagnostics.txt run.txt miner-exit-status.txt; do
     [[ -f "${miner_dir}/${name}" ]] && cp -a "${miner_dir}/${name}" "${pack_root}/package/${name}"
   done
+  # Capture the active package logs after the telemetry interval. The base v3
+  # collector snapshots logs before telemetry and may also include older miner
+  # versions, so this deterministic copy is the source of truth for summaries.
+  for spec in \
+    "miner-console.log:current-miner-console.log" \
+    "pepepow-debug.log:current-pepepow-debug.log" \
+    "stratum-proxy.log:current-stratum-proxy.log" \
+    "proxy-console.log:current-proxy-console.log"; do
+    src="${spec%%:*}"; dst="${spec#*:}"
+    [[ -f "${miner_dir}/${src}" ]] && tail -c $((80 * 1024 * 1024)) \
+      "${miner_dir}/${src}" > "${pack_root}/logs/${dst}"
+  done
 fi
-for log in /root/v053-build.log /root/v052-build.log /tmp/v053-build.log /tmp/v052-build.log; do
+for log in /root/v055-build.log /root/v054-build.log /root/v053-build.log /root/v052-build.log \
+           /tmp/v055-build.log /tmp/v054-build.log /tmp/v053-build.log /tmp/v052-build.log; do
   if [[ -f "${log}" ]]; then
     tail -c $((80 * 1024 * 1024)) "${log}" > "${pack_root}/package/$(basename "${log}")"
   fi
@@ -135,17 +148,33 @@ def stats(values):
     if not values: return {}
     return {"count":len(values),"mean":statistics.mean(values),"median":statistics.median(values),"p05":pct(values,.05),"p95":pct(values,.95),"min":min(values),"max":max(values),"stdev":statistics.pstdev(values)}
 
+preferred=root/'logs/current-miner-console.log'
 logs=list((root/'logs').glob('*miner-console.log')) + list((root/'logs').glob('process-fd1-*'))
-best=max(logs, key=lambda p:p.stat().st_size) if logs else None
+best=preferred if preferred.exists() else (max(logs, key=lambda p:p.stat().st_size) if logs else None)
 miner={"log":str(best.relative_to(root)) if best else None}
 if best:
     text=ansi.sub('',best.read_text(errors='replace'))
     samples=[]
     for m in re.finditer(r'\[MINING\]\s*\|\s*([0-9.]+)\s+MH/s\s*\|\s*A\s+(\d+)\s*\|\s*R\s+(\d+)\s*\|\s*Uptime\s+([0-9:]+)',text):
-        samples.append((float(m.group(1)),int(m.group(2)),int(m.group(3)),m.group(4)))
+        uptime=m.group(4)
+        parts=[int(x) for x in uptime.split(':')]
+        seconds=sum(value * multiplier for value,multiplier in zip(reversed(parts),(1,60,3600)))
+        samples.append((float(m.group(1)),int(m.group(2)),int(m.group(3)),uptime,seconds))
     rates=[x[0] for x in samples]
-    warm=rates[min(5,len(rates)):]
-    miner.update({"hashrate_all_mhs":stats(rates),"hashrate_warm_mhs":stats(warm),"accepted_lines":len(re.findall(r'\[ACCEPTED\]',text)),"rejected_lines":len(re.findall(r'\[REJECTED\]',text)),"jobs":len(re.findall(r'\[JOB\]',text)),"last_sample":samples[-1] if samples else None})
+    warm=[x[0] for x in samples if x[4] >= 60]
+    if not warm: warm=rates[min(5,len(rates)):]
+    accepted_counter=samples[-1][1] if samples else 0
+    rejected_counter=samples[-1][2] if samples else 0
+    reject_reasons={}
+    for reason in re.findall(r'\[REJECTED\].*?reason=([^\r\n]+)',text):
+        reason=reason.strip(); reject_reasons[reason]=reject_reasons.get(reason,0)+1
+    miner.update({"hashrate_all_mhs":stats(rates),"hashrate_warm_mhs":stats(warm),
+                  "accepted":accepted_counter,"rejected":rejected_counter,
+                  "accepted_lines":len(re.findall(r'\[ACCEPTED\]',text)),
+                  "rejected_lines":len(re.findall(r'\[REJECTED\]',text)),
+                  "reject_reasons":reject_reasons,
+                  "jobs":len(re.findall(r'\[JOB\]',text)),
+                  "last_sample":samples[-1][:4] if samples else None})
 
 gpu={}
 csv_path=root/'telemetry/gpu-timeseries.csv'
@@ -169,7 +198,8 @@ with (root/'analysis/live-summary.txt').open('w',encoding='utf-8') as f:
     if mean_h: f.write(f'warm_hashrate_mean_mhs={mean_h:.6f}\n')
     med=miner.get('hashrate_warm_mhs',{}).get('median')
     if med: f.write(f'warm_hashrate_median_mhs={med:.6f}\n')
-    f.write(f"accepted={miner.get('accepted_lines',0)}\nrejected={miner.get('rejected_lines',0)}\njobs={miner.get('jobs',0)}\n")
+    f.write(f"accepted={miner.get('accepted',miner.get('accepted_lines',0))}\nrejected={miner.get('rejected',miner.get('rejected_lines',0))}\njobs={miner.get('jobs',0)}\n")
+    if miner.get('reject_reasons'): f.write('reject_reasons=' + json.dumps(miner['reject_reasons'],sort_keys=True) + '\n')
     if mean_w: f.write(f'power_mean_w={mean_w:.3f}\n')
     if mean_h and mean_w: f.write(f'efficiency_kh_per_w={mean_h*1000.0/mean_w:.3f}\n')
 PY
@@ -205,8 +235,12 @@ if [[ -f "${pack_root}/package/BUILD_PROFILE" ]]; then
 fi
 if [[ -n "${source_root}" ]]; then
   for candidate in \
+    "${source_root}/build-profiles-v055/${selected_profile}/pepepow_header80_benchmark" \
+    "${source_root}/build-profiles-v054/${selected_profile}/pepepow_header80_benchmark" \
     "${source_root}/build-profiles-v053/${selected_profile}/pepepow_header80_benchmark" \
     "${source_root}/build-profiles-v052/${selected_profile}/pepepow_header80_benchmark" \
+    "${source_root}/build-rtx3080-v055/pepepow_header80_benchmark" \
+    "${source_root}/build-rtx3080-v054/pepepow_header80_benchmark" \
     "${source_root}/build-rtx3080-v053/pepepow_header80_benchmark" \
     "${source_root}/build-rtx3080-v052/pepepow_header80_benchmark"; do
     [[ -x "${candidate}" ]] && { benchmark="${candidate}"; break; }
@@ -222,38 +256,56 @@ if [[ "${DEEP_PROFILE}" == "1" ]]; then
   elif [[ "${active_compute}" == "1" && "${ALLOW_CONTENTION}" != "1" ]]; then
     echo "SKIPPED: active CUDA process detected; stop miner or set ALLOW_CONTENTION=1" > "${pack_root}/deep/STATUS.txt"
   else
-    echo "RUNNING" > "${pack_root}/deep/STATUS.txt"
-    "${benchmark}" "${DEEP_NONCES}" > "${pack_root}/deep/benchmark.txt" 2>&1 || true
+    {
+      echo "benchmark=${benchmark}"
+      echo "deep_nonces=${DEEP_NONCES}"
+    } > "${pack_root}/deep/STATUS.txt"
     if command -v ncu >/dev/null 2>&1; then
+      set +e
       timeout 1800 ncu --target-processes all --kernel-name-base demangled \
-        --kernel-name 'regex:header80_pow_kernel' --launch-count 1 \
+        --kernel-name 'regex:header80_pow_kernel|hoohash_mix_kernel' --launch-count 1 \
         --section SpeedOfLight --section LaunchStats --section Occupancy \
         --section WarpStateStats --section InstructionStats --section MemoryWorkloadAnalysis \
         --export "${pack_root}/deep/header80" --force-overwrite \
-        "${benchmark}" "${DEEP_NONCES}" > "${pack_root}/deep/ncu-console.txt" 2>&1 || true
-      [[ -f "${pack_root}/deep/header80.ncu-rep" ]] && ncu --import "${pack_root}/deep/header80.ncu-rep" --page raw --csv > "${pack_root}/deep/ncu-raw.csv" 2>&1 || true
+        "${benchmark}" "${DEEP_NONCES}" > "${pack_root}/deep/ncu-console.txt" 2>&1
+      ncu_rc=$?
+      set -e
+      echo "ncu_rc=${ncu_rc}" >> "${pack_root}/deep/STATUS.txt"
+      if [[ -f "${pack_root}/deep/header80.ncu-rep" ]]; then
+        ncu --import "${pack_root}/deep/header80.ncu-rep" --page raw --csv > "${pack_root}/deep/ncu-raw.csv" 2>&1 || true
+        ncu --import "${pack_root}/deep/header80.ncu-rep" --page details > "${pack_root}/deep/ncu-details.txt" 2>&1 || true
+      fi
+    else
+      echo "ncu=NOT_INSTALLED" >> "${pack_root}/deep/STATUS.txt"
     fi
     if command -v nsys >/dev/null 2>&1; then
+      set +e
       timeout 600 nsys profile --trace=cuda,nvtx,osrt --sample=cpu --force-overwrite=true \
-        --output="${pack_root}/deep/header80-timeline" "${benchmark}" "${DEEP_NONCES}" > "${pack_root}/deep/nsys-console.txt" 2>&1 || true
-      [[ -f "${pack_root}/deep/header80-timeline.nsys-rep" ]] && nsys stats "${pack_root}/deep/header80-timeline.nsys-rep" > "${pack_root}/deep/nsys-stats.txt" 2>&1 || true
+        --output="${pack_root}/deep/header80-timeline" "${benchmark}" "${DEEP_NONCES}" \
+        > "${pack_root}/deep/nsys-console.txt" 2>&1
+      nsys_rc=$?
+      set -e
+      echo "nsys_rc=${nsys_rc}" >> "${pack_root}/deep/STATUS.txt"
+      [[ -f "${pack_root}/deep/header80-timeline.nsys-rep" ]] && \
+        nsys stats "${pack_root}/deep/header80-timeline.nsys-rep" > "${pack_root}/deep/nsys-stats.txt" 2>&1 || true
+    else
+      echo "nsys=NOT_INSTALLED" >> "${pack_root}/deep/STATUS.txt"
     fi
-    echo "DONE" > "${pack_root}/deep/STATUS.txt"
   fi
 else
   echo "SKIPPED: DEEP_PROFILE=0" > "${pack_root}/deep/STATUS.txt"
 fi
 
-# Refresh manifest and archive.
-{
-  echo
-  echo "profiler_v4=${SCRIPT_VERSION}"
-  echo "v4_source_root=${source_root:-not_detected}"
-  echo "v4_selected_profile=${selected_profile:-not_detected}"
-  echo "v4_deep_profile=${DEEP_PROFILE}"
-} >> "${pack_root}/MANIFEST.txt"
+cat >> "${manifest}" <<EOF
+
+profiler_v4=${SCRIPT_VERSION}
+v4_source_root=${source_root:-not_detected}
+v4_selected_profile=${selected_profile:-not_detected}
+v4_deep_profile=${DEEP_PROFILE}
+EOF
+
 rm -f "${archive}" "${archive}.sha256"
-tar -C "${tmp}" -czf "${archive}" "$(basename "${pack_root}")"
+tar -C "$(dirname "${pack_root}")" -czf "${archive}" "$(basename "${pack_root}")"
 sha256sum "${archive}" > "${archive}.sha256"
 printf 'DONE_ARCHIVE=%s\nDONE_SHA256=%s\n' "${archive}" "${archive}.sha256"
 ls -lh "${archive}" "${archive}.sha256"
