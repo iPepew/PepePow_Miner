@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'hiveos/prepare-v055-source.py'
+      - 'hiveos/patch-v055-resume.py'
       - 'hiveos/build-v055*.sh'
       - 'tools/collect-v055-profiler.sh'
       - 'tools/collect-profiler-pack-v4.sh'
@@ -20,15 +21,16 @@ jobs:
       - name: Check scripts
         run: |
           set -euo pipefail
-          python3 -m py_compile hiveos/prepare-v055-source.py
+          python3 -m py_compile hiveos/prepare-v055-source.py hiveos/patch-v055-resume.py
           bash -n hiveos/build-v055-ilp.sh
           bash -n hiveos/build-v055.sh
           bash -n tools/collect-v055-profiler.sh
           bash -n tools/collect-profiler-pack-v4.sh
-      - name: Apply v0.5.5 source profile
+      - name: Apply v0.5.5 source profile and resume hotfix
         run: |
           set -euo pipefail
           python3 hiveos/prepare-v055-source.py
+          python3 hiveos/patch-v055-resume.py
           test "$(cat VERSION)" = "0.5.5-PR"
           grep -F 'PepeW ILP Edition' native/src/app/main.cpp
           grep -F 'header80_backend_v055.cu' native/CMakeLists.txt
@@ -37,6 +39,10 @@ jobs:
           grep -F 'hoohash_mix_kernel_ilp' native/src/cuda/header80_backend_v055.cu
           grep -F 'mix_blocks' native/src/cuda/header80_backend_v055.cu
           grep -F 'ILP_NONCES' hiveos/h-run.sh
+          grep -F 'RESUME=1: preserving completed profile directories' hiveos/build-v055-ilp.sh
+          grep -F 'PROFILE_REUSE' hiveos/build-v055-ilp.sh
+          grep -F 'for threads in 96 128 160 192; do' hiveos/build-v055-ilp.sh
+          ! grep -Fq 'for threads in 32 96 128 192; do' hiveos/build-v055-ilp.sh
       - name: Configure CPU reference build
         run: |
           set -euo pipefail
