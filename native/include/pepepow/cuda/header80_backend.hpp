@@ -2,6 +2,8 @@
 
 #include "pepepow/core/backend.hpp"
 
+#include <cstddef>
+
 namespace pepepow {
 
 class Header80CudaBackend final : public MiningBackend {
@@ -22,6 +24,10 @@ public:
 private:
     int device_index_{0};
     void* device_result_{nullptr};
+    void* device_matrix_{nullptr};
+    void* device_scaled_nibble_{nullptr};
+    void* device_work_{nullptr};
+    std::size_t device_work_capacity_{0};
 };
 
 } // namespace pepepow
