@@ -86,11 +86,11 @@ archive_anchor = 'sha256sum "$ARCHIVE" >"$SHA_FILE"\n'
 archive_check = r'''sha256sum "$ARCHIVE" >"$SHA_FILE"
 
 EXPECTED_ROOT="PepeW-Miner-v1.0.0-HiveOS/"
-ACTUAL_ROOT="$(tar -tzf "$ARCHIVE" | head -n1)"
+ACTUAL_ROOT="$(tar -tzf "$ARCHIVE" | sed -n '1p')"
 [[ "$ACTUAL_ROOT" == "$EXPECTED_ROOT" ]] || \
     fail "invalid HiveOS archive root: $ACTUAL_ROOT"
 
-if tar -tzf "$ARCHIVE" | grep -Eq '(^|/)(config\.txt|setup\.txt|run\.txt|.*\.log(?:\.previous)?|.*\.pid|miner-status\.env)$'; then
+if tar -tzf "$ARCHIVE" | grep -Eq '(^|/)(config\.txt|setup\.txt|run\.txt|.*\.log(\.previous)?|.*\.pid|miner-status\.env)$'; then
     fail "runtime or wallet artifacts detected in release archive"
 fi
 
