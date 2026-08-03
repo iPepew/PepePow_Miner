@@ -36,6 +36,12 @@ compute-sanitizer: PASS
 consensus:         PASS
 ```
 
+Финальная branded-сборка `v1.0.0` повторно показала медиану `2.209014 MH/s`. SHA256 бинарника:
+
+```text
+a4e7ce2069fd506f5c674b2f4fd1c2e5fcb0e9326beb7f26b59ab3d4a337d377
+```
+
 Подробности: [`RELEASE_NOTES_v1.0.0.md`](RELEASE_NOTES_v1.0.0.md).
 
 ## Основные изменения 1.0
@@ -81,7 +87,19 @@ curl -fsSL https://raw.githubusercontent.com/iPepew/PepePow_Miner/release/v1.0.0
 5. benchmark с обязательной медианой не ниже 2 MH/s;
 6. `compute-sanitizer`, когда он доступен;
 7. проверку новых NVIDIA Xid;
-8. создание отдельного HiveOS-архива и `.sha256`.
+8. создание отдельного HiveOS-архива и `.sha256`;
+9. пересборку пакета из белого списка файлов;
+10. удаление runtime-логов, PID, конфигурации и адреса кошелька;
+11. проверку версии HiveOS-манифеста и прав доступа.
+
+Успешный финальный статус:
+
+```text
+FINAL_RELEASE_GATE=PASS
+PACKAGE_SANITIZED=PASS
+RUNTIME_ARTIFACTS=0
+WALLET_DATA=0
+```
 
 ## HiveOS
 
