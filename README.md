@@ -1,63 +1,106 @@
-# PepePow Miner
+# PepeW Miner
 
-Open-source native C++20/CUDA miner foundation for PepePow and the HooHash V110 proof-of-work pipeline.
+CUDA miner for PEPEPOW HooHash V110 with HiveOS integration.
 
-## v0.1.0 Foundation Release
+## Current prerelease
 
-This release contains a correctness-first native implementation with:
-
-- CPU reference pipeline
-- fused NVIDIA CUDA pipeline
-- bit-for-bit CPU/GPU validation tests
-- CUDA benchmark utility
-- PTXAS register, stack and spill profiling
-- warp-divergence and nonlinear-path diagnostic tools
-- Linux, HiveOS and Windows build support through CMake
-
-The current CUDA implementation preserves strict FP64 behavior with `--fmad=false`. Fast math is not enabled because changing floating-point results changes the proof-of-work hash.
-
-## Verified hardware
-
-RTX 3080 (`sm_86`) has been tested with CUDA 12.4. The development benchmark reached approximately 0.99 MH/s median with peaks above 1.03 MH/s using 128 threads per block. Results depend on clocks, power limit, temperature and driver state.
-
-
-## Build without CUDA
-
-```bash
-cmake -S native -B build/native -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON
-cmake --build build/native --config Release --parallel
-ctest --test-dir build/native -C Release --output-on-failure
+```text
+v0.5.0-PR
 ```
 
-## Build with CUDA
+The short `-PR` suffix keeps the custom miner name readable in the HiveOS desktop and mobile interfaces.
 
-```bash
-cmake -S native -B build/native-cuda -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build/native-cuda --config Release --parallel
-ctest --test-dir build/native-cuda -C Release --output-on-failure
+## v0.5.0-PR performance architecture
+
+- validated HooHash V110 consensus path;
+- word-oriented BLAKE3 first-pass and final-hash pipeline;
+- BLAKE3 Header80 first-block midstate;
+- exact 32 KiB scaled-matrix constant cache;
+- original matrix retained in a persistent device allocation for nonlinear work;
+- cached per-job matrix, midstate and tail uploads;
+- cached 256-bit target represented as eight big-endian words;
+- compact four-byte result reset and compact winning-result transfer;
+- GPU-side target comparison;
+- launch-bounds, block-size, unroll and register autotuning;
+- 4,194,304-nonce benchmark for every candidate profile;
+- 512 deterministic CPU/CUDA validation samples per profile;
+- selected profile and PTXAS register/spill data recorded in `BUILD_PROFILE`;
+- per-GPU HiveOS hashrate, temperature, fan and PCI bus arrays;
+- real PID, uptime and stale-telemetry protection;
+- one-command forensic collection.
+
+Strict FP64 operation order remains protected. CUDA is compiled with FP contraction disabled because changing the floating-point result changes the proof-of-work hash.
+
+## Terminal identity
+
+```text
+=========================================
+              PepeW Miner
+=========================================
+
+Version   : v0.5.0-PR
+Algorithm : HooHash V110
+GPU 0     : NVIDIA CUDA
+
+"PepeW - твоя монета. Твои правила."
+Telegram  : https://t.me/pepepow_ru
+
+=========================================
 ```
 
-## HiveOS / Linux profiling
+Runtime records use terminal-safe labels:
 
-RTX 3080:
-
-```bash
-cd native
-chmod +x scripts/profile_cuda.sh
-./scripts/profile_cuda.sh 86
-ctest --test-dir build-cuda-sm86 --output-on-failure
-./build-cuda-sm86/pepepow_cuda_benchmark 1048576 0 128
+```text
+[POOL] Connected
+[READY] Pool authorization complete
+[JOB] new work
+[MINING] GPU0 2.000 MH/s | A 25 | R 0 | Uptime 00:03:15
+[ACCEPTED] share accepted
 ```
 
-## Included executables
+## RTX 3080 mega-autotune
 
-- `pepepowminer` — native application foundation
-- `pepepow_cuda_benchmark` — CUDA throughput measurement
-- `pepepow_cuda_warp_probe` — warp-divergence and nonlinear branch diagnostic tool
+The dedicated v0.5.0 builder validates and measures several launch profiles. It varies:
 
-## Current limitations
+- 64 versus 128 threads per block;
+- one versus two requested resident blocks per SM;
+- exact scaled-matrix cache enabled versus disabled;
+- byte-loop unroll factor;
+- automatic versus limited register allocation.
 
-v0.1.0 is a foundation release. It is not yet a complete pool-connected production miner. Stratum networking, production share submission, long-running device management and additional GPU-specific tuning remain under development.
+The fastest exact profile is packaged automatically. The builder reports whether the measured local benchmark reaches the 2 MH/s engineering target; package creation is never allowed to bypass consensus validation.
+
+## HiveOS telemetry
+
+`h-stats.sh` reports one aligned entry per active mining device:
+
+- `hs` and `hs_units` for per-GPU speed;
+- `temp` for GPU temperature;
+- `fan` for fan percentage;
+- `bus_numbers` for stable mapping to the HiveOS GPU row;
+- total `khs`, uptime, accepted and rejected shares.
+
+## HiveOS
+
+Pool URL:
+
+```text
+stratum+tcp://stratum-eu.pepepow.foztor.net:13232
+```
+
+Wallet template:
+
+```text
+%WAL%.%WORKER_NAME%
+```
+
+Password:
+
+```text
+x
+```
+
+No additional miner arguments are required.
 
 ## Safety
 

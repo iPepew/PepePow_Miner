@@ -40,13 +40,17 @@ Hash256 calculate_pow(const PowInput& input) {
 }
 
 Hash256 calculate_header80_pow(const Header80& header) {
-    Hash256 matrix_seed{};
-    std::copy_n(header.begin() + 4, matrix_seed.size(), matrix_seed.begin());
+    // The live PEPEPOW pool derives the HooHash V110 matrix from BLAKE3 of
+    // Header80 with the four nonce bytes cleared. It hashes the complete header
+    // separately and decodes the header nonce as LE32 for the nonlinear mix.
+    Header80 masked_header = header;
+    std::fill(masked_header.begin() + 76, masked_header.end(), 0U);
 
-    const std::uint32_t nonce = load_le32(header.data() + 76);
-    const Hash256 first_pass = blake3_hash(header);
+    const Hash256 matrix_seed = blake3_hash(masked_header);
+    const Hash256 header_hash = blake3_hash(header);
+    const std::uint32_t mix_nonce = load_le32(header.data() + 76);
     const HoohashMatrix matrix = generate_hoohash_matrix(matrix_seed);
-    const Hash256 mixed = hoohash_matrix_mix(matrix, first_pass, nonce);
+    const Hash256 mixed = hoohash_matrix_mix(matrix, header_hash, mix_nonce);
     return blake3_hash(mixed);
 }
 

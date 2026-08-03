@@ -29,8 +29,11 @@ constexpr double kTransformMultiplier = 0.000001;
     const double one = x * kTransformMultiplier / 8.0 - std::floor(x * kTransformMultiplier / 8.0);
     const double two = x * kTransformMultiplier / 4.0 - std::floor(x * kTransformMultiplier / 4.0);
     const auto apply = [x, two](auto fn) {
-        if (two < 0.25) return fn(x + 1.0 + two);
-        if (two < 0.50) return fn(x - 1.0 - two);
+        // These parentheses are consensus-critical. HooHash operates on very
+        // large FP64 values, so x + (1 + two) is not interchangeable with
+        // (x + 1) + two, and likewise for subtraction.
+        if (two < 0.25) return fn(x + (1.0 + two));
+        if (two < 0.50) return fn(x - (1.0 + two));
         if (two < 0.75) return fn(x * (1.0 + two));
         return fn(x / (1.0 + two));
     };

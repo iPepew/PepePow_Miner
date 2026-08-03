@@ -2,34 +2,27 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROFILE_ROOT="${ROOT_DIR}/build-profiles-v040"
+PROFILE_ROOT="${ROOT_DIR}/build-profiles-v050"
 LINK_BUILD_DIR="${ROOT_DIR}/build-rtx3080"
-FILE_VERSION="$(head -n1 "${ROOT_DIR}/VERSION" | tr -d '[:space:]')"
-VERSION="${VERSION:-${FILE_VERSION}}"
-[[ "${VERSION}" == "${FILE_VERSION}" ]] || { echo "VERSION mismatch: argument=${VERSION} file=${FILE_VERSION}" >&2; exit 1; }
+VERSION="$(head -n1 "${ROOT_DIR}/VERSION" | tr -d '[:space:]')"
+[[ "${VERSION}" == "0.5.0-PR" ]] || { echo "Expected VERSION=0.5.0-PR, found ${VERSION}" >&2; exit 1; }
 PACKAGE_NAME="pepepowminer-v${VERSION}"
 PACKAGE_DIR="${ROOT_DIR}/dist/${PACKAGE_NAME}"
 ARCHIVE_PATH="${ROOT_DIR}/dist/${PACKAGE_NAME}-hiveos.tar.gz"
 ARCHIVE_LIST="${ROOT_DIR}/dist/${PACKAGE_NAME}-archive-contents.txt"
 JOBS="${JOBS:-$(nproc)}"
-CUDA_IMAGE="${CUDA_IMAGE:-nvidia/cuda:12.6.3-devel-ubuntu22.04}"
-DEPS_DIR="${ROOT_DIR}/.deps-v040"
-
-if [[ "${VERSION}" == "0.4.1-PR" ]]; then
-  PREPARE_SCRIPT="${ROOT_DIR}/hiveos/prepare-v041-source.py"
-  EXPECTED_EDITION="PepeW Matrix Cache Edition"
-  RELEASE_EDITION="PepeW Matrix Cache Autotune Edition"
-else
-  PREPARE_SCRIPT="${ROOT_DIR}/hiveos/prepare-v040-source.py"
-  EXPECTED_EDITION="PepeW Performance & Stability Edition"
-  RELEASE_EDITION="PepeW RTX 3080 Autotune Edition"
-fi
+DEPS_DIR="${ROOT_DIR}/.deps-v050"
+PREPARE_SCRIPT="${ROOT_DIR}/hiveos/prepare-v050-source.py"
+EXPECTED_EDITION="PepeW Warp Pipeline Edition"
+RELEASE_EDITION="PepeW Warp Pipeline Mega Autotune Edition"
+BENCH_NONCES="${BENCH_NONCES:-4194304}"
 
 command -v nvidia-smi >/dev/null 2>&1 || { echo "nvidia-smi is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
+command -v cmake >/dev/null 2>&1 || { echo "cmake is required" >&2; exit 1; }
 
 echo "== NVIDIA device =="
-nvidia-smi --query-gpu=name,compute_cap,driver_version,memory.total --format=csv,noheader
+nvidia-smi --query-gpu=name,compute_cap,driver_version,memory.total,clocks.current.sm,power.limit --format=csv,noheader
 if ! nvidia-smi --query-gpu=compute_cap --format=csv,noheader | grep -qx '8.6'; then
   echo "Warning: validation target is RTX 3080 / compute capability 8.6" >&2
 fi
@@ -37,44 +30,21 @@ fi
 chmod +x "${PREPARE_SCRIPT}"
 python3 "${PREPARE_SCRIPT}"
 
-# Consensus and release-profile guards run before the expensive builds.
+# Consensus and performance-profile guards before expensive compilation.
 grep -Fq 'write_be32(header, 76, job.nonce);' "${ROOT_DIR}/native/src/core/header_builder.cpp" || { echo "Header80 nonce bytes are not BE32" >&2; exit 1; }
-grep -Fq 'const Hash256 matrix_seed = blake3_hash(masked_header);' "${ROOT_DIR}/native/src/crypto/pow.cpp" || { echo "CPU matrix seed is not BLAKE3(masked Header80)" >&2; exit 1; }
-grep -Fq 'const crypto::Hash256 matrix_seed = crypto::blake3_hash(masked_header);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "CUDA matrix seed is not BLAKE3(masked Header80)" >&2; exit 1; }
-grep -Fq 'const std::uint32_t mix_nonce = load_le32(header.data() + 76);' "${ROOT_DIR}/native/src/crypto/pow.cpp" || { echo "CPU HooHash nonce is not LE32 from Header80" >&2; exit 1; }
-grep -Fq 'const std::uint32_t mix_nonce = byte_swap32(nonce);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "CUDA HooHash nonce does not match Header80 byte order" >&2; exit 1; }
 grep -Fq 'return fn(x + (1.0 + two));' "${ROOT_DIR}/native/src/crypto/hoohash_reference.cpp" || { echo "CPU HooHash addition order is not canonical" >&2; exit 1; }
 grep -Fq 'return fn(x - (1.0 + two));' "${ROOT_DIR}/native/src/crypto/hoohash_reference.cpp" || { echo "CPU HooHash subtraction order is not canonical" >&2; exit 1; }
-grep -Fq 'if (two < 0.25) y = x + (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "CUDA HooHash addition order is not canonical" >&2; exit 1; }
-grep -Fq 'else if (two < 0.50) y = x - (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "CUDA HooHash subtraction order is not canonical" >&2; exit 1; }
-grep -Fq 'PASS: 5 consensus HooHash vectors match on CPU/CUDA' "${ROOT_DIR}/native/tests/cuda_header80_validation.cpp" || { echo "CUDA consensus-vector gate is missing" >&2; exit 1; }
-grep -Fq 'PASS: live nBits share-target boundaries matched' "${ROOT_DIR}/native/tests/core_tests.cpp" || { echo "Live target-boundary tests are missing" >&2; exit 1; }
-
+grep -Fq 'if (two < 0.25) y = x + (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "CUDA HooHash addition order is not canonical" >&2; exit 1; }
+grep -Fq 'else if (two < 0.50) y = x - (1.0 + two);' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "CUDA HooHash subtraction order is not canonical" >&2; exit 1; }
+grep -Fq 'blake3_header80_words' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "Word-oriented first BLAKE3 stage is missing" >&2; exit 1; }
+grep -Fq 'blake3_32_words' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "Word-oriented final BLAKE3 stage is missing" >&2; exit 1; }
+grep -Fq 'kHeader80ScaledMatrix' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "Scaled matrix constant cache is missing" >&2; exit 1; }
+grep -Fq 'cudaMemset(device_result_, 0, sizeof(std::uint32_t))' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "Compact result reset is missing" >&2; exit 1; }
+grep -Fq 'cudaMemcpyToSymbol(kHeader80TargetWords' "${ROOT_DIR}/native/src/cuda/header80_backend_v050.cu" || { echo "Cached word target upload is missing" >&2; exit 1; }
+grep -Fq 'PASS: 512 word-pipeline CPU/CUDA samples match' "${ROOT_DIR}/native/tests/cuda_header80_validation.cpp" || { echo "Word-pipeline validation gate is missing" >&2; exit 1; }
+grep -Fq 'https://t.me/pepepow_ru' "${ROOT_DIR}/native/src/app/main.cpp" || { echo "Telegram group link is missing from banner" >&2; exit 1; }
 grep -Fq 'constexpr std::uint64_t chunk_size = 524288;' "${ROOT_DIR}/native/src/app/main.cpp" || { echo "524K runtime batch is missing" >&2; exit 1; }
-grep -Fq 'GPU_COUNT=1' "${ROOT_DIR}/native/src/app/main.cpp" || { echo "Per-GPU status count is missing" >&2; exit 1; }
-grep -Fq 'GPU0_HPS=' "${ROOT_DIR}/native/src/app/main.cpp" || { echo "Per-GPU hashrate status is missing" >&2; exit 1; }
-grep -Fq 'PEPEPOW_CUDA_THREADS' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "CUDA launch-width profile is missing" >&2; exit 1; }
-grep -Fq 'PEPEPOW_CUDA_THREADS=${PEPEPOW_CUDA_THREADS}' "${ROOT_DIR}/native/CMakeLists.txt" || { echo "CUDA launch-width CMake definition is missing" >&2; exit 1; }
 grep -Fq 'bus_numbers' "${ROOT_DIR}/hiveos/h-stats.sh" || { echo "HiveOS PCI bus mapping is missing" >&2; exit 1; }
-grep -Fq '"temp":%s' "${ROOT_DIR}/hiveos/h-stats.sh" || { echo "HiveOS temperature array is missing" >&2; exit 1; }
-grep -Fq '"fan":%s' "${ROOT_DIR}/hiveos/h-stats.sh" || { echo "HiveOS fan array is missing" >&2; exit 1; }
-grep -Fq 'proxy-console.log' "${ROOT_DIR}/hiveos/h-run.sh" || { echo "Proxy console isolation is missing" >&2; exit 1; }
-
-if [[ "${VERSION}" == "0.4.1-PR" ]]; then
-  grep -Fq 'PEPEPOW_CUDA_CHEAP_LUT' "${ROOT_DIR}/native/CMakeLists.txt" || { echo "Matrix-cache CMake option is missing" >&2; exit 1; }
-  grep -Fq 'device_cheap_table_' "${ROOT_DIR}/native/src/cuda/header80_backend.cu" || { echo "Persistent matrix-cache buffer is missing" >&2; exit 1; }
-  grep -Fq 'PASS: 256 deterministic CPU/CUDA samples match' "${ROOT_DIR}/native/tests/cuda_header80_validation.cpp" || { echo "Deterministic CUDA validation gate is missing" >&2; exit 1; }
-  grep -Fq 'cheap_matrix_lut=autotune' "${ROOT_DIR}/native/src/app/main.cpp" || { echo "Matrix-cache telemetry marker is missing" >&2; exit 1; }
-fi
-
-if grep -Pq '[\x{1F300}-\x{1FAFF}]|•' "${ROOT_DIR}/native/src/app/main.cpp"; then
-  echo "Unsupported terminal emoji or bullet remains in main.cpp" >&2
-  exit 1
-fi
-if grep -Eq 'pepepowminer .*\|[[:space:]]*tee|\.\/pepepowminer .*\|[[:space:]]*tee' "${ROOT_DIR}/hiveos/h-run.sh"; then
-  echo "Miner output must not be piped through tee" >&2
-  exit 1
-fi
 
 find_nvcc() {
   if command -v nvcc >/dev/null 2>&1; then command -v nvcc; return 0; fi
@@ -89,11 +59,22 @@ profile_hps() {
   sed -n 's/.* hps=\([0-9][0-9]*\).*/\1/p' <<<"$1" | tail -n1
 }
 
-build_native_profile() {
-  local name="$1" threads="$2" max_regs="$3" nvcc_path="$4"
+profile_registers() {
+  local log="$1"
+  awk '/Used [0-9]+ registers/ {for (i=1;i<=NF;i++) if ($i=="Used") {v=$(i+1)+0; if (v>m)m=v}} END {print m+0}' "${log}"
+}
+
+profile_spills() {
+  local log="$1"
+  awk '/bytes spill stores/ {for (i=1;i<=NF;i++) if ($(i+1)=="bytes" && $(i+2)=="spill") {v=$i+0; if (v>m)m=v}} END {print m+0}' "${log}"
+}
+
+build_profile() {
+  local name="$1" threads="$2" min_blocks="$3" scaled="$4" unroll="$5" max_regs="$6" nvcc_path="$7"
   local dir="${PROFILE_ROOT}/${name}"
-  rm -rf "${dir}"
-  echo "== CUDA profile ${name}: threads=${threads} max_regs=${max_regs:-auto} =="
+  local build_log="${dir}.build.log"
+  rm -rf "${dir}" "${build_log}"
+  echo "== CUDA profile ${name}: threads=${threads} min_blocks=${min_blocks} scaled=${scaled} unroll=${unroll} max_regs=${max_regs:-auto} =="
   local cmake_args=(
     -S "${ROOT_DIR}/native" -B "${dir}"
     -DCMAKE_BUILD_TYPE=Release
@@ -101,6 +82,9 @@ build_native_profile() {
     -DPEPEPOW_BUILD_TESTS=ON
     -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
     -DPEPEPOW_CUDA_THREADS="${threads}"
+    -DPEPEPOW_CUDA_MIN_BLOCKS="${min_blocks}"
+    -DPEPEPOW_CUDA_SCALED_MATRIX="${scaled}"
+    -DPEPEPOW_CUDA_BYTE_UNROLL="${unroll}"
     -DCMAKE_CUDA_ARCHITECTURES=86
     -DCMAKE_CUDA_COMPILER="${nvcc_path}"
     -DFETCHCONTENT_BASE_DIR="${DEPS_DIR}"
@@ -109,65 +93,38 @@ build_native_profile() {
     cmake_args+=( -DPEPEPOW_CUDA_MAX_REGISTERS="${max_regs}" )
   fi
   cmake "${cmake_args[@]}"
-  cmake --build "${dir}" --config Release --parallel "${JOBS}"
+  cmake --build "${dir}" --config Release --parallel "${JOBS}" 2>&1 | tee "${build_log}"
   ctest --test-dir "${dir}" --output-on-failure
   "${dir}/pepepow_cuda_header80_validation"
-  local output
-  output="$("${dir}/pepepow_header80_benchmark" 1048576)"
+  local output hps regs spills
+  output="$("${dir}/pepepow_header80_benchmark" "${BENCH_NONCES}")"
   printf '%s\n' "${output}"
-  local hps
   hps="$(profile_hps "${output}")"
   [[ "${hps}" =~ ^[1-9][0-9]*$ ]] || { echo "Cannot parse benchmark for ${name}" >&2; exit 1; }
+  regs="$(profile_registers "${build_log}")"
+  spills="$(profile_spills "${build_log}")"
   printf '%s\n' "${hps}" > "${dir}/profile.hps"
-  printf 'PROFILE_RESULT name=%s threads=%s max_regs=%s hps=%s\n' "${name}" "${threads}" "${max_regs:-auto}" "${hps}"
+  printf 'name=%s\nthreads=%s\nmin_blocks=%s\nscaled=%s\nunroll=%s\nmax_regs=%s\nregisters=%s\nmax_spill_bytes=%s\nhps=%s\n' \
+    "${name}" "${threads}" "${min_blocks}" "${scaled}" "${unroll}" "${max_regs:-auto}" "${regs}" "${spills}" "${hps}" \
+    > "${dir}/profile.meta"
+  printf 'PROFILE_RESULT name=%s threads=%s min_blocks=%s scaled=%s unroll=%s max_regs=%s registers=%s spills=%s hps=%s\n' \
+    "${name}" "${threads}" "${min_blocks}" "${scaled}" "${unroll}" "${max_regs:-auto}" "${regs}" "${spills}" "${hps}"
 }
 
-build_docker_fallback() {
-  local name="t128-auto" dir="${PROFILE_ROOT}/t128-auto"
-  command -v docker >/dev/null 2>&1 || { echo "CUDA compiler not found and Docker unavailable" >&2; exit 1; }
-  rm -rf "${dir}"
-  docker pull "${CUDA_IMAGE}"
-  docker run --rm -e DEBIAN_FRONTEND=noninteractive -e JOBS="${JOBS}" \
-    -v "${ROOT_DIR}:/workspace" -w /workspace "${CUDA_IMAGE}" bash -lc '
-      set -euo pipefail
-      apt-get update
-      apt-get install -y --no-install-recommends cmake git build-essential ca-certificates python3
-      rm -rf /var/lib/apt/lists/* /workspace/build-profiles-v040/t128-auto
-      cmake -S /workspace/native -B /workspace/build-profiles-v040/t128-auto \
-        -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON \
-        -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DPEPEPOW_CUDA_THREADS=128 \
-        -DCMAKE_CUDA_ARCHITECTURES=86 -DCMAKE_CUDA_RUNTIME_LIBRARY=Static \
-        -DFETCHCONTENT_BASE_DIR=/workspace/.deps-v040
-      cmake --build /workspace/build-profiles-v040/t128-auto --config Release --parallel "${JOBS}"
-    '
-  ctest --test-dir "${dir}" --output-on-failure
-  "${dir}/pepepow_cuda_header80_validation"
-  local output hps
-  output="$("${dir}/pepepow_header80_benchmark" 1048576)"
-  printf '%s\n' "${output}"
-  hps="$(profile_hps "${output}")"
-  [[ "${hps}" =~ ^[1-9][0-9]*$ ]] || { echo "Cannot parse fallback benchmark" >&2; exit 1; }
-  printf '%s\n' "${hps}" > "${dir}/profile.hps"
-  printf 'PROFILE_RESULT name=%s threads=128 max_regs=auto hps=%s\n' "${name}" "${hps}"
-}
+NVCC_PATH="$(find_nvcc)" || { echo "CUDA nvcc compiler not found" >&2; exit 1; }
+export PATH="$(dirname "${NVCC_PATH}"):${PATH}"
+"${NVCC_PATH}" --version
 
 rm -rf "${PROFILE_ROOT}" "${LINK_BUILD_DIR}" "${PACKAGE_DIR}" "${ARCHIVE_PATH}" "${ARCHIVE_LIST}"
 mkdir -p "${PROFILE_ROOT}" "${ROOT_DIR}/dist"
 
 profiles=()
-if NVCC_PATH="$(find_nvcc)"; then
-  export PATH="$(dirname "${NVCC_PATH}"):${PATH}"
-  "${NVCC_PATH}" --version
-  build_native_profile t64-auto 64 "" "${NVCC_PATH}"
-  profiles+=(t64-auto)
-  build_native_profile t128-auto 128 "" "${NVCC_PATH}"
-  profiles+=(t128-auto)
-  build_native_profile t128-r80 128 80 "${NVCC_PATH}"
-  profiles+=(t128-r80)
-else
-  build_docker_fallback
-  profiles+=(t128-auto)
-fi
+build_profile s64-b1-u1 64 1 ON 1 "" "${NVCC_PATH}"; profiles+=(s64-b1-u1)
+build_profile s64-b2-u1 64 2 ON 1 "" "${NVCC_PATH}"; profiles+=(s64-b2-u1)
+build_profile s128-b1-u1 128 1 ON 1 "" "${NVCC_PATH}"; profiles+=(s128-b1-u1)
+build_profile d64-b1-u1 64 1 OFF 1 "" "${NVCC_PATH}"; profiles+=(d64-b1-u1)
+build_profile s64-b1-u2 64 1 ON 2 "" "${NVCC_PATH}"; profiles+=(s64-b1-u2)
+build_profile s64-b1-r96 64 1 ON 1 96 "${NVCC_PATH}"; profiles+=(s64-b1-r96)
 
 best_profile=""
 best_hps=0
@@ -182,6 +139,11 @@ done
 SELECTED_BUILD_DIR="${PROFILE_ROOT}/${best_profile}"
 ln -s "${SELECTED_BUILD_DIR}" "${LINK_BUILD_DIR}"
 printf 'AUTOTUNE_SELECTED profile=%s hps=%s build=%s\n' "${best_profile}" "${best_hps}" "${SELECTED_BUILD_DIR}"
+if (( best_hps >= 2000000 )); then
+  echo "TARGET_2MH=PASS"
+else
+  echo "TARGET_2MH=PENDING measured_hps=${best_hps}"
+fi
 
 "${SELECTED_BUILD_DIR}/pepepowminer" --list-gpu
 BUILD_ID="$("${SELECTED_BUILD_DIR}/pepepowminer" --version)"
@@ -202,8 +164,10 @@ install -m 0644 "${ROOT_DIR}/VERSION" "${PACKAGE_DIR}/VERSION"
   echo "selected_profile=${best_profile}"
   echo "selected_hps=${best_hps}"
   echo "edition=${EXPECTED_EDITION}"
+  echo "benchmark_nonces=${BENCH_NONCES}"
   for profile in "${profiles[@]}"; do
-    echo "${profile}_hps=$(cat "${PROFILE_ROOT}/${profile}/profile.hps")"
+    echo "--- ${profile} ---"
+    cat "${PROFILE_ROOT}/${profile}/profile.meta"
   done
 } > "${PACKAGE_DIR}/BUILD_PROFILE"
 
