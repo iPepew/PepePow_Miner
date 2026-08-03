@@ -26,6 +26,10 @@ def main() -> int:
     run = root / "hiveos/h-run.sh"
 
     text = main_cpp.read_text(encoding="utf-8")
+    text = text.replace(
+        "PepeW - твоя монета. Твои правила.",
+        "PepeW - твоя монета, твои правила.",
+    )
     old_chunk = '''        // 262K keeps the optimized GPU path saturated while reducing stale-job
         // exposure to roughly half of the earlier 524K validation batch.
         constexpr std::uint64_t chunk_size = 262144;'''
