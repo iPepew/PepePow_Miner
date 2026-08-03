@@ -17,6 +17,8 @@ curl -fsSL "$BASE/prepare-v200-zero-safe-source.py" -o "$PZERO"
 curl -fsSL "$BASE/prepare-v200-warp-service-source.py" -o "$PSERVICE"
 curl -fsSL "$BASE/run-v200-warp-service-matrix.sh" -o "$RUNNER"
 curl -fsSL "$BASE/watch-v200-warp-service-progress.sh" -o "$WATCHER"
+# Correct the harmless spelling error in the first published runner revision.
+sed -i 's/sanitzer_gate/sanitizer_gate/g' "$RUNNER"
 chmod +x "$RUNNER" "$WATCHER"
 rm -f "$LOG"
 
