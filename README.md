@@ -1,84 +1,87 @@
 # PepeW Miner
 
-CUDA miner for PEPEPOW HooHash V110 with HiveOS integration.
+CUDA-майнер PEPEPOW HooHash V110 с интеграцией HiveOS.
 
-## Current prerelease
-
-```text
-v0.5.0-PR
-```
-
-The short `-PR` suffix keeps the custom miner name readable in the HiveOS desktop and mobile interfaces.
-
-## v0.5.0-PR performance architecture
-
-- validated HooHash V110 consensus path;
-- word-oriented BLAKE3 first-pass and final-hash pipeline;
-- BLAKE3 Header80 first-block midstate;
-- exact 32 KiB scaled-matrix constant cache;
-- original matrix retained in a persistent device allocation for nonlinear work;
-- cached per-job matrix, midstate and tail uploads;
-- cached 256-bit target represented as eight big-endian words;
-- compact four-byte result reset and compact winning-result transfer;
-- GPU-side target comparison;
-- launch-bounds, block-size, unroll and register autotuning;
-- 4,194,304-nonce benchmark for every candidate profile;
-- 512 deterministic CPU/CUDA validation samples per profile;
-- selected profile and PTXAS register/spill data recorded in `BUILD_PROFILE`;
-- per-GPU HiveOS hashrate, temperature, fan and PCI bus arrays;
-- real PID, uptime and stale-telemetry protection;
-- one-command forensic collection.
-
-Strict FP64 operation order remains protected. CUDA is compiled with FP contraction disabled because changing the floating-point result changes the proof-of-work hash.
-
-## Terminal identity
+## Stable release
 
 ```text
-=========================================
-              PepeW Miner
-=========================================
-
-Version   : v0.5.0-PR
-Algorithm : HooHash V110
-GPU 0     : NVIDIA CUDA
-
-"PepeW - твоя монета. Твои правила."
-Telegram  : https://t.me/pepepow_ru
-
-=========================================
+PepeW Miner v1.0.0
 ```
 
-Runtime records use terminal-safe labels:
+Релиз 1.0 использует архитектуру `service768`: редкие тяжёлые nonlinear-операции HooHash уплотняются внутри CUDA-блока и выполняются выделенным service warp. Это устраняет основную потерю производительности от warp divergence.
+
+## Подтверждённая производительность RTX 3080
+
+Реальный 10-минутный Stratum-тест при 1650 MHz:
 
 ```text
-[POOL] Connected
-[READY] Pool authorization complete
-[JOB] new work
-[MINING] GPU0 2.000 MH/s | A 25 | R 0 | Uptime 00:03:15
-[ACCEPTED] share accepted
+mean:       2.023649 MH/s
+median:     2.022 MH/s
+accepted:   90
+rejected:   0
+new Xid:    0
+live gate:  PASS
+2 MH gate:  PASS
 ```
 
-## RTX 3080 mega-autotune
+Локальная проверка финального ядра:
 
-The dedicated v0.5.0 builder validates and measures several launch profiles. It varies:
+```text
+benchmark median:  2.204878 MH/s
+stress median:     2.209934 MH/s
+registers:         77
+stack:             176 B
+spills:             0 / 0
+compute-sanitizer: PASS
+consensus:         PASS
+```
 
-- 64 versus 128 threads per block;
-- one versus two requested resident blocks per SM;
-- exact scaled-matrix cache enabled versus disabled;
-- byte-loop unroll factor;
-- automatic versus limited register allocation.
+Подробности: [`RELEASE_NOTES_v1.0.0.md`](RELEASE_NOTES_v1.0.0.md).
 
-The fastest exact profile is packaged automatically. The builder reports whether the measured local benchmark reaches the 2 MH/s engineering target; package creation is never allowed to bypass consensus validation.
+## Основные изменения 1.0
 
-## HiveOS telemetry
+- block-compacted HooHash cold-service;
+- проверенная CUDA-геометрия 768 потоков;
+- точный объединённый FP64 selector decoder;
+- точный bit-level SW-state predicate;
+- cell-major scaled-nibble lookup table;
+- BLAKE3 Header80 midstate;
+- GPU-side target filter;
+- CPU-проверка каждой найденной шары перед отправкой;
+- `--fmad=false` для сохранения точного FP64-консенсуса;
+- полноценная HiveOS-телеметрия и Accepted/Rejected.
 
-`h-stats.sh` reports one aligned entry per active mining device:
+## Поддерживаемая платформа
 
-- `hs` and `hs_units` for per-GPU speed;
-- `temp` for GPU temperature;
-- `fan` for fan percentage;
-- `bus_numbers` for stable mapping to the HiveOS GPU row;
-- total `khs`, uptime, accepted and rejected shares.
+Первичный бинарный релиз собран для:
+
+```text
+Linux x86_64
+NVIDIA Ampere sm_86
+RTX 30 series
+HiveOS
+```
+
+Оптимизация и live-проверка выполнены на RTX 3080. Другие CUDA-архитектуры требуют отдельной сборки и валидации.
+
+## Сборка финального HiveOS-пакета
+
+На тестовом риге должен быть пустой полётный лист. Сборщик не меняет частоты и не заменяет установленный майнер.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iPepew/PepePow_Miner/release/v1.0.0/tools/start-v100-release-build.sh | bash
+```
+
+Процедура выполняет:
+
+1. проверку SHA256 точного consensus-tested CUDA-исходника;
+2. Release-сборку `service768` для `sm_86`;
+3. CTest и CPU/CUDA consensus validation;
+4. проверку PTXAS-регистров и отсутствия spills;
+5. benchmark с обязательной медианой не ниже 2 MH/s;
+6. `compute-sanitizer`, когда он доступен;
+7. проверку новых NVIDIA Xid;
+8. создание отдельного HiveOS-архива и `.sha256`.
 
 ## HiveOS
 
@@ -100,12 +103,27 @@ Password:
 x
 ```
 
-No additional miner arguments are required.
+Дополнительные аргументы майнера не требуются.
+
+## Terminal identity
+
+```text
+=========================================
+            PepeW Miner
+=========================================
+
+Version   : v1.0.0
+Algorithm : HooHash V110
+GPU       : NVIDIA CUDA
+
+"PepeW — твоя монета. Твои правила."
+=========================================
+```
 
 ## Safety
 
-Run mining software only on hardware you own or are explicitly authorized to use. Monitor temperature, power consumption and system stability.
+Запускайте майнинг только на оборудовании, которым вы владеете или имеете право пользоваться. Контролируйте температуру, питание и стабильность системы.
 
 ## License
 
-MIT License. See `LICENSE`.
+MIT License. See [`LICENSE`](LICENSE).
