@@ -5,13 +5,25 @@ string(STRIP "${PEPEPOW_VERSION}" PEPEPOW_VERSION)
 if(PEPEPOW_VERSION STREQUAL "")
     message(FATAL_ERROR "VERSION file is empty")
 endif()
-project(PepePowMiner VERSION 0.2.0 LANGUAGES C CXX)
+project(PepePowMiner VERSION 1.0.0 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
-set(PEPEPOW_CUDA_THREADS "128" CACHE STRING "CUDA threads per Header80 search block")
+set(PEPEPOW_CUDA_THREADS "768" CACHE STRING "CUDA threads per Header80 search block")
+set(PEPEPOW_CUDA_MIN_BLOCKS "1" CACHE STRING "Requested resident blocks per SM for launch bounds")
+option(PEPEPOW_CUDA_SCALED_MATRIX "Use exact pre-scaled matrix" ON)
+option(PEPEPOW_CUDA_SPLIT_PIPELINE "Use split Header80 pipeline" OFF)
+option(PEPEPOW_CUDA_FAST_FRACTION "Use exact bit-level positive fraction" ON)
+option(PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS "Use exact integer-to-FP64 bit conversion" ON)
+option(PEPEPOW_CUDA_BIT_SW_FRACTION "Use exact bit-level SW fraction" ON)
+option(PEPEPOW_CUDA_DERIVE_TWO "Derive nonlinear selector two from one" OFF)
+option(PEPEPOW_CUDA_NIBBLE_TABLE "Use constant nibble conversion table" OFF)
+option(PEPEPOW_CUDA_SCALED_NIBBLE_TABLE "Use device scaled-nibble lookup table" ON)
+option(PEPEPOW_CUDA_ASSUME_FINITE "Use finite consensus hot path" ON)
+set(PEPEPOW_CUDA_SW_STATE_MODE "3" CACHE STRING "HooHash SW state mode")
+set(PEPEPOW_CUDA_BYTE_UNROLL "1" CACHE STRING "HooHash byte-loop unroll factor")
 
 execute_process(COMMAND git rev-parse --short=12 HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.." OUTPUT_VARIABLE PEPEPOW_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(PEPEPOW_GIT_COMMIT STREQUAL "")
@@ -53,9 +65,19 @@ endif()
 
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
-    if(NOT PEPEPOW_CUDA_THREADS MATCHES "^(64|128|256)$")
-        message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be 64, 128 or 256")
+    if(NOT PEPEPOW_CUDA_THREADS MATCHES "^(64|128|256|288|320|352|384|416|448|480|512|544|576|608|640|672|704|736|768)$")
+        message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be a validated service-warp geometry")
     endif()
+    if(NOT PEPEPOW_CUDA_MIN_BLOCKS MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR "PEPEPOW_CUDA_MIN_BLOCKS must be a positive integer")
+    endif()
+    if(NOT PEPEPOW_CUDA_SW_STATE_MODE MATCHES "^[0-3]$")
+        message(FATAL_ERROR "PEPEPOW_CUDA_SW_STATE_MODE must be 0, 1, 2 or 3")
+    endif()
+    if(NOT PEPEPOW_CUDA_BYTE_UNROLL MATCHES "^(1|2|4)$")
+        message(FATAL_ERROR "PEPEPOW_CUDA_BYTE_UNROLL must be 1, 2 or 4")
+    endif()
+
     add_library(pepepow_cuda
         src/cuda/cuda_backend.cu
         src/cuda/header80_backend.cu
@@ -64,7 +86,20 @@ if(PEPEPOW_ENABLE_CUDA)
         src/cuda/warp_divergence_probe.cu)
     target_include_directories(pepepow_cuda PUBLIC include "${CMAKE_CURRENT_BINARY_DIR}/generated")
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
-    target_compile_definitions(pepepow_cuda PRIVATE PEPEPOW_CUDA_THREADS=${PEPEPOW_CUDA_THREADS})
+    target_compile_definitions(pepepow_cuda PRIVATE
+        PEPEPOW_CUDA_THREADS=${PEPEPOW_CUDA_THREADS}
+        PEPEPOW_CUDA_MIN_BLOCKS=${PEPEPOW_CUDA_MIN_BLOCKS}
+        PEPEPOW_CUDA_SCALED_MATRIX=$<BOOL:${PEPEPOW_CUDA_SCALED_MATRIX}>
+        PEPEPOW_CUDA_SPLIT_PIPELINE=$<BOOL:${PEPEPOW_CUDA_SPLIT_PIPELINE}>
+        PEPEPOW_CUDA_FAST_FRACTION=$<BOOL:${PEPEPOW_CUDA_FAST_FRACTION}>
+        PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS=$<BOOL:${PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS}>
+        PEPEPOW_CUDA_BIT_SW_FRACTION=$<BOOL:${PEPEPOW_CUDA_BIT_SW_FRACTION}>
+        PEPEPOW_CUDA_DERIVE_TWO=$<BOOL:${PEPEPOW_CUDA_DERIVE_TWO}>
+        PEPEPOW_CUDA_NIBBLE_TABLE=$<BOOL:${PEPEPOW_CUDA_NIBBLE_TABLE}>
+        PEPEPOW_CUDA_SCALED_NIBBLE_TABLE=$<BOOL:${PEPEPOW_CUDA_SCALED_NIBBLE_TABLE}>
+        PEPEPOW_CUDA_ASSUME_FINITE=$<BOOL:${PEPEPOW_CUDA_ASSUME_FINITE}>
+        PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
+        PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
     set_target_properties(pepepow_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "86" CUDA_SEPARABLE_COMPILATION OFF)
     target_compile_options(pepepow_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     if(PEPEPOW_CUDA_PTXAS_VERBOSE)
