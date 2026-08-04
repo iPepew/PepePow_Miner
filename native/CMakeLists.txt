@@ -5,7 +5,7 @@ string(STRIP "${PEPEPOW_VERSION}" PEPEPOW_VERSION)
 if(PEPEPOW_VERSION STREQUAL "")
     message(FATAL_ERROR "VERSION file is empty")
 endif()
-project(PepePowMiner VERSION 1.0.0 LANGUAGES C CXX)
+project(PepePowMiner VERSION 1.0.3 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
