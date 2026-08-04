@@ -9,7 +9,8 @@ PepeW Miner v1.0.1 is a HiveOS integration and production-runtime hotfix for the
 - `--diagnostic-log` is always supplied so the binary creates `miner-status.env` inside the installed miner directory.
 - A `/tmp/miner-status.env` compatibility fallback is retained for older starts.
 - A console-log fallback can recover the latest `[MINING]` hashrate if the status file is temporarily unavailable.
-- The package root and manifest path are versioned consistently as `PepeW-Miner-v1.0.1-HiveOS/`.
+- The HiveOS release archive uses a flat root and installs into `/hive/miners/custom/PepeW-Miner/` without a double-nested directory.
+- The manifest configuration path now matches the canonical HiveOS custom-miner directory.
 - Unsupported emoji glyphs were replaced with stable ASCII console labels.
 
 ## Runtime
@@ -42,4 +43,5 @@ The final build process requires:
 - Compute Sanitizer pass when available
 - zero new NVIDIA Xid
 - HiveOS telemetry self-test producing `khs=2137` and `{"khs":[2137]}`
+- flat-root HiveOS package layout
 - clean package with no wallet, runtime log, PID, or generated configuration files
