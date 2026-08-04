@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -u
 
 if [[ -r /hive-config/wallet.conf ]]; then
   # shellcheck disable=SC1091
@@ -27,10 +28,15 @@ if [[ -z "${user}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-# PEPEPOW/HooHash V110 is the only supported algorithm in this build. The local
-# proxy is passive and records exact Stratum traffic without changing submits.
+# The binary always derives miner-status.env from --diagnostic-log. Keep that
+# path inside the package even when verbose per-job diagnostics are disabled.
 args=("-o" "stratum+tcp://127.0.0.1:${proxy_port}" "-u" "${user}" "-p" "${pass}"
-      "--diagnostic" "--diagnostic-log" "${diagnostic_log}")
+      "--diagnostic-log" "${diagnostic_log}")
+
+# Full per-job diagnostics are optional because they add disk and console I/O.
+if [[ "${PEPEW_DIAGNOSTIC:-0}" == "1" ]]; then
+  args+=("--diagnostic")
+fi
 
 if [[ -n "${extra_raw}" ]]; then
   eval "extra=( ${extra_raw} )"
@@ -50,20 +56,18 @@ mkdir -p "${miner_dir}"
 
 {
   echo "Miner directory: ${miner_dir}"
-  echo "Upstream pool: ${pool}"
+  echo "Upstream pool: configured via HiveOS"
   echo "Local proxy: stratum+tcp://127.0.0.1:${proxy_port}"
-  echo "User: ${user}"
-  echo "Password: ${pass}"
-  echo "Extra config: ${extra_raw}"
+  echo "User: configured via HiveOS"
+  echo "Password: configured via HiveOS"
+  echo "Extra config: ${extra_raw:+configured}"
   echo "Compatibility --pepepow injection: disabled"
   echo "Proxy submit rewriting: disabled"
   echo "Pool reference: matrix_seed=BLAKE3(masked_header), header_nonce=BE32, mix_nonce=LE32, submit_nonce=LE_HEX"
-  echo "Diagnostic mode: enabled"
-  echo "Diagnostic log: ${diagnostic_log}"
+  echo "Diagnostic mode: ${PEPEW_DIAGNOSTIC:-0}"
+  echo "Diagnostic/status path: ${diagnostic_log}"
   echo "Proxy log: ${proxy_log}"
-  printf 'Final miner command: ./pepepowminer'
-  printf ' %q' "${args[@]}"
-  echo
+  echo "Final miner command: ./pepepowminer [credentials supplied by HiveOS]"
 } > "${setup_file}"
 
 export PEPEPOW_CONFIG_FILE="${conf_file}"
