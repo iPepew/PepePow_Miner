@@ -65,6 +65,9 @@ endif()
 
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.0)
+        message(FATAL_ERROR "PepeW Miner requires CUDA Toolkit 12.x or newer because the CUDA sources use C++20 features such as std::span")
+    endif()
     if(NOT PEPEPOW_CUDA_THREADS MATCHES "^(64|128|256|288|320|352|384|416|448|480|512|544|576|608|640|672|704|736|768)$")
         message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be a validated service-warp geometry")
     endif()
@@ -100,8 +103,7 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_ASSUME_FINITE=$<BOOL:${PEPEPOW_CUDA_ASSUME_FINITE}>
         PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
         PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
-    # CUDA 11.5 supports CUDA C++17, not CUDA C++20. The host code remains C++20.
-    set_target_properties(pepepow_cuda PROPERTIES CUDA_STANDARD 17 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "86" CUDA_SEPARABLE_COMPILATION OFF)
+    set_target_properties(pepepow_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "86" CUDA_SEPARABLE_COMPILATION OFF)
     target_compile_options(pepepow_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     if(PEPEPOW_CUDA_PTXAS_VERBOSE)
         target_compile_options(pepepow_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v> $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)
