@@ -20,6 +20,19 @@ the package identity and HiveOS telemetry wrapper are updated.
   `PepeW-Miner-v1.0.2-HiveOS/`, matching the Flight Sheet Miner name and the
   install path used by the current `custom-get` flow.
 
+## Required Flight Sheet name
+
+The HiveOS **Miner name** field controls `CUSTOM_MINER` and therefore the
+selected directory below `/hive/miners/custom`. It must be entered exactly as:
+
+```text
+PepeW-Miner-v1.0.2-HiveOS
+```
+
+Do not use `PepeW-Miner-v1.0.2` or append architecture suffixes such as
+`-sm86`. The archive root does not override a different value manually saved
+in the Flight Sheet.
+
 ## Expected HiveOS display
 
 For every active GPU, HiveOS receives the card's own hashrate, temperature,
