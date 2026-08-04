@@ -5,7 +5,10 @@ export LC_ALL="${LC_ALL:-C.UTF-8}"
 export PEPEW_BATCH_SIZE="${PEPEW_BATCH_SIZE:-1048576}"
 export PEPEW_DIAGNOSTIC="${PEPEW_DIAGNOSTIC:-0}"
 
-miner_dir="${MINER_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+# The generic HiveOS custom dispatcher executes this file as a child process,
+# so MINER_DIR is not guaranteed to be exported. The script location is the
+# authoritative package directory.
+miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${miner_dir}"
 
 log_dir="/var/log/miner/custom/$(basename "${miner_dir}")"
@@ -24,9 +27,10 @@ mkdir -p "${log_dir}"
 
 conf_file="${CUSTOM_CONFIG_FILENAME:-${miner_dir}/config.txt}"
 if [[ ! -s "${conf_file}" ]]; then
+  # Direct/manual start fallback. Normal HiveOS startup already sourced this
+  # file through the generic custom dispatcher and generated config.txt.
   # shellcheck disable=SC1091
   source ./h-config.sh
-  miner_config_gen
 fi
 [[ -s "${conf_file}" ]] || { echo "HiveOS miner config is missing: ${conf_file}" >&2; exit 1; }
 
