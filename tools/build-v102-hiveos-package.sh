@@ -5,7 +5,7 @@ umask 022
 ROOT_NAME="PepeW-Miner-v1.0.2-HiveOS"
 SOURCE_DIR="${1:-/hive/miners/custom/${ROOT_NAME}}"
 OUT_DIR="${2:-/root/pepepow-tests}"
-ARCHIVE="${OUT_DIR}/PepeW-Miner-v1.0.2-HiveOS-sm86.tar.gz"
+ARCHIVE="${OUT_DIR}/${ROOT_NAME}.tar.gz"
 SHA_FILE="${ARCHIVE}.sha256"
 
 required=(
@@ -60,10 +60,23 @@ chmod 0755 \
   "${STAGE}/${ROOT_NAME}/h-run.sh" \
   "${STAGE}/${ROOT_NAME}/h-stats.sh" \
   "${STAGE}/${ROOT_NAME}/stratum-replay-proxy.py"
+chmod 0644 \
+  "${STAGE}/${ROOT_NAME}/BUILD_PROFILE" \
+  "${STAGE}/${ROOT_NAME}/LICENSE" \
+  "${STAGE}/${ROOT_NAME}/README.md" \
+  "${STAGE}/${ROOT_NAME}/RELEASE_MANIFEST.txt" \
+  "${STAGE}/${ROOT_NAME}/RELEASE_NOTES_v1.0.2.md" \
+  "${STAGE}/${ROOT_NAME}/VERSION" \
+  "${STAGE}/${ROOT_NAME}/h-manifest.conf" \
+  "${STAGE}/${ROOT_NAME}/pepepowminer.sha256"
 
 rm -f "${ARCHIVE}" "${SHA_FILE}"
-tar -C "${STAGE}" -czf "${ARCHIVE}" "${ROOT_NAME}"
-sha256sum "${ARCHIVE}" >"${SHA_FILE}"
+tar --sort=name --owner=0 --group=0 --numeric-owner \
+  -C "${STAGE}" -czf "${ARCHIVE}" "${ROOT_NAME}"
+(
+  cd "${OUT_DIR}"
+  sha256sum "$(basename "${ARCHIVE}")" >"$(basename "${SHA_FILE}")"
+)
 
 FIRST="$(tar -tzf "${ARCHIVE}" | sed -n '1p')"
 [[ "${FIRST}" == "${ROOT_NAME}/" ]] || {
@@ -80,6 +93,7 @@ if tar -tzf "${ARCHIVE}" | grep -Eq '(^|/)(config\.txt|setup\.txt|run\.txt|.*\.l
   exit 1
 fi
 
+echo "PACKAGE_NAME_GATE=PASS archive=$(basename "${ARCHIVE}")"
 echo "PACKAGE_ROOT_CHECK=PASS root=${ROOT_NAME}/"
 echo "HIVEOS_MANIFEST=PASS"
 echo "PER_GPU_HS_SCHEMA=PASS"
