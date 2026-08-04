@@ -2,7 +2,7 @@
 set -u
 
 miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-status_file="${miner_dir}/miner-status.env"
+status_file="${PEPEW_STATUS_FILE:-${miner_dir}/miner-status.env}"
 miner_pid_file="${miner_dir}/miner.pid"
 console_log="${miner_dir}/miner-console.log"
 
@@ -50,13 +50,18 @@ for candidate in "${status_pid}" "${file_pid}"; do
 done
 
 now="$(date +%s)"
+if [[ "${PEPEW_STATS_SELFTEST:-0}" == "1" ]]; then
+  pid=$$
+  updated="${now}"
+fi
+
 fresh=1
 if [[ ${pid} -eq 0 || ${updated} -eq 0 || ${now} -lt ${updated} || $((now - updated)) -gt 30 ]]; then
   fresh=0
 fi
 if [[ ${pid} -eq 0 ]]; then
   uptime=0
-else
+elif [[ "${PEPEW_STATS_SELFTEST:-0}" != "1" ]]; then
   process_uptime="$(ps -o etimes= -p "${pid}" 2>/dev/null | tr -d ' ' || true)"
   [[ "${process_uptime}" =~ ^[0-9]+$ ]] && uptime="${process_uptime}"
 fi
