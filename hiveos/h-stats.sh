@@ -4,10 +4,15 @@ set -u
 miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 status_file="${miner_dir}/miner-status.env"
 miner_pid_file="${miner_dir}/miner.pid"
+console_log="${miner_dir}/miner-console.log"
+
+# Compatibility fallback for packages started before the status-path hotfix.
+if [[ ! -r "${status_file}" && -r /tmp/miner-status.env ]]; then
+  status_file=/tmp/miner-status.env
+fi
 
 read_numeric() {
-  local key="$1"
-  local value=""
+  local key="$1" value=""
   if [[ -r "${status_file}" ]]; then
     value="$(sed -n "s/^${key}=//p" "${status_file}" 2>/dev/null | tail -n1)"
   fi
@@ -19,6 +24,7 @@ rejected="$(read_numeric REJECTED)"
 uptime="$(read_numeric UPTIME)"
 updated="$(read_numeric UPDATED_EPOCH)"
 status_pid="$(read_numeric PID)"
+total_hps="$(read_numeric HPS)"
 gpu_count="$(read_numeric GPU_COUNT)"
 
 if [[ ! "${gpu_count}" =~ ^[1-9][0-9]*$ ]] || [[ ${gpu_count} -gt 16 ]]; then
@@ -45,7 +51,7 @@ done
 
 now="$(date +%s)"
 fresh=1
-if [[ ${pid} -eq 0 || ${updated} -eq 0 || ${now} -lt ${updated} || $((now - updated)) -gt 20 ]]; then
+if [[ ${pid} -eq 0 || ${updated} -eq 0 || ${now} -lt ${updated} || $((now - updated)) -gt 30 ]]; then
   fresh=0
 fi
 if [[ ${pid} -eq 0 ]]; then
@@ -55,11 +61,25 @@ else
   [[ "${process_uptime}" =~ ^[0-9]+$ ]] && uptime="${process_uptime}"
 fi
 
-declare -a gpu_hps gpu_temp gpu_fan gpu_bus
+# Last-resort console fallback keeps HiveOS telemetry alive if an older config
+# omitted --diagnostic-log but the miner process and console are healthy.
+if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
+  latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\|[[:space:]]*([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
+  if [[ "${latest_mhs}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    total_hps="$(awk -v value="${latest_mhs}" 'BEGIN { printf "%.0f", value * 1000000 }')"
+    fresh=1
+  fi
+fi
+[[ ${fresh} -eq 1 ]] || total_hps=0
+
+declare -a gpu_khs gpu_temp gpu_fan gpu_bus
 for ((i=0; i<gpu_count; ++i)); do
-  value="$(read_numeric "GPU${i}_HPS")"
-  [[ ${fresh} -eq 1 ]] || value=0
-  gpu_hps[$i]="${value}"
+  device_hps="$(read_numeric "GPU${i}_HPS")"
+  if [[ ${device_hps} -eq 0 && ${i} -eq 0 ]]; then
+    device_hps="${total_hps}"
+  fi
+  [[ ${fresh} -eq 1 ]] || device_hps=0
+  gpu_khs[$i]=$((device_hps / 1000))
   gpu_temp[$i]=0
   gpu_fan[$i]=0
   gpu_bus[$i]="${i}"
@@ -95,19 +115,18 @@ array_json() {
   printf '[%s]' "$*"
 }
 
-hs_json="$(array_json "${gpu_hps[@]}")"
+khs_json="$(array_json "${gpu_khs[@]}")"
 temp_json="$(array_json "${gpu_temp[@]}")"
 fan_json="$(array_json "${gpu_fan[@]}")"
 bus_json="$(array_json "${gpu_bus[@]}")"
 
-total_hps=0
-for value in "${gpu_hps[@]}"; do
-  total_hps=$((total_hps + value))
+khs=0
+for value in "${gpu_khs[@]}"; do
+  khs=$((khs + value))
 done
-khs=$((total_hps / 1000))
 
-# HiveOS expects one hashrate value per device plus matching temperature, fan
-# and PCI bus arrays. The empty version prevents a duplicate suffix after (c).
-stats=$(printf '{"hs":%s,"hs_units":"hs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"","algo":"hoohash"}' \
-  "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
+# HiveOS custom miners natively expect the per-device array under `khs` and
+# the scalar `khs` shell variable as the total hashrate.
+stats=$(printf '{"khs":%s,"temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.0","algo":"hoohash"}' \
+  "${khs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
   "${accepted}" "${rejected}" "${bus_json}")
