@@ -7,8 +7,8 @@ BASE_RUNNER=/root/build-v101-base.sh
 GENERATED_RUNNER=/root/build-v101-generated.sh
 PATCHER=/root/prepare-v101-source.py
 
-curl -fsSL "$BASE_URL/build-v100-release.sh" -o "$BASE_RUNNER"
-curl -fsSL "$BASE_URL/prepare-v101-source.py" -o "$PATCHER"
+curl -fsSL "$BASE_URL/build-v100-release.sh?rev=v101-absolute-toolchain" -o "$BASE_RUNNER"
+curl -fsSL "$BASE_URL/prepare-v101-source.py?rev=v101-absolute-toolchain" -o "$PATCHER"
 chmod +x "$BASE_RUNNER" "$PATCHER"
 
 python3 - "$BASE_RUNNER" "$GENERATED_RUNNER" "$PATCHER" <<'PY'
@@ -33,8 +33,8 @@ replacements = [
     ),
     (
         'for command_name in bash git cmake ctest python3 sha256sum tar awk sed grep nvidia-smi curl; do',
-        'for command_name in bash git cmake ctest python3 sha256sum tar awk sed grep nvidia-smi curl timeout; do',
-        'timeout dependency',
+        'for command_name in bash git python3 sha256sum tar awk sed grep nvidia-smi curl timeout; do',
+        'tool dependency list',
     ),
     (
         'STABLE_PACKAGE="$(find_stable_package || true)"\n[[ -n "$STABLE_PACKAGE" ]] || fail "installed PepeW stable package not found"',
@@ -79,6 +79,63 @@ for old, new, label in replacements:
 
 text = text.replace("v1.0.0", "v1.0.1")
 text = text.replace("1.0.0", "1.0.1")
+
+configure_anchor = 'set_status RUNNING configure service768\n'
+toolchain_gate = r'''CMAKE_EXE="${CMAKE_COMMAND:-/usr/local/bin/cmake}"
+CTEST_EXE="${CTEST_COMMAND:-/usr/local/bin/ctest}"
+[[ -x "$CMAKE_EXE" ]] || fail "pinned CMake executable missing: $CMAKE_EXE"
+[[ -x "$CTEST_EXE" ]] || fail "pinned CTest executable missing: $CTEST_EXE"
+CMAKE_RUNTIME_VERSION="$($CMAKE_EXE --version | awk 'NR==1 {print $3}')"
+CTEST_RUNTIME_VERSION="$($CTEST_EXE --version | awk 'NR==1 {print $3}')"
+python3 - "$CMAKE_RUNTIME_VERSION" <<'PY_TOOLCHAIN'
+import sys
+parts=[]
+for item in sys.argv[1].split('.'):
+    digits=''.join(ch for ch in item if ch.isdigit())
+    parts.append(int(digits or 0))
+while len(parts) < 3:
+    parts.append(0)
+if tuple(parts[:3]) < (3, 24, 0):
+    raise SystemExit(f"ERROR: pinned CMake >= 3.24 required, found {sys.argv[1]}")
+PY_TOOLCHAIN
+echo "BUILD_TOOLCHAIN_GATE=PASS"
+echo "BUILD_CMAKE_BIN=$CMAKE_EXE"
+echo "BUILD_CMAKE_VERSION=$CMAKE_RUNTIME_VERSION"
+echo "BUILD_CTEST_BIN=$CTEST_EXE"
+echo "BUILD_CTEST_VERSION=$CTEST_RUNTIME_VERSION"
+
+set_status RUNNING configure service768
+'''
+if configure_anchor not in text:
+    raise SystemExit("ERROR: configure anchor not found")
+text = text.replace(configure_anchor, toolchain_gate, 1)
+
+cmake_configure_anchor = '\ncmake -S "$SRC/native" -B "$BUILD" \\\n'
+if cmake_configure_anchor not in text:
+    raise SystemExit("ERROR: CMake configure command anchor not found")
+text = text.replace(
+    cmake_configure_anchor,
+    '\n"$CMAKE_EXE" -S "$SRC/native" -B "$BUILD" \\\n',
+    1,
+)
+
+cmake_build_anchor = '\ncmake --build "$BUILD" --parallel "$JOBS" --target \\\n'
+if cmake_build_anchor not in text:
+    raise SystemExit("ERROR: CMake build command anchor not found")
+text = text.replace(
+    cmake_build_anchor,
+    '\n"$CMAKE_EXE" --build "$BUILD" --parallel "$JOBS" --target \\\n',
+    1,
+)
+
+ctest_anchor = '\nctest --test-dir "$BUILD" --output-on-failure | tee "$WORK_ROOT/ctest.log"\n'
+if ctest_anchor not in text:
+    raise SystemExit("ERROR: CTest command anchor not found")
+text = text.replace(
+    ctest_anchor,
+    '\n"$CTEST_EXE" --test-dir "$BUILD" --output-on-failure | tee "$WORK_ROOT/ctest.log"\n',
+    1,
+)
 
 package_test_anchor = 'rm -f "$ARCHIVE" "$SHA_FILE"\n'
 package_test = r'''echo "RELEASE_STAGE=HIVEOS_TELEMETRY_SELFTEST"
