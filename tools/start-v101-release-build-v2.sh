@@ -53,12 +53,12 @@ rm -f "$LOG"
   echo "PATH=$PATH"
 } | tee "$LOG"
 
-curl -fsSL "$BASE/build-v101-release.sh?rev=toolchain-v3" -o "$RUNNER"
-curl -fsSL "$BASE/watch-v101-release-build.sh?rev=toolchain-v3" -o "$WATCHER"
+curl -fsSL "$BASE/build-v101-release.sh?rev=absolute-toolchain-v4" -o "$RUNNER"
+curl -fsSL "$BASE/watch-v101-release-build.sh?rev=absolute-toolchain-v4" -o "$WATCHER"
 chmod +x "$RUNNER" "$WATCHER"
 
 # Run without login/profile initialization so HiveOS cannot restore the old
-# /usr/bin/cmake. Append to the log so the watcher keeps the preflight lines.
+# /usr/bin/cmake. The generated builder also invokes these absolute paths.
 screen -dmS "$SCREEN" env \
   PATH="$PATH" \
   CMAKE_COMMAND="$CMAKE_BIN" \
