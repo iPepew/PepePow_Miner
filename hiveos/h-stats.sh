@@ -6,7 +6,7 @@ status_file="${miner_dir}/miner-status.env"
 miner_pid_file="${miner_dir}/miner.pid"
 console_log="${miner_dir}/miner-console.log"
 
-# Compatibility fallback for packages started before the status-path hotfix.
+# Compatibility fallback for older starts where the binary wrote status to /tmp.
 if [[ ! -r "${status_file}" && -r /tmp/miner-status.env ]]; then
   status_file=/tmp/miner-status.env
 fi
@@ -61,8 +61,8 @@ else
   [[ "${process_uptime}" =~ ^[0-9]+$ ]] && uptime="${process_uptime}"
 fi
 
-# Last-resort console fallback keeps HiveOS telemetry alive if an older config
-# omitted --diagnostic-log but the miner process and console are healthy.
+# Last-resort console fallback keeps HiveOS telemetry alive if the status file
+# is temporarily unavailable while the miner process and console are healthy.
 if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
   latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\|[[:space:]]*([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
   if [[ "${latest_mhs}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -125,8 +125,8 @@ for value in "${gpu_khs[@]}"; do
   khs=$((khs + value))
 done
 
-# HiveOS custom miners natively expect the per-device array under `khs` and
-# the scalar `khs` shell variable as the total hashrate.
-stats=$(printf '{"khs":%s,"temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.0","algo":"hoohash"}' \
+# HiveOS custom miners expect per-device hashrates under `khs` and the scalar
+# shell variable `khs` as the total hashrate.
+stats=$(printf '{"khs":%s,"temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.1","algo":"hoohash"}' \
   "${khs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
   "${accepted}" "${rejected}" "${bus_json}")
