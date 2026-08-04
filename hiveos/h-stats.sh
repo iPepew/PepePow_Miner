@@ -19,18 +19,35 @@ read_numeric() {
   [[ "${value}" =~ ^[0-9]+$ ]] && printf '%s' "${value}" || printf '0'
 }
 
+trim_field() {
+  local value="$1"
+  value="${value#${value%%[![:space:]]*}}"
+  value="${value%${value##*[![:space:]]}}"
+  printf '%s' "${value}"
+}
+
+array_json() {
+  local IFS=,
+  printf '[%s]' "$*"
+}
+
 accepted="$(read_numeric ACCEPTED)"
 rejected="$(read_numeric REJECTED)"
 uptime="$(read_numeric UPTIME)"
 updated="$(read_numeric UPDATED_EPOCH)"
 status_pid="$(read_numeric PID)"
 total_hps="$(read_numeric HPS)"
-gpu_count="$(read_numeric GPU_COUNT)"
+status_gpu_count="$(read_numeric GPU_COUNT)"
 
-if [[ ! "${gpu_count}" =~ ^[1-9][0-9]*$ ]] || [[ ${gpu_count} -gt 16 ]]; then
-  gpu_count="$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)"
+nvidia_gpu_count="$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)"
+[[ "${nvidia_gpu_count}" =~ ^[0-9]+$ ]] || nvidia_gpu_count=0
+[[ "${status_gpu_count}" =~ ^[0-9]+$ ]] || status_gpu_count=0
+
+gpu_count="${status_gpu_count}"
+(( nvidia_gpu_count > gpu_count )) && gpu_count="${nvidia_gpu_count}"
+if (( gpu_count < 1 || gpu_count > 16 )); then
+  gpu_count=1
 fi
-[[ "${gpu_count}" =~ ^[1-9][0-9]*$ ]] || gpu_count=1
 
 file_pid=0
 if [[ -r "${miner_pid_file}" ]]; then
@@ -56,7 +73,7 @@ if [[ "${PEPEW_STATS_SELFTEST:-0}" == "1" ]]; then
 fi
 
 fresh=1
-if [[ ${pid} -eq 0 || ${updated} -eq 0 || ${now} -lt ${updated} || $((now - updated)) -gt 30 ]]; then
+if [[ ${pid} -eq 0 || ${updated} -eq 0 || ${now} -lt ${updated} || $((now - updated)) -gt 45 ]]; then
   fresh=0
 fi
 if [[ ${pid} -eq 0 ]]; then
@@ -66,8 +83,8 @@ elif [[ "${PEPEW_STATS_SELFTEST:-0}" != "1" ]]; then
   [[ "${process_uptime}" =~ ^[0-9]+$ ]] && uptime="${process_uptime}"
 fi
 
-# Last-resort console fallback keeps HiveOS telemetry alive if the status file
-# is temporarily unavailable while the miner process and console are healthy.
+# Last-resort console fallback keeps total telemetry alive if the status file
+# is briefly unavailable while the miner process and console are healthy.
 if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
   latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\|[[:space:]]*([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
   if [[ "${latest_mhs}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -77,25 +94,24 @@ if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
 fi
 [[ ${fresh} -eq 1 ]] || total_hps=0
 
-declare -a gpu_khs gpu_temp gpu_fan gpu_bus
+declare -a gpu_hs gpu_temp gpu_fan gpu_bus
 for ((i=0; i<gpu_count; ++i)); do
   device_hps="$(read_numeric "GPU${i}_HPS")"
-  if [[ ${device_hps} -eq 0 && ${i} -eq 0 ]]; then
+
+  # A single-GPU miner may expose only aggregate HPS. Do not assign aggregate
+  # speed to GPU 0 on a multi-GPU rig because that would misreport other cards.
+  if [[ ${device_hps} -eq 0 && ${gpu_count} -eq 1 ]]; then
     device_hps="${total_hps}"
   fi
   [[ ${fresh} -eq 1 ]] || device_hps=0
-  gpu_khs[$i]=$((device_hps / 1000))
+
+  # Current HiveOS custom-miner GPU cards consume the JSON key `hs`, while
+  # values remain in kH/s. Keep the scalar shell variable `khs` for total rate.
+  gpu_hs[$i]=$(((device_hps + 500) / 1000))
   gpu_temp[$i]=0
   gpu_fan[$i]=0
   gpu_bus[$i]="${i}"
 done
-
-trim_field() {
-  local value="$1"
-  value="${value#${value%%[![:space:]]*}}"
-  value="${value%${value##*[![:space:]]}}"
-  printf '%s' "${value}"
-}
 
 while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
   index="$(trim_field "${raw_index}")"
@@ -108,6 +124,8 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
   [[ "${temp}" =~ ^[0-9]+$ ]] && gpu_temp[$index]="${temp}"
   [[ "${fan}" =~ ^[0-9]+$ ]] && gpu_fan[$index]="${fan}"
 
+  # nvidia-smi returns e.g. 00000000:02:00.0. HiveOS bus_numbers uses the
+  # decimal PCI bus component, so 02:00.0 becomes 2.
   bus_tail="${bus#*:}"
   bus_hex="${bus_tail%%:*}"
   if [[ "${bus_hex}" =~ ^[0-9A-Fa-f]{1,2}$ ]]; then
@@ -115,23 +133,21 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
   fi
 done < <(nvidia-smi --query-gpu=index,pci.bus_id,temperature.gpu,fan.speed --format=csv,noheader,nounits 2>/dev/null || true)
 
-array_json() {
-  local IFS=,
-  printf '[%s]' "$*"
-}
-
-khs_json="$(array_json "${gpu_khs[@]}")"
+hs_json="$(array_json "${gpu_hs[@]}")"
 temp_json="$(array_json "${gpu_temp[@]}")"
 fan_json="$(array_json "${gpu_fan[@]}")"
 bus_json="$(array_json "${gpu_bus[@]}")"
 
 khs=0
-for value in "${gpu_khs[@]}"; do
+for value in "${gpu_hs[@]}"; do
   khs=$((khs + value))
 done
+if [[ ${khs} -eq 0 && ${total_hps} -gt 0 ]]; then
+  khs=$(((total_hps + 500) / 1000))
+fi
 
-# HiveOS custom miners expect per-device hashrates under `khs` and the scalar
-# shell variable `khs` as the total hashrate.
-stats=$(printf '{"khs":%s,"temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.1","algo":"hoohash"}' \
-  "${khs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
+# HiveOS uses the scalar shell variable `khs` for the total miner speed and
+# `hs[]` for per-GPU cards. temp[], fan[] and bus_numbers[] use the same index.
+stats=$(printf '{"hs":%s,"temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.2","algo":"hoohash"}' \
+  "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
   "${accepted}" "${rejected}" "${bus_json}")
