@@ -14,6 +14,7 @@ mkdir -p "$TOOLBIN"
 REAL_CMAKE=/usr/local/bin/cmake
 REAL_CTEST=/usr/local/bin/ctest
 REAL_NVCC="$CUDA_ROOT/bin/nvcc"
+REAL_CICC="$CUDA_ROOT/nvvm/bin/cicc"
 [[ -x "$REAL_CMAKE" ]] || {
   echo "ERROR: modern CMake not found at $REAL_CMAKE" >&2
   exit 1
@@ -27,17 +28,26 @@ REAL_NVCC="$CUDA_ROOT/bin/nvcc"
   echo "Run start-cuda124-toolkit-only.sh first." >&2
   exit 1
 }
+[[ -x "$REAL_CICC" ]] || {
+  echo "ERROR: CUDA internal compiler not found at $REAL_CICC" >&2
+  exit 1
+}
 
 ln -sfn "$REAL_CMAKE" "$TOOLBIN/cmake"
 ln -sfn "$REAL_CTEST" "$TOOLBIN/ctest"
-ln -sfn "$REAL_NVCC" "$TOOLBIN/nvcc"
+# Never invoke nvcc through a symlink outside the CUDA tree. nvcc locates cicc
+# and other internal tools relative to its own executable path.
+rm -f "$TOOLBIN/nvcc"
+
 export PATH="$TOOLBIN:$CUDA_ROOT/bin:/usr/local/bin:/usr/bin:/bin"
 export LD_LIBRARY_PATH="$CUDA_ROOT/lib64:${LD_LIBRARY_PATH:-}"
+export CUDA_HOME="$CUDA_ROOT"
+export CUDA_PATH="$CUDA_ROOT"
 hash -r
 
 CMAKE_BIN="$(command -v cmake)"
 CTEST_BIN="$(command -v ctest)"
-NVCC_BIN="$(command -v nvcc)"
+NVCC_BIN="$REAL_NVCC"
 CMAKE_VERSION="$($CMAKE_BIN --version | awk 'NR==1 {print $3}')"
 NVCC_VERSION="$($NVCC_BIN --version | awk '/release/ {gsub(",", "", $5); print $5; exit}')"
 python3 - "$CMAKE_VERSION" "$NVCC_VERSION" <<'PY'
@@ -58,6 +68,17 @@ if version(sys.argv[2]) < (12, 0, 0):
     raise SystemExit(f"ERROR: CUDA Toolkit >= 12.0 required, found {sys.argv[2]}")
 PY
 
+SMOKE_DIR=/root/pepew-v101-toolchain/smoke
+rm -rf "$SMOKE_DIR"
+mkdir -p "$SMOKE_DIR"
+printf '%s\n' 'int main(){return 0;}' >"$SMOKE_DIR/smoke.cu"
+"$NVCC_BIN" -std=c++20 -arch=sm_86 -c "$SMOKE_DIR/smoke.cu" -o "$SMOKE_DIR/smoke.o" \
+  >"$SMOKE_DIR/nvcc-smoke.log" 2>&1 || {
+    cat "$SMOKE_DIR/nvcc-smoke.log" >&2
+    echo "ERROR: CUDA 12.4 compiler smoke test failed" >&2
+    exit 1
+  }
+
 screen -S "$SCREEN" -X quit 2>/dev/null || true
 rm -rf /root/pepew-v101-release
 rm -f "$LOG"
@@ -69,17 +90,21 @@ rm -f "$LOG"
   echo "CTEST_BIN=$CTEST_BIN"
   echo "NVCC_BIN=$NVCC_BIN"
   echo "NVCC_VERSION=$NVCC_VERSION"
+  echo "CICC_BIN=$REAL_CICC"
   echo "CUDA_ROOT=$CUDA_ROOT"
+  echo "CUDA_COMPILER_SMOKE=PASS"
   echo "PATH=$PATH"
 } | tee "$LOG"
 
-curl -fsSL "$BASE/build-v101-release.sh?rev=cuda124-cxx20-v5" -o "$RUNNER"
-curl -fsSL "$BASE/watch-v101-release-build.sh?rev=cuda124-cxx20-v5" -o "$WATCHER"
+curl -fsSL "$BASE/build-v101-release.sh?rev=real-nvcc-path-v6" -o "$RUNNER"
+curl -fsSL "$BASE/watch-v101-release-build.sh?rev=real-nvcc-path-v6" -o "$WATCHER"
 chmod +x "$RUNNER" "$WATCHER"
 
 screen -dmS "$SCREEN" env \
   PATH="$PATH" \
   LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+  CUDA_HOME="$CUDA_HOME" \
+  CUDA_PATH="$CUDA_PATH" \
   CUDACXX="$NVCC_BIN" \
   CMAKE_CUDA_COMPILER="$NVCC_BIN" \
   CMAKE_COMMAND="$CMAKE_BIN" \
