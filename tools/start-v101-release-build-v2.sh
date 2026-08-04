@@ -41,25 +41,29 @@ if tuple(parts[:3]) < (3, 24, 0):
     raise SystemExit(f"ERROR: CMake >= 3.24 required, found {sys.argv[1]}")
 PY
 
-echo "CMAKE_BIN=$CMAKE_BIN"
-echo "CMAKE_VERSION=$CMAKE_VERSION"
-echo "CTEST_BIN=$CTEST_BIN"
-
 screen -S "$SCREEN" -X quit 2>/dev/null || true
 rm -rf /root/pepew-v101-release
 rm -f "$LOG"
 
-curl -fsSL "$BASE/build-v101-release.sh?rev=toolchain-v2" -o "$RUNNER"
-curl -fsSL "$BASE/watch-v101-release-build.sh?rev=toolchain-v2" -o "$WATCHER"
+{
+  echo "TOOLCHAIN_PREFLIGHT=PASS"
+  echo "CMAKE_BIN=$CMAKE_BIN"
+  echo "CMAKE_VERSION=$CMAKE_VERSION"
+  echo "CTEST_BIN=$CTEST_BIN"
+  echo "PATH=$PATH"
+} | tee "$LOG"
+
+curl -fsSL "$BASE/build-v101-release.sh?rev=toolchain-v3" -o "$RUNNER"
+curl -fsSL "$BASE/watch-v101-release-build.sh?rev=toolchain-v3" -o "$WATCHER"
 chmod +x "$RUNNER" "$WATCHER"
 
 # Run without login/profile initialization so HiveOS cannot restore the old
-# /usr/bin/cmake. The private toolchain directory is first in PATH.
+# /usr/bin/cmake. Append to the log so the watcher keeps the preflight lines.
 screen -dmS "$SCREEN" env \
   PATH="$PATH" \
   CMAKE_COMMAND="$CMAKE_BIN" \
   CTEST_COMMAND="$CTEST_BIN" \
-  bash --noprofile --norc -c "exec '$RUNNER' 2>&1 | tee '$LOG'"
+  bash --noprofile --norc -c "exec '$RUNNER' 2>&1 | tee -a '$LOG'"
 
 sleep 3
 REFRESH=5 "$WATCHER" "$LOG"
