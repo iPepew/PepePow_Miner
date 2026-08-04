@@ -61,12 +61,14 @@ def main() -> int:
     config_text = config.read_text(encoding="utf-8")
     old_args = '''args=("-o" "stratum+tcp://127.0.0.1:${proxy_port}" "-u" "${user}" "-p" "${pass}"
       "--diagnostic" "--diagnostic-log" "${diagnostic_log}")'''
-    new_args = '''args=("-o" "stratum+tcp://127.0.0.1:${proxy_port}" "-u" "${user}" "-p" "${pass}")
+    new_args = '''args=("-o" "stratum+tcp://127.0.0.1:${proxy_port}" "-u" "${user}" "-p" "${pass}"
+      "--diagnostic-log" "${diagnostic_log}")
 
-# Full per-job diagnostics are intentionally disabled in production because
-# they add disk and console overhead. Enable explicitly with PEPEW_DIAGNOSTIC=1.
+# The log path is always supplied because the miner writes miner-status.env
+# beside this path. Full per-job diagnostics remain disabled in production
+# unless explicitly enabled with PEPEW_DIAGNOSTIC=1.
 if [[ "${PEPEW_DIAGNOSTIC:-0}" == "1" ]]; then
-  args+=("--diagnostic" "--diagnostic-log" "${diagnostic_log}")
+  args+=("--diagnostic")
 fi'''
     config_text = replace_once(config_text, old_args, new_args, "production diagnostics")
     config_text = config_text.replace(
@@ -92,6 +94,7 @@ fi'''
     run.write_text(run_text, encoding="utf-8")
 
     print("TURBO_SOURCE_PATCH=PASS")
+    print("STATUS_PATH_FIX=PASS")
     print("PEPEW_BATCH_SIZE=1048576")
     print("PEPEW_DIAGNOSTIC=0")
     print("TARGET_2MH=REQUIRES_LIVE_RECHECK")
