@@ -23,6 +23,7 @@ def main() -> int:
 
     main_cpp = root / "native/src/app/main.cpp"
     config = root / "hiveos/h-config.sh"
+    stats = root / "hiveos/h-stats.sh"
     run = root / "hiveos/h-run.sh"
 
     text = main_cpp.read_text(encoding="utf-8")
@@ -77,6 +78,16 @@ fi'''
     )
     config.write_text(config_text, encoding="utf-8")
 
+    stats_text = stats.read_text(encoding="utf-8")
+    old_stats = '''stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.0","algo":"hoohash"}' \\
+  "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \\
+  "${accepted}" "${rejected}" "${bus_json}")'''
+    new_stats = '''stats=$(printf '{"khs":%s,"temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.0","algo":"hoohash"}' \\
+  "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \\
+  "${accepted}" "${rejected}" "${bus_json}")'''
+    stats_text = replace_once(stats_text, old_stats, new_stats, "HiveOS khs schema")
+    stats.write_text(stats_text, encoding="utf-8")
+
     run_text = run.read_text(encoding="utf-8")
     locale_anchor = 'export LC_ALL="${LC_ALL:-C.UTF-8}"\n'
     turbo_env = (
@@ -95,6 +106,7 @@ fi'''
 
     print("TURBO_SOURCE_PATCH=PASS")
     print("STATUS_PATH_FIX=PASS")
+    print("HIVEOS_HASHRATE_SCHEMA=KHS_NATIVE")
     print("PEPEW_BATCH_SIZE=1048576")
     print("PEPEW_DIAGNOSTIC=0")
     print("TARGET_2MH=REQUIRES_LIVE_RECHECK")
