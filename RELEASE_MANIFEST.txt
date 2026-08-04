@@ -1,0 +1,11 @@
+PepeW Miner v1.0.3
+Package: PepeW-Miner-v1.0.3-HiveOS
+Asset: PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz
+Archive root: PepeW-Miner-v1.0.3-HiveOS/
+Install path: /hive/miners/custom/PepeW-Miner-v1.0.3-HiveOS
+Algorithm: PEPEPOW HooHash V110
+CUDA profile: service768
+Architecture: HiveOS sm_86
+Binary SHA256: 64d8922d764e74a6a99b800b381c82f0f599292187e4f17214250f274da2f82a
+Integration: stock HiveOS generic custom dispatcher + package-local config/run/stats
+Telemetry: khs total; hs[] per GPU; hs_units=khs; temp[]; fan[]; bus_numbers[]
