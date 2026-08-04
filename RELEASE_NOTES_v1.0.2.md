@@ -15,7 +15,10 @@ the package identity and HiveOS telemetry wrapper are updated.
 - GPU count uses the larger valid value reported by the miner status file and
   `nvidia-smi`;
 - the status freshness window is increased to 45 seconds to reduce transient
-  dashboard gaps.
+  dashboard gaps;
+- the HiveOS archive contains the required top-level directory
+  `PepeW-Miner-v1.0.2-HiveOS/`, matching the Flight Sheet Miner name and the
+  install path used by the current `custom-get` flow.
 
 ## Expected HiveOS display
 
@@ -29,6 +32,28 @@ GPU 0 / 02:00.0 / GeForce RTX 3080
 
 For multiple cards, `GPU0_HPS`, `GPU1_HPS`, and subsequent status fields are
 mapped to the corresponding `hs[]` entries and PCI bus numbers.
+
+## HiveOS package layout
+
+The archive must unpack as:
+
+```text
+PepeW-Miner-v1.0.2-HiveOS/
+├── h-manifest.conf
+├── h-config.sh
+├── h-run.sh
+├── h-stats.sh
+├── pepepowminer
+└── ...
+```
+
+This prevents installation failures such as:
+
+```text
+No PepeW-Miner-v1.0.2-HiveOS/h-manifest.conf
+miner_ver: command not found
+miner_config_gen: command not found
+```
 
 ## Validation
 
