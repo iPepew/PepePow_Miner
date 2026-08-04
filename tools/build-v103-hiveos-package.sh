@@ -3,10 +3,11 @@ set -Eeuo pipefail
 umask 022
 
 ROOT_NAME="PepeW-Miner-v1.0.3-HiveOS"
-RELEASE_VERSION="1.0.3"
+PACKAGE_VERSION="1.0.3"
+ASSET_VERSION="1.0.3.1"
 SOURCE_DIR="${1:-/hive/miners/custom/${ROOT_NAME}}"
 OUT_DIR="${2:-/root/pepepow-tests}"
-ARCHIVE_NAME="${ROOT_NAME}-${RELEASE_VERSION}.tar.gz"
+ARCHIVE_NAME="${ROOT_NAME}-${ASSET_VERSION}.tar.gz"
 ARCHIVE="${OUT_DIR}/${ARCHIVE_NAME}"
 SHA_FILE="${ARCHIVE}.sha256"
 
@@ -30,11 +31,11 @@ done
 basename="${ARCHIVE_NAME%.tar.gz}"
 detected_version="$(awk -F- '{print $NF}' <<<"${basename}")"
 detected_miner="${basename%-${detected_version}}"
-[[ "${detected_version}" == "${RELEASE_VERSION}" ]] || fail "custom-get version parse mismatch"
+[[ "${detected_version}" == "${ASSET_VERSION}" ]] || fail "custom-get version parse mismatch"
 [[ "${detected_miner}" == "${ROOT_NAME}" ]] || fail "custom-get miner parse mismatch: ${detected_miner}"
 
 grep -Fqx "CUSTOM_NAME=${ROOT_NAME}" "${SOURCE_DIR}/h-manifest.conf" || fail "manifest miner name mismatch"
-grep -Fqx "CUSTOM_VERSION=${RELEASE_VERSION}" "${SOURCE_DIR}/h-manifest.conf" || fail "manifest version mismatch"
+grep -Fqx "CUSTOM_VERSION=${PACKAGE_VERSION}" "${SOURCE_DIR}/h-manifest.conf" || fail "manifest version mismatch"
 grep -Fqx "CUSTOM_CONFIG_FILENAME=/hive/miners/custom/${ROOT_NAME}/config.txt" \
   "${SOURCE_DIR}/h-manifest.conf" || fail "manifest config path mismatch"
 grep -Fqx "CUSTOM_LOG_BASENAME=/var/log/miner/custom/${ROOT_NAME}/pepew" \
@@ -44,28 +45,27 @@ bash -n "${SOURCE_DIR}/h-config.sh"
 bash -n "${SOURCE_DIR}/h-run.sh"
 bash -n "${SOURCE_DIR}/h-stats.sh"
 
-# HiveOS miner-run requires these callbacks from h-config.sh.
-callback_output="$({
-  MINER_DIR="${SOURCE_DIR}"
+# The package h-config.sh is sourced by HiveOS' generic custom dispatcher and
+# must immediately create config.txt inside its own package directory.
+config_output="$({
   CUSTOM_NAME="${ROOT_NAME}"
-  CUSTOM_VERSION="${RELEASE_VERSION}"
+  CUSTOM_VERSION="${PACKAGE_VERSION}"
   CUSTOM_CONFIG_FILENAME="${SOURCE_DIR}/config.txt"
   CUSTOM_URL="stratum+tcp://example.invalid:1234"
   CUSTOM_TEMPLATE="wallet.worker"
   CUSTOM_PASS="x"
   source "${SOURCE_DIR}/h-config.sh"
-  declare -F miner_ver miner_config_gen miner_config_echo >/dev/null
-  [[ "$(miner_ver)" == "${RELEASE_VERSION}" ]]
-  miner_config_gen
   [[ -s "${SOURCE_DIR}/config.txt" ]]
-  echo CALLBACK_GATE=PASS
-} 2>&1)" || fail "HiveOS callback test failed: ${callback_output}"
-echo "${callback_output}"
+  grep -Fq 'PEPEPOW_UPSTREAM=' "${SOURCE_DIR}/config.txt"
+  grep -Fq 'PEPEPOW_ARGS=(' "${SOURCE_DIR}/config.txt"
+  echo PACKAGE_CONFIG_GATE=PASS
+} 2>&1)" || fail "package config generation failed: ${config_output}"
+echo "${config_output}"
 rm -f "${SOURCE_DIR}/config.txt" "${SOURCE_DIR}/setup.txt"
 
 (cd "${SOURCE_DIR}" && sha256sum -c pepepowminer.sha256)
-"${SOURCE_DIR}/pepepowminer" --version | grep -Fq "PepeW Miner v${RELEASE_VERSION}" || \
-  fail "binary identity is not v${RELEASE_VERSION}"
+"${SOURCE_DIR}/pepepowminer" --version | grep -Fq "PepeW Miner v${PACKAGE_VERSION}" || \
+  fail "binary identity is not v${PACKAGE_VERSION}"
 
 grep -Fq '"hs":%s' "${SOURCE_DIR}/h-stats.sh" || fail "per-GPU hs[] telemetry missing"
 grep -Fq '"hs_units":"khs"' "${SOURCE_DIR}/h-stats.sh" || fail "hs_units telemetry missing"
@@ -120,7 +120,7 @@ echo "CUSTOM_GET_MINER=${detected_miner}"
 echo "CUSTOM_GET_VERSION=${detected_version}"
 echo "PACKAGE_NAME_GATE=PASS archive=${ARCHIVE_NAME}"
 echo "PACKAGE_ROOT_CHECK=PASS root=${ROOT_NAME}/"
-echo "HIVEOS_CALLBACK_GATE=PASS"
+echo "PACKAGE_CONFIG_GATE=PASS"
 echo "PER_GPU_HS_SCHEMA=PASS"
 echo "MANUAL_EXTRACTION_GATE=PASS"
 echo "ARCHIVE=${ARCHIVE}"
