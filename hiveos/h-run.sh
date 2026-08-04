@@ -1,36 +1,34 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
+export PEPEW_BATCH_SIZE="${PEPEW_BATCH_SIZE:-1048576}"
+export PEPEW_DIAGNOSTIC="${PEPEW_DIAGNOSTIC:-0}"
 
-miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+miner_dir="${MINER_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 cd "${miner_dir}"
 
-console_log="${miner_dir}/miner-console.log"
-runtime_log="${miner_dir}/runtime-diagnostics.txt"
-exit_file="${miner_dir}/miner-exit-status.txt"
+log_dir="/var/log/miner/custom/$(basename "${miner_dir}")"
+console_log="${log_dir}/pepew.log"
+runtime_log="${log_dir}/runtime-diagnostics.txt"
+exit_file="${log_dir}/miner-exit-status.txt"
 diagnostic_log="${miner_dir}/pepepow-debug.log"
 status_file="${miner_dir}/miner-status.env"
 miner_pid_file="${miner_dir}/miner.pid"
 proxy_pid_file="${miner_dir}/proxy.pid"
-proxy_console_log="${miner_dir}/proxy-console.log"
+proxy_console_log="${log_dir}/proxy-console.log"
+mkdir -p "${log_dir}"
 
-if [[ ! -x ./pepepowminer ]]; then
-  echo "pepepowminer binary is missing or not executable" >&2
-  exit 1
-fi
-if [[ ! -x ./stratum-replay-proxy.py ]]; then
-  echo "stratum-replay-proxy.py is missing or not executable" >&2
-  exit 1
-fi
+[[ -x ./pepepowminer ]] || { echo "pepepowminer binary is missing or not executable" >&2; exit 1; }
+[[ -x ./stratum-replay-proxy.py ]] || { echo "stratum-replay-proxy.py is missing or not executable" >&2; exit 1; }
 
-conf_file="${miner_dir}/config.txt"
+conf_file="${CUSTOM_CONFIG_FILENAME:-${miner_dir}/config.txt}"
 if [[ ! -s "${conf_file}" ]]; then
   # shellcheck disable=SC1091
   source ./h-config.sh
+  miner_config_gen
 fi
-if [[ ! -s "${conf_file}" ]]; then
-  echo "HiveOS miner config is missing after h-config.sh: ${conf_file}" >&2
-  exit 1
-fi
+[[ -s "${conf_file}" ]] || { echo "HiveOS miner config is missing: ${conf_file}" >&2; exit 1; }
 
 # shellcheck disable=SC1090
 source "${conf_file}"
@@ -52,25 +50,11 @@ rm -f "${status_file}" "${miner_pid_file}" "${proxy_pid_file}" "${exit_file}"
 
 {
   echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "PWD=$(pwd)"
   echo "PACKAGE_DIR=${miner_dir}"
-  echo "PROTOCOL=HooHashV110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY proxy=passive"
-  echo "OPTIMIZATION=AUTOTUNED_PIPELINE EXACT_BIT_CONVERSIONS BIT_SW_FRACTION SCALED_NIBBLE_TABLE ASSUME_FINITE HASHMOD_HOIST PREFER_L1"
-  echo "LIFECYCLE=DIRECT_FILE_OUTPUT PID_TRACKING GRACEFUL_SIGNAL_FORWARDING NO_TEE_PIPE"
-  echo "== VERSION =="
-  ./pepepowminer --version 2>&1 || true
-  echo "== BUILD PROFILE =="
-  cat ./BUILD_PROFILE 2>&1 || true
-  echo "== FILE =="
-  if command -v file >/dev/null 2>&1; then file ./pepepowminer 2>&1 || true; else echo "file utility unavailable"; fi
-  echo "== LDD =="
-  ldd ./pepepowminer 2>&1 || true
-  echo "== READELF DYNAMIC =="
-  readelf -d ./pepepowminer 2>&1 || true
-  echo "== GPU =="
-  nvidia-smi -q 2>&1 || true
-  echo "== ENVIRONMENT =="
-  env | sort
+  echo "PACKAGE_NAME=$(basename "${miner_dir}")"
+  echo "MINER_VERSION=$(./pepepowminer --version 2>&1 | head -n1 || true)"
+  echo "PROFILE=$(tr '\n' ' ' < ./BUILD_PROFILE 2>/dev/null || true)"
+  echo "GPU_COUNT=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)"
 } > "${runtime_log}"
 
 ./stratum-replay-proxy.py \
@@ -88,16 +72,12 @@ stop_requested=0
 
 stop_miner() {
   stop_requested=1
-  if [[ -n "${miner_pid}" ]] && kill -0 "${miner_pid}" 2>/dev/null; then
-    kill -TERM "${miner_pid}" 2>/dev/null || true
-  fi
+  [[ -n "${miner_pid}" ]] && kill -TERM "${miner_pid}" 2>/dev/null || true
 }
 
 cleanup() {
-  if [[ -n "${tail_pid}" ]] && kill -0 "${tail_pid}" 2>/dev/null; then
-    kill "${tail_pid}" 2>/dev/null || true
-    wait "${tail_pid}" 2>/dev/null || true
-  fi
+  [[ -n "${tail_pid}" ]] && kill "${tail_pid}" 2>/dev/null || true
+  [[ -n "${tail_pid}" ]] && wait "${tail_pid}" 2>/dev/null || true
   if [[ -n "${miner_pid}" ]] && kill -0 "${miner_pid}" 2>/dev/null; then
     kill -TERM "${miner_pid}" 2>/dev/null || true
     sleep 1
@@ -116,27 +96,8 @@ trap cleanup EXIT
 sleep 1
 if ! kill -0 "${proxy_pid}" 2>/dev/null; then
   echo "Passive Stratum proxy failed to start; see ${proxy_console_log}" >&2
-  echo "exit_code=70 utc=$(date -u +%Y-%m-%dT%H:%M:%SZ) reason=proxy_start_failure" > "${exit_file}"
   exit 70
 fi
-
-{
-  echo "Miner directory: ${miner_dir}"
-  echo "Proxy PID: ${proxy_pid}"
-  echo "Proxy mode: passive"
-  echo "Proxy upstream: ${PEPEPOW_UPSTREAM}"
-  echo "Proxy protocol log: ${PEPEPOW_PROXY_LOG}"
-  echo "Proxy console log: ${proxy_console_log}"
-  echo "Protocol: network nBits target divided by Stratum difficulty"
-  echo "Optimizations: autotuned monolithic/split pipeline; exact bit conversions; direct bit fraction(sum/1024); optional cell-major scaled-nibble lookup; finite-domain nonlinear fast path; hash-mod conversion hoist; PreferL1; persistent buffers; 524288 runtime batch"
-  echo "HiveOS stats: per-GPU hashrate, temperature, fan and PCI bus"
-  echo "Lifecycle: direct log output; no miner-to-tee pipe; graceful signal forwarding"
-  echo "Console log: ${console_log}"
-  echo "Runtime status: ${status_file}"
-  printf './pepepowminer'
-  printf ' %q' "${PEPEPOW_ARGS[@]}"
-  echo
-} > "${miner_dir}/run.txt"
 
 ./pepepowminer "${PEPEPOW_ARGS[@]}" >> "${console_log}" 2>&1 &
 miner_pid=$!
@@ -150,20 +111,11 @@ fi
 tail_pid=$!
 
 set +e
-raw_status=0
-while true; do
-  wait "${miner_pid}"
-  raw_status=$?
-  if ! kill -0 "${miner_pid}" 2>/dev/null; then
-    break
-  fi
-done
+wait "${miner_pid}"
+raw_status=$?
 set -e
 
-if kill -0 "${tail_pid}" 2>/dev/null; then
-  kill "${tail_pid}" 2>/dev/null || true
-  wait "${tail_pid}" 2>/dev/null || true
-fi
+[[ -n "${tail_pid}" ]] && kill "${tail_pid}" 2>/dev/null || true
 tail_pid=""
 
 status=${raw_status}
@@ -172,7 +124,6 @@ if [[ ${stop_requested} -eq 1 ]] && [[ ${raw_status} -eq 0 || ${raw_status} -eq 
   status=0
   reason="graceful_hive_stop"
 fi
-
 printf 'exit_code=%s raw_exit_code=%s utc=%s reason=%s\n' \
   "${status}" "${raw_status}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${reason}" > "${exit_file}"
 
