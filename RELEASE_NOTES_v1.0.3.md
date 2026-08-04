@@ -3,29 +3,53 @@
 HiveOS integration hotfix for the validated `service768` PEPEPOW HooHash V110 miner.
 The CUDA search kernel is unchanged.
 
-## Root causes fixed
+## Confirmed root causes
 
 1. HiveOS `custom-get` derives the miner directory from the archive filename by
    treating the last hyphen-separated token as the package version.
 2. The archive directory must exactly match that derived miner name.
-3. `h-config.sh` must expose `miner_ver`, `miner_config_gen`, and
-   `miner_config_echo` callbacks expected by `miner-run`.
-4. Per-GPU dashboard cards require index-aligned `hs[]`, `temp[]`, `fan[]`, and
+3. HiveOS itself owns the generic dispatcher files in `/hive/miners/custom/`:
+   `h-manifest.conf`, `h-config.sh`, `h-run.sh`, and `h-stats.sh`.
+4. The generic dispatcher sources the selected package `h-config.sh`; therefore
+   package `h-config.sh` must generate `config.txt` immediately when sourced.
+5. Per-GPU dashboard cards require index-aligned `hs[]`, `temp[]`, `fan[]`, and
    `bus_numbers[]`; `khs` remains the total speed.
 
 ## Canonical package identity
 
 ```text
 Miner name:    PepeW-Miner-v1.0.3-HiveOS
-Archive asset: PepeW-Miner-v1.0.3-HiveOS-1.0.3.tar.gz
+Archive asset: PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz
 Archive root:  PepeW-Miner-v1.0.3-HiveOS/
 Install path:  /hive/miners/custom/PepeW-Miner-v1.0.3-HiveOS
 ```
 
-## Telemetry
+Asset revision `1.0.3.1` supersedes the first wrapper package while the miner
+binary version remains `1.0.3`.
 
-The stats wrapper explicitly reports `hs_units: khs`, maps PCI bus IDs to decimal
-HiveOS bus numbers, and retains total speed, uptime and Accepted/Rejected shares.
+## Integration changes
+
+- package `h-config.sh` now creates configuration immediately when sourced by
+  the stock HiveOS custom dispatcher;
+- package paths are resolved from `BASH_SOURCE[0]`, avoiding accidental writes
+  into `/hive/miners/custom/` itself;
+- package `h-run.sh` no longer relies on an unexported generic `MINER_DIR`;
+- runtime configuration is written atomically with mode `0600`;
+- runtime logs are stored under `/var/log/miner/custom/PepeW-Miner-v1.0.3-HiveOS/`;
+- stats report explicit `hs_units: khs` and aligned GPU telemetry arrays.
+
+## Required HiveOS system files
+
+These files must remain present on the rig and are not part of the PepeW Miner
+archive:
+
+```text
+/hive/miners/custom/h-manifest.conf
+/hive/miners/custom/h-config.sh
+/hive/miners/custom/h-run.sh
+/hive/miners/custom/h-stats.sh
+/hive/miners/custom/custom-get
+```
 
 ## Binary identity
 
@@ -44,12 +68,10 @@ PepeW Miner v1.0.3 | PEPEPOW HooHash V110 | service768 | HiveOS sm_86
 ```text
 binary identity:             PASS
 shell syntax:                PASS
-miner_ver callback:          PASS
-miner_config_gen callback:   PASS
-miner_config_echo callback:  PASS
+package config generation:   PASS
 one-GPU telemetry:           PASS
 custom-get parsed miner:     PepeW-Miner-v1.0.3-HiveOS
-custom-get parsed version:   1.0.3
+custom-get parsed version:   1.0.3.1
 archive root:                PASS
 manual extraction:           PASS
 ```
