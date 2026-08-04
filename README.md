@@ -9,31 +9,36 @@ PepeW Miner v1.0.3
 ```
 
 Версия `v1.0.3` исправляет полный цикл Custom Miner: имя архива, имя каталога,
-callbacks HiveOS и per-GPU telemetry. CUDA-ядро `service768` не изменено.
+генерацию конфигурации и per-GPU telemetry. CUDA-ядро `service768` не изменено.
 
 ## Правильная установка HiveOS
 
 ```text
 Miner name:       PepeW-Miner-v1.0.3-HiveOS
-Installation URL: https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.3/PepeW-Miner-v1.0.3-HiveOS-1.0.3.tar.gz
+Installation URL: https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.3/PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz
 Algorithm:        hoohash
 Wallet template:  %WAL%.%WORKER_NAME%
 Pool:             stratum+tcp://stratum-eu.pepepow.foztor.net:13232
 Password:         x
 ```
 
-Имя asset содержит дополнительный суффикс `-1.0.3` специально для официального
-`custom-get`: последний сегмент считается версией, а оставшаяся часть — именем
-каталога custom miner.
+Asset revision `1.0.3.1` keeps the public miner version at `1.0.3` and prevents
+stale GitHub/HiveOS package caches. The final hyphen-separated token is parsed by
+HiveOS `custom-get` as the asset version; the remaining filename becomes the
+custom miner directory.
 
-## HiveOS callbacks
+## HiveOS integration
 
-- `miner_ver` сообщает версию пакета;
-- `miner_config_gen` атомарно создаёт `config.txt`;
-- `miner_config_echo` показывает конфигурацию без раскрытия кошелька и пароля;
-- `h-run.sh` использует стандартный `MINER_DIR`;
-- `h-stats.sh` возвращает `khs`, `hs[]`, `hs_units`, `temp[]`, `fan[]`,
-  `bus_numbers[]`, uptime и Accepted/Rejected.
+- the stock `/hive/miners/custom/` dispatcher remains owned by HiveOS;
+- package `h-config.sh` is sourced by that dispatcher and immediately creates
+  `config.txt` inside the selected package directory;
+- package `h-run.sh` resolves its directory from its own script path;
+- `h-stats.sh` returns `khs`, `hs[]`, `hs_units`, `temp[]`, `fan[]`,
+  `bus_numbers[]`, uptime and Accepted/Rejected.
+
+The stock dispatcher files `/hive/miners/custom/h-manifest.conf`, `h-config.sh`,
+`h-run.sh` and `h-stats.sh` must exist on the rig. They are HiveOS system files,
+not files from the PepeW Miner archive.
 
 ## Проверенная производительность RTX 3080
 
