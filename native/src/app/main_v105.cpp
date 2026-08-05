@@ -72,8 +72,9 @@ std::string professional_line(std::string_view raw) {
     const std::string line = trim(ascii_plain(raw));
     if (line.empty()) return {};
 
-    if (line.find("PepeW Miner") != std::string::npos) {
-        return "PepeW Miner 1.0.5";
+    if (line.find("PepeW Performance & Stability Edition") != std::string::npos ||
+        line.find("PepeW Miner") != std::string::npos) {
+        return "PepeW Miner v1.0.5";
     }
     if (line.find("PepeW") != std::string::npos &&
         line.find("Version") == std::string::npos) {
