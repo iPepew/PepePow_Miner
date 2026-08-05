@@ -19,9 +19,13 @@ jobs:
             hiveos/prepare-v052-source.py \
             hiveos/stratum-replay-proxy.py
           for script in hiveos/*.sh; do bash -n "$script"; done
-      - name: Apply v0.5.2 exact conversion profile
+      - name: Apply legacy v0.5.2 exact conversion profile
         run: |
           set -euo pipefail
+          if [[ "$(tr -d '\r\n' < VERSION)" != "0.5.2" ]]; then
+            echo "Legacy v0.5.2 source transformation is not applicable to $(cat VERSION)"
+            exit 0
+          fi
           python3 hiveos/prepare-v052-source.py
           ! grep -P '[\x{1F300}-\x{1FAFF}]|•' native/src/app/main.cpp
           grep -F 'https://t.me/pepepow_ru' native/src/app/main.cpp
