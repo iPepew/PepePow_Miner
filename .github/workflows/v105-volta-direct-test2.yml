@@ -1,0 +1,151 @@
+name: v1.0.5 Volta direct test2
+
+on:
+  push:
+    branches:
+      - release/v1.0.5
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "VERSION"
+      - ".github/workflows/v105-volta-direct-test2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-v100-test2:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          cmake --version
+          /usr/local/cuda/bin/nvcc --version
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Configure Tesla V100 exact-direct build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = '1.0.5'
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build-v105-v100 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES='70-real' \
+            -DPEPEPOW_CUDA_THREADS=768 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+
+      - name: Build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cmake --build build-v105-v100 --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark
+          ./build-v105-v100/pepepowminer --version | tee binary-version.txt
+          grep -F '1.0.5' binary-version.txt
+
+      - name: Hardware-independent validation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ctest --test-dir build-v105-v100 --output-on-failure -R '^pepepow_core_tests$'
+          for script in hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh hiveos/console-monitor.sh tools/test-v105-live.sh; do
+            bash -n "$script"
+          done
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+
+      - name: Verify Volta cubin and inspect resources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/local/cuda/bin/cuobjdump --list-elf build-v105-v100/pepepowminer | tee volta-fatbin.txt
+          grep -F sm_70 volta-fatbin.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build-v105-v100/pepepowminer | tee volta-resource-usage.txt
+          if grep -Fq 'sm_75' volta-fatbin.txt; then
+            echo 'Unexpected non-Volta cubin' >&2
+            exit 1
+          fi
+          echo 'VOLTA_DIRECT_CUBIN=PASS'
+
+      - name: Assemble HiveOS Tesla V100 test2 package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          VERSION=1.0.5
+          ROOT="PepeW-Miner-v${VERSION}-HiveOS"
+          ASSET="${ROOT}-test2-v100.tar.gz"
+          STAGE="$PWD/dist-stage"
+          PACKAGE="$STAGE/$ROOT"
+          OUT="$PWD/dist"
+          rm -rf "$STAGE" "$OUT"
+          mkdir -p "$PACKAGE" "$OUT"
+          install -m 0755 build-v105-v100/pepepowminer "$PACKAGE/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "$PACKAGE/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "$PACKAGE/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "$PACKAGE/h-stats.sh"
+          install -m 0755 hiveos/console-monitor.sh "$PACKAGE/console-monitor.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "$PACKAGE/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "$PACKAGE/h-manifest.conf"
+          install -m 0644 LICENSE "$PACKAGE/LICENSE"
+          install -m 0644 README.md "$PACKAGE/README.md"
+          install -m 0644 RELEASE_NOTES_v1.0.5.md "$PACKAGE/RELEASE_NOTES_v1.0.5.md"
+          printf '%s\n' "$VERSION" > "$PACKAGE/VERSION"
+          binary_sha="$(sha256sum "$PACKAGE/pepepowminer" | awk '{print $1}')"
+          printf '%s  pepepowminer\n' "$binary_sha" > "$PACKAGE/pepepowminer.sha256"
+          cat > "$PACKAGE/BUILD_PROFILE" <<PROFILE
+          release=PepeW Miner v1.0.5 test2 V100 direct-exact
+          source_commit=${GITHUB_SHA}
+          build_type=Release
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          cuda_native=sm_70
+          kernel_mode=volta-direct-exact
+          default_test_threads=256
+          recommended_test_chunks=262144,614400,1228800
+          fmad=false
+          cpu_candidate_validation=consensus-exact
+          binary_sha256=${binary_sha}
+          PROFILE
+          (cd "$PACKAGE" && sha256sum -c pepepowminer.sha256)
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C "$STAGE" -cf - "$ROOT" | gzip -n > "$OUT/$ASSET"
+          (cd "$OUT" && sha256sum "$ASSET" > "$ASSET.sha256")
+          tar -tzf "$OUT/$ASSET" > "$OUT/archive-list.txt"
+          test "$(sed -n '1p' "$OUT/archive-list.txt")" = "$ROOT/"
+          grep -Fqx "$ROOT/pepepowminer" "$OUT/archive-list.txt"
+          echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
+
+      - name: Upload Tesla V100 test2 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: PepeW-Miner-v1.0.5-HiveOS-test2-v100
+          path: |
+            dist/PepeW-Miner-v1.0.5-HiveOS-test2-v100.tar.gz
+            dist/PepeW-Miner-v1.0.5-HiveOS-test2-v100.tar.gz.sha256
+            binary-version.txt
+            volta-fatbin.txt
+            volta-resource-usage.txt
+          if-no-files-found: error
+          retention-days: 14
