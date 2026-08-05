@@ -17,9 +17,13 @@ jobs:
           bash -n hiveos/build-v053-bitfraction.sh
           bash -n tools/collect-profiler-pack-v4.sh
           bash -n tools/collect-v053-profiler.sh
-      - name: Apply v0.5.3 source profile
+      - name: Apply legacy v0.5.3 source profile
         run: |
           set -euo pipefail
+          case "$(tr -d '\r\n' < VERSION)" in
+            0.5.3|0.5.3-PR) ;;
+            *) echo "Legacy v0.5.3 source transformation is not applicable to $(cat VERSION)"; exit 0 ;;
+          esac
           python3 hiveos/fix-v053-generator.py
           python3 hiveos/prepare-v053-source.py
           grep -F 'PepeW Bit Fraction Edition' native/src/app/main.cpp
