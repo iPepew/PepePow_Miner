@@ -146,9 +146,11 @@ void header80_pow_kernel(
     const double* __restrict__ scaled_nibble_table,
     DeviceShareResult* __restrict__ result,
     std::size_t count) {
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ != 700
     __shared__ ColdServiceScratch scratch;
     if (threadIdx.x == 0U) scratch.task_count = 0U;
     __syncthreads();
+#endif
 
     const std::size_t index =
         static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
