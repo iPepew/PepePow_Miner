@@ -65,7 +65,8 @@ jobs:
             pepepowminer pepepow_core_tests pepepow_cuda_tests \
             pepepow_cuda_header80_validation pepepow_header80_benchmark
           ./build-v104-cuda/pepepowminer --version | tee binary-version.txt
-          grep -F "PepeW Miner v1.0.4" binary-version.txt
+          grep -F "1.0.4" binary-version.txt
+          grep -F "build=Release" binary-version.txt
 
       - name: Run hardware-independent tests
         shell: bash
