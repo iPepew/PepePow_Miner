@@ -92,7 +92,7 @@ jobs:
           set -Eeuo pipefail
           VERSION=1.0.5
           ROOT="PepeW-Miner-v${VERSION}-HiveOS"
-          ASSET="${ROOT}-${VERSION}-test1.tar.gz"
+          ASSET="${ROOT}-test1.tar.gz"
           STAGE="$PWD/dist-stage"
           PACKAGE="$STAGE/$ROOT"
           OUT="$PWD/dist"
@@ -132,6 +132,11 @@ jobs:
           tar -tzf "$OUT/$ASSET" > "$list_file"
           test "$(sed -n '1p' "$list_file")" = "$ROOT/"
           grep -Fqx "$ROOT/console-monitor.sh" "$list_file"
+          archive_base="${ASSET%.tar.gz}"
+          detected_version="${archive_base##*-}"
+          detected_miner="${archive_base%-${detected_version}}"
+          test "$detected_miner" = "$ROOT"
+          echo "PACKAGE_NAME_GATE=PASS miner=$detected_miner token=$detected_version"
           echo "ARCHIVE=$OUT/$ASSET"
           echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
 
@@ -140,8 +145,8 @@ jobs:
         with:
           name: PepeW-Miner-v1.0.5-HiveOS-test1
           path: |
-            dist/PepeW-Miner-v1.0.5-HiveOS-1.0.5-test1.tar.gz
-            dist/PepeW-Miner-v1.0.5-HiveOS-1.0.5-test1.tar.gz.sha256
+            dist/PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz
+            dist/PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz.sha256
             binary-version.txt
             fatbin-elf.txt
             fatbin-ptx.txt
