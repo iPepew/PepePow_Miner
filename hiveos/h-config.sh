@@ -69,7 +69,9 @@ pepew_tmp_conf="${pepew_conf_file}.tmp.$$"
   printf 'PEPEPOW_DEVICES=%q\n' "${pepew_devices}"
   printf 'PEPEPOW_DIAGNOSTIC=%q\n' "${pepew_diagnostic}"
   printf 'PEPEPOW_EXTRA_ARGS=('
-  printf ' %q' "${pepew_extra[@]}"
+  if (( ${#pepew_extra[@]} > 0 )); then
+    printf ' %q' "${pepew_extra[@]}"
+  fi
   echo ' )'
 } > "${pepew_tmp_conf}"
 chmod 600 "${pepew_tmp_conf}"
