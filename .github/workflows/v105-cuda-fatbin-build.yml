@@ -1,0 +1,149 @@
+name: v1.0.5 CUDA fatbin build
+
+on:
+  push:
+    branches:
+      - release/v1.0.5
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "VERSION"
+      - "RELEASE_NOTES_v1.0.5.md"
+      - ".github/workflows/v105-cuda-fatbin-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-universal-package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          cmake --version
+          /usr/local/cuda/bin/nvcc --version
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -E 'sm_(61|70|75|80|86|89|120)'
+
+      - name: Configure universal CUDA build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = '1.0.5'
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build-v105-cuda -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES='61-real;70-real;75-real;80-real;86-real;89-real;120' \
+            -DPEPEPOW_CUDA_THREADS=768 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+
+      - name: Build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cmake --build build-v105-cuda --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark
+          ./build-v105-cuda/pepepowminer --version | tee binary-version.txt
+          grep -F '1.0.5' binary-version.txt
+
+      - name: Hardware-independent tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ctest --test-dir build-v105-cuda --output-on-failure -R '^pepepow_core_tests$'
+          for script in hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh hiveos/console-monitor.sh tools/test-v105-live.sh; do
+            bash -n "$script"
+          done
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+
+      - name: Verify CUDA fat binary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/local/cuda/bin/cuobjdump --list-elf build-v105-cuda/pepepowminer | tee fatbin-elf.txt
+          /usr/local/cuda/bin/cuobjdump --list-ptx build-v105-cuda/pepepowminer | tee fatbin-ptx.txt
+          for arch in sm_61 sm_70 sm_75 sm_80 sm_86 sm_89 sm_120; do
+            grep -F "$arch" fatbin-elf.txt
+            echo "FATBIN_CUBIN=${arch}:PASS"
+          done
+          grep -Eq 'compute_120|sm_120' fatbin-ptx.txt
+          echo 'FATBIN_PTX=compute_120:PASS'
+
+      - name: Assemble HiveOS test package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          VERSION=1.0.5
+          ROOT="PepeW-Miner-v${VERSION}-HiveOS"
+          ASSET="${ROOT}-${VERSION}-test1.tar.gz"
+          STAGE="$PWD/dist-stage"
+          PACKAGE="$STAGE/$ROOT"
+          OUT="$PWD/dist"
+          rm -rf "$STAGE" "$OUT"
+          mkdir -p "$PACKAGE" "$OUT"
+          install -m 0755 build-v105-cuda/pepepowminer "$PACKAGE/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "$PACKAGE/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "$PACKAGE/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "$PACKAGE/h-stats.sh"
+          install -m 0755 hiveos/console-monitor.sh "$PACKAGE/console-monitor.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "$PACKAGE/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "$PACKAGE/h-manifest.conf"
+          install -m 0644 LICENSE "$PACKAGE/LICENSE"
+          install -m 0644 README.md "$PACKAGE/README.md"
+          install -m 0644 RELEASE_NOTES_v1.0.5.md "$PACKAGE/RELEASE_NOTES_v1.0.5.md"
+          printf '%s\n' "$VERSION" > "$PACKAGE/VERSION"
+          binary_sha="$(sha256sum "$PACKAGE/pepepowminer" | awk '{print $1}')"
+          printf '%s  pepepowminer\n' "$binary_sha" > "$PACKAGE/pepepowminer.sha256"
+          cat > "$PACKAGE/BUILD_PROFILE" <<PROFILE
+          release=PepeW Miner v1.0.5 test1
+          source_commit=${GITHUB_SHA}
+          build_type=Release
+          cuda_toolkit=12.8.1
+          cuda_architectures=61-real;70-real;75-real;80-real;86-real;89-real;120
+          cuda_native=sm_61,sm_70,sm_75,sm_80,sm_86,sm_89,sm_120
+          cuda_ptx=compute_120
+          multi_gpu=process-per-GPU
+          profile_selection=runtime-auto
+          binary_sha256=${binary_sha}
+          PROFILE
+          (cd "$PACKAGE" && sha256sum -c pepepowminer.sha256)
+          grep -Fqx "CUSTOM_NAME=$ROOT" "$PACKAGE/h-manifest.conf"
+          grep -Fqx "CUSTOM_VERSION=$VERSION" "$PACKAGE/h-manifest.conf"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C "$STAGE" -cf - "$ROOT" | gzip -n > "$OUT/$ASSET"
+          (cd "$OUT" && sha256sum "$ASSET" > "$ASSET.sha256")
+          list_file="$OUT/archive-list.txt"
+          tar -tzf "$OUT/$ASSET" > "$list_file"
+          test "$(sed -n '1p' "$list_file")" = "$ROOT/"
+          grep -Fqx "$ROOT/console-monitor.sh" "$list_file"
+          echo "ARCHIVE=$OUT/$ASSET"
+          echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
+
+      - name: Upload test candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: PepeW-Miner-v1.0.5-HiveOS-test1
+          path: |
+            dist/PepeW-Miner-v1.0.5-HiveOS-1.0.5-test1.tar.gz
+            dist/PepeW-Miner-v1.0.5-HiveOS-1.0.5-test1.tar.gz.sha256
+            binary-version.txt
+            fatbin-elf.txt
+            fatbin-ptx.txt
+          if-no-files-found: error
+          retention-days: 14
