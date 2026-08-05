@@ -7,9 +7,21 @@
     std::uint32_t final_hash[8]{};
     if (active) blake3_header80_words(nonce, first_pass);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 700
+    // Volta has full-rate FP64 relative to its architecture. Running every
+    // nonce directly avoids the service-warp queue, atomics and thousands of
+    // block-wide synchronizations that are useful on consumer GPUs with weak
+    // FP64 but severely underutilize Tesla V100.
+    if (active) {
+        hoohash_mix_words(
+            matrix, scaled_nibble_table, byte_swap32(nonce), first_pass,
+            mixed);
+    }
+#else
     hoohash_mix_words_service(
         matrix, scaled_nibble_table, byte_swap32(nonce), first_pass,
         mixed, active, scratch);
+#endif
 
     if (!active) return;
     blake3_32_words(mixed, final_hash);
