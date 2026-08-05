@@ -153,8 +153,9 @@ jobs:
             -C "$STAGE" -cf - "$ROOT" | gzip -n > "$OUT/$ASSET"
           (cd "$OUT" && sha256sum "$ASSET" > "$ASSET.sha256")
 
-          test "$(tar -tzf "$OUT/$ASSET" | sed -n '1p')" = "$ROOT/"
-          tar -tzf "$OUT/$ASSET" | grep -Fqx "$ROOT/h-manifest.conf"
+          ARCHIVE_LIST="$(tar -tzf "$OUT/$ASSET")"
+          test "$(sed -n '1p' <<<"$ARCHIVE_LIST")" = "$ROOT/"
+          grep -Fqx "$ROOT/h-manifest.conf" <<<"$ARCHIVE_LIST"
           echo "ARCHIVE=$OUT/$ASSET"
           echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
           echo "BINARY_SHA256=$BINARY_SHA"
