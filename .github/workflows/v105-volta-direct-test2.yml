@@ -104,7 +104,18 @@ jobs:
           mkdir -p "$PACKAGE" "$OUT"
           install -m 0755 build-v105-v100/pepepowminer "$PACKAGE/pepepowminer"
           install -m 0755 hiveos/h-config.sh "$PACKAGE/h-config.sh"
-          install -m 0755 hiveos/h-run.sh "$PACKAGE/h-run.sh"
+          PACKAGE="$PACKAGE" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          source = Path("hiveos/h-run.sh").read_text(encoding="utf-8")
+          source = source.replace("    70) printf 'volta-auto' ;;", "    70) printf 'volta-direct-exact' ;;")
+          source = source.replace("    70|120) printf '512' ;;", "    70) printf '256' ;;\n    120) printf '512' ;;")
+          assert "70) printf 'volta-direct-exact'" in source
+          assert "70) printf '256'" in source
+          target = Path(os.environ["PACKAGE"]) / "h-run.sh"
+          target.write_text(source, encoding="utf-8")
+          target.chmod(0o755)
+          PY
           install -m 0755 hiveos/h-stats.sh "$PACKAGE/h-stats.sh"
           install -m 0755 hiveos/console-monitor.sh "$PACKAGE/console-monitor.sh"
           install -m 0755 hiveos/stratum-replay-proxy.py "$PACKAGE/stratum-replay-proxy.py"
@@ -113,6 +124,9 @@ jobs:
           install -m 0644 README.md "$PACKAGE/README.md"
           install -m 0644 RELEASE_NOTES_v1.0.5.md "$PACKAGE/RELEASE_NOTES_v1.0.5.md"
           printf '%s\n' "$VERSION" > "$PACKAGE/VERSION"
+          grep -Fq "70) printf 'volta-direct-exact'" "$PACKAGE/h-run.sh"
+          grep -Fq "70) printf '256'" "$PACKAGE/h-run.sh"
+          bash -n "$PACKAGE/h-run.sh"
           binary_sha="$(sha256sum "$PACKAGE/pepepowminer" | awk '{print $1}')"
           printf '%s  pepepowminer\n' "$binary_sha" > "$PACKAGE/pepepowminer.sha256"
           cat > "$PACKAGE/BUILD_PROFILE" <<PROFILE
