@@ -28,8 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare v0.5.0 release source
-        run: python3 hiveos/prepare-v050-source.py
+      - name: Prepare legacy v0.5.0 release source
+        run: |
+          set -euo pipefail
+          case "$(tr -d '\r\n' < VERSION)" in
+            0.5.0|0.5.0-PR) python3 hiveos/prepare-v050-source.py ;;
+            *) echo "Legacy v0.5.0 source transformation is not applicable to $(cat VERSION)" ;;
+          esac
 
       - name: Configure
         run: cmake -S native -B native/build -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
