@@ -1,0 +1,83 @@
+name: v1.0.4 wrapper CI
+
+on:
+  push:
+    branches:
+      - release/v1.0.4
+  pull_request:
+    branches:
+      - release/v1.0.3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrapper-and-core:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          bash -n hiveos/h-config.sh
+          bash -n hiveos/h-run.sh
+          bash -n hiveos/h-stats.sh
+          bash -n tools/build-v104-universal.sh
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+
+      - name: Config self-test
+        run: |
+          tmp="$(mktemp -d)"
+          CUSTOM_URL='stratum+tcp://example.invalid:1234' \
+          CUSTOM_TEMPLATE='wallet.worker' \
+          CUSTOM_PASS='x' \
+          CUSTOM_CONFIG_FILENAME="$tmp/config.txt" \
+          PEPEW_DEVICES='0,2' \
+            bash -c 'source "$1"' _ "$PWD/hiveos/h-config.sh"
+          source "$tmp/config.txt"
+          test "$PEPEPOW_DEVICES" = '0,2'
+          test "${#PEPEPOW_EXTRA_ARGS[@]}" -eq 0
+
+      - name: Multi-GPU telemetry self-test
+        run: |
+          fixture="$(mktemp -d)"
+          mkdir -p "$fixture/gpu0" "$fixture/gpu1"
+          now="$(date +%s)"
+          cat > "$fixture/nvidia.csv" <<CSV
+          0, 00000000:01:00.0, 66, 71
+          1, 00000000:02:00.0, 62, 55
+          CSV
+          cat > "$fixture/gpu0/miner-status.env" <<STATUS
+          HPS=1500000
+          ACCEPTED=7
+          REJECTED=0
+          UPTIME=120
+          UPDATED_EPOCH=$now
+          PID=1
+          STATE=mining
+          STATUS
+          cat > "$fixture/gpu1/miner-status.env" <<STATUS
+          HPS=1700000
+          ACCEPTED=5
+          REJECTED=1
+          UPTIME=118
+          UPDATED_EPOCH=$now
+          PID=1
+          STATE=mining
+          STATUS
+          output="$(PEPEW_STATUS_ROOT="$fixture" PEPEW_NVIDIA_SMI_FILE="$fixture/nvidia.csv" PEPEW_STATS_SELFTEST=1 PEPEW_NOW_EPOCH="$now" bash -c 'source "$1"; printf "%s\n%s\n" "$khs" "$stats"' _ "$PWD/hiveos/h-stats.sh")"
+          test "$(sed -n '1p' <<<"$output")" = '3200'
+          json="$(sed -n '2p' <<<"$output")"
+          grep -F '"hs":[1500,1700]' <<<"$json"
+          grep -F '"ar":[12,1,0]' <<<"$json"
+          grep -F '"bus_numbers":[1,2]' <<<"$json"
+          grep -F '"ver":"1.0.4"' <<<"$json"
+
+      - name: CPU configure and tests
+        run: |
+          cmake -S native -B build-cpu -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON
+          cmake --build build-cpu --parallel 2 --target pepepow_core_tests pepepowminer
+          ctest --test-dir build-cpu --output-on-failure
+          ./build-cpu/pepepowminer --version | grep -F '1.0.4'

@@ -5,11 +5,12 @@ string(STRIP "${PEPEPOW_VERSION}" PEPEPOW_VERSION)
 if(PEPEPOW_VERSION STREQUAL "")
     message(FATAL_ERROR "VERSION file is empty")
 endif()
-project(PepePowMiner VERSION 1.0.3 LANGUAGES C CXX)
+project(PepePowMiner VERSION 1.0.4 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
+set(PEPEPOW_CUDA_ARCHITECTURES "61-real;75-real;86-real;89-real;120" CACHE STRING "CUDA targets for GTX 10, RTX 20, RTX 30, RTX 40 and RTX 50")
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_THREADS "768" CACHE STRING "CUDA threads per Header80 search block")
 set(PEPEPOW_CUDA_MIN_BLOCKS "1" CACHE STRING "Requested resident blocks per SM for launch bounds")
@@ -65,8 +66,11 @@ endif()
 
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
-    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.0)
-        message(FATAL_ERROR "PepeW Miner requires CUDA Toolkit 12.x or newer because the CUDA sources use C++20 features such as std::span")
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+        message(FATAL_ERROR "PepeW Miner universal build requires CUDA Toolkit 12.8 or newer")
+    endif()
+    if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND PEPEPOW_CUDA_ARCHITECTURES MATCHES "(^|;)(61|75)(-|;|$)")
+        message(FATAL_ERROR "The universal Pascal/Turing package must be built with CUDA 12.8.x")
     endif()
     if(NOT PEPEPOW_CUDA_THREADS MATCHES "^(64|128|256|288|320|352|384|416|448|480|512|544|576|608|640|672|704|736|768)$")
         message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be a validated service-warp geometry")
@@ -103,7 +107,11 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_ASSUME_FINITE=$<BOOL:${PEPEPOW_CUDA_ASSUME_FINITE}>
         PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
         PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
-    set_target_properties(pepepow_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "86" CUDA_SEPARABLE_COMPILATION OFF)
+    set_target_properties(pepepow_cuda PROPERTIES
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"
+        CUDA_SEPARABLE_COMPILATION OFF)
     target_compile_options(pepepow_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>)
     if(PEPEPOW_CUDA_PTXAS_VERBOSE)
         target_compile_options(pepepow_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v> $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)

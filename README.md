@@ -1,63 +1,88 @@
 # PepeW Miner
 
-CUDA-майнер PEPEPOW HooHash V110 с нативной интеграцией HiveOS.
+CUDA-майнер PEPEPOW HooHash V110 с интеграцией HiveOS.
 
-## Stable HiveOS package
+## Current development release
 
 ```text
-PepeW Miner v1.0.3
+PepeW Miner v1.0.4
 ```
 
-Версия `v1.0.3` исправляет полный цикл Custom Miner: имя архива, имя каталога,
-генерацию конфигурации и per-GPU telemetry. CUDA-ядро `service768` не изменено.
+Версия `v1.0.4` добавляет настоящий multi-GPU режим: для каждой выбранной NVIDIA
+карты запускается отдельный `pepepowminer` и отдельный локальный Stratum-прокси.
+HiveOS получает общий хешрейт и хешрейт каждой карты отдельно.
 
-## Правильная установка HiveOS
+## Поддерживаемые поколения NVIDIA
+
+Универсальный fat binary собирается CUDA Toolkit 12.8.x и содержит:
 
 ```text
-Miner name:       PepeW-Miner-v1.0.3-HiveOS
-Installation URL: https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.3/PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz
+sm_61   GTX 10 series / Pascal
+sm_75   RTX 20 series / Turing
+sm_86   RTX 30 series / Ampere
+sm_89   RTX 40 series / Ada
+sm_120  RTX 50 series / Blackwell
+compute_120 PTX
+```
+
+CUDA 12.8.x используется намеренно: эта версия добавляет нативную поддержку
+`SM_120` и одновременно остаётся в CUDA 12.x, где ещё доступны Pascal и Turing.
+
+## Multi-GPU
+
+- все NVIDIA GPU включены по умолчанию;
+- выбор выполняется по UUID через `CUDA_VISIBLE_DEVICES`;
+- каждому GPU назначается отдельный CUDA-контекст и локальный proxy port;
+- статусы записываются в `gpu<N>/miner-status.env`;
+- `h-stats.sh` суммирует общий хешрейт и Accepted/Rejected;
+- `hs[]`, `temp[]`, `fan[]` и `bus_numbers[]` синхронизированы по GPU.
+
+Для ограничения списка карт можно задать:
+
+```text
+PEPEW_DEVICES=0,2,3
+```
+
+## HiveOS package
+
+```text
+Miner name:       PepeW-Miner-v1.0.4-HiveOS
+Installation URL: https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.4/PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz
 Algorithm:        hoohash
 Wallet template:  %WAL%.%WORKER_NAME%
 Pool:             stratum+tcp://stratum-eu.pepepow.foztor.net:13232
 Password:         x
 ```
 
-Asset revision `1.0.3.1` keeps the public miner version at `1.0.3` and prevents
-stale GitHub/HiveOS package caches. The final hyphen-separated token is parsed by
-HiveOS `custom-get` as the asset version; the remaining filename becomes the
-custom miner directory.
-
-## HiveOS integration
-
-- the stock `/hive/miners/custom/` dispatcher remains owned by HiveOS;
-- package `h-config.sh` is sourced by that dispatcher and immediately creates
-  `config.txt` inside the selected package directory;
-- package `h-run.sh` resolves its directory from its own script path;
-- `h-stats.sh` returns `khs`, `hs[]`, `hs_units`, `temp[]`, `fan[]`,
-  `bus_numbers[]`, uptime and Accepted/Rejected.
-
-The stock dispatcher files `/hive/miners/custom/h-manifest.conf`, `h-config.sh`,
-`h-run.sh` and `h-stats.sh` must exist on the rig. They are HiveOS system files,
-not files from the PepeW Miner archive.
-
-## Проверенная производительность RTX 3080
+Архив должен содержать верхний каталог:
 
 ```text
-release benchmark median: 2.208874 MH/s
-CTest:                   PASS
-CPU/CUDA consensus:      PASS
-Compute Sanitizer:       PASS
-CUDA spills:             0 / 0
-new NVIDIA Xid:          0
+PepeW-Miner-v1.0.4-HiveOS/
 ```
 
-## Binary SHA256
+Штатные файлы `/hive/miners/custom/h-manifest.conf`, `h-config.sh`, `h-run.sh`
+и `h-stats.sh` принадлежат HiveOS и не должны удаляться.
+
+## Сборка
+
+Требования:
 
 ```text
-64d8922d764e74a6a99b800b381c82f0f599292187e4f17214250f274da2f82a
+Linux x86_64 / HiveOS
+CUDA Toolkit 12.8.x
+CMake 3.24+
 ```
 
-Подробности: [`RELEASE_NOTES_v1.0.3.md`](RELEASE_NOTES_v1.0.3.md).
+Команда:
+
+```bash
+bash tools/build-v104-universal.sh
+```
+
+Скрипт собирает CUDA fat binary, запускает тесты, проверяет архитектуры,
+проверяет multi-GPU telemetry и создаёт готовый HiveOS-архив с SHA256.
+
+Подробности: [`RELEASE_NOTES_v1.0.4.md`](RELEASE_NOTES_v1.0.4.md).
 
 ## Safety
 

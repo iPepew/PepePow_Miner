@@ -1,0 +1,46 @@
+PepeW Miner v1.0.4 universal build verification
+
+GitHub Actions run: 30980431408
+Source branch: release/v1.0.4
+Source commit used by build: aee110519524ce4cbb4daa5f5e11d1be96ad5d91
+Build environment: NVIDIA CUDA Toolkit 12.8.1 / nvcc 12.8.93 / Ubuntu 22.04
+
+Binary identity:
+PepeW Performance & Stability Edition 1.0.4 commit=unknown build=Release
+
+Native CUDA cubins:
+sm_61  PASS
+sm_75  PASS
+sm_86  PASS
+sm_89  PASS
+sm_120 PASS
+
+Forward-compatible PTX:
+compute_120 PASS
+
+Hardware-independent validation:
+Core tests PASS
+HiveOS shell syntax PASS
+Stratum proxy Python syntax PASS
+Archive assembly PASS
+GitHub Actions artifact upload PASS
+
+Release candidate archive:
+PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz
+Size: 1789782 bytes
+SHA256: 0b3e752339761aab35c261c56e2f1da47a5ae458895cddc05a4ea83d871ebf49
+Archive root: PepeW-Miner-v1.0.4-HiveOS/
+
+Independent post-download validation:
+Archive SHA256 PASS
+Internal pepepowminer SHA256 PASS
+Required files PASS
+Archive root PASS
+Shell syntax PASS
+Python syntax PASS
+Dynamic dependency inspection PASS
+
+Runtime status:
+RTX 3080 live release-candidate test PENDING
+Physical multi-GPU test PENDING
+RTX 50 runtime test PENDING
