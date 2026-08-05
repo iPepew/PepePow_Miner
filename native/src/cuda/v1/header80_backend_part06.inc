@@ -26,7 +26,31 @@
 
 } // namespace
 
-Header80CudaBackend::Header80CudaBackend(int device_index) : device_index_(device_index) {}
+Header80CudaBackend::Header80CudaBackend(int device_index, unsigned int threads_per_block)
+    : device_index_(device_index),
+      threads_per_block_(threads_per_block) {
+    if (threads_per_block_ == 0U) {
+        threads_per_block_ = static_cast<unsigned int>(PEPEPOW_CUDA_THREADS);
+        if (const char* value = std::getenv("PEPEPOW_CUDA_THREADS_RUNTIME");
+            value != nullptr && *value != '\0') {
+            try {
+                const auto parsed = std::stoul(value);
+                if (parsed <= std::numeric_limits<unsigned int>::max()) {
+                    threads_per_block_ = static_cast<unsigned int>(parsed);
+                }
+            } catch (...) {
+                throw std::invalid_argument("PEPEPOW_CUDA_THREADS_RUNTIME must be an integer");
+            }
+        }
+    }
+    if (threads_per_block_ < 64U ||
+        threads_per_block_ > static_cast<unsigned int>(PEPEPOW_CUDA_THREADS) ||
+        (threads_per_block_ % 32U) != 0U) {
+        throw std::invalid_argument(
+            "CUDA threads per block must be a multiple of 32 between 64 and " +
+            std::to_string(PEPEPOW_CUDA_THREADS));
+    }
+}
 
 Header80CudaBackend::~Header80CudaBackend() {
     if (device_result_ != nullptr || device_matrix_ != nullptr ||
