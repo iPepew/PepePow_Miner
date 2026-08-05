@@ -15,9 +15,13 @@ jobs:
           python3 -m py_compile hiveos/prepare-v054-source.py
           bash -n hiveos/build-v054-lookup-split.sh
           bash -n hiveos/build-v054.sh
-      - name: Apply v0.5.4 source profile
+      - name: Apply legacy v0.5.4 source profile
         run: |
           set -euo pipefail
+          case "$(tr -d '\r\n' < VERSION)" in
+            0.5.4|0.5.4-PR) ;;
+            *) echo "Legacy v0.5.4 source transformation is not applicable to $(cat VERSION)"; exit 0 ;;
+          esac
           python3 hiveos/prepare-v054-source.py
           test "$(cat VERSION)" = "0.5.4-PR"
           grep -F 'PepeW Lookup Split Edition' native/src/app/main.cpp
