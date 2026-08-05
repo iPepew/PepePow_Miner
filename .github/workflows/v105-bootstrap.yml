@@ -27,6 +27,8 @@ jobs:
           python3 /tmp/apply-v105-bootstrap.py
           rm -rf tools/.v105-bootstrap-payload
           rm -f .github/workflows/v105-bootstrap.yml
+          rm -f .github/workflows/v105-wrapper-ci.yml
+          rm -f .github/workflows/v105-cuda-fatbin-build.yml
       - name: Commit generated source
         shell: bash
         run: |
