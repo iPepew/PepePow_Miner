@@ -1,9 +1,9 @@
 PepeW Miner v1.0.5 test1 build verification
 
 Source branch: release/v1.0.5
-Source commit: 47a2ba857912118e06ac81ba9039dc3405fa4640
+Source commit: f48582197374082ff934227e676a150fa875be96
 Draft pull request: #28
-GitHub Actions run: 31040298921
+GitHub Actions run: 31040764614
 Build environment: NVIDIA CUDA Toolkit 12.8.1 / nvcc 12.8.93 / Ubuntu 22.04
 
 Binary identity:
@@ -33,19 +33,23 @@ Core tests PASS
 CUDA build PASS
 Fat binary inspection PASS
 Archive assembly PASS
+HiveOS custom-get package-name gate PASS
 Artifact upload PASS
 
 Test package:
-PepeW-Miner-v1.0.5-HiveOS-1.0.5-test1.tar.gz
-Size: 2287074 bytes
-SHA256: 22f22db5cc12e79fb70e765df333f3f2e8c4f1ed04d7d4759721ac2bb7250c2c
+PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz
+Size: 2287069 bytes
+SHA256: 3d24fba6b5725923ace1b53a25168747480719b569e2da0108f8c68930a55a28
 Archive root: PepeW-Miner-v1.0.5-HiveOS/
+custom-get version token: test1
+custom-get detected miner: PepeW-Miner-v1.0.5-HiveOS
 
 Independent post-download validation:
 Archive SHA256 PASS
 Internal pepepowminer SHA256 PASS
 Required package files PASS
 Archive root PASS
+HiveOS custom-get parser simulation PASS
 Binary identity PASS
 Dynamic dependency inspection PASS
 Shell syntax PASS
