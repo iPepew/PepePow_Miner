@@ -1,0 +1,64 @@
+PepeW Miner v1.0.5 test1 build verification
+
+Source branch: release/v1.0.5
+Source commit: f48582197374082ff934227e676a150fa875be96
+Draft pull request: #28
+GitHub Actions run: 31040764614
+Build environment: NVIDIA CUDA Toolkit 12.8.1 / nvcc 12.8.93 / Ubuntu 22.04
+
+Binary identity:
+PepeW Miner v1.0.5
+
+Native CUDA cubins:
+sm_61  PASS
+sm_70  PASS
+sm_75  PASS
+sm_80  PASS
+sm_86  PASS
+sm_89  PASS
+sm_120 PASS
+
+Forward-compatible PTX:
+compute_120 PASS
+
+CI validation:
+Wrapper ASCII gate PASS
+HiveOS shell syntax PASS
+Stratum proxy Python syntax PASS
+Config generation PASS
+Volta profile fixture PASS
+Blackwell profile fixture PASS
+Multi-GPU telemetry fixture PASS
+Core tests PASS
+CUDA build PASS
+Fat binary inspection PASS
+Archive assembly PASS
+HiveOS custom-get package-name gate PASS
+Artifact upload PASS
+
+Test package:
+PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz
+Size: 2287069 bytes
+SHA256: 3d24fba6b5725923ace1b53a25168747480719b569e2da0108f8c68930a55a28
+Archive root: PepeW-Miner-v1.0.5-HiveOS/
+custom-get version token: test1
+custom-get detected miner: PepeW-Miner-v1.0.5-HiveOS
+
+Independent post-download validation:
+Archive SHA256 PASS
+Internal pepepowminer SHA256 PASS
+Required package files PASS
+Archive root PASS
+HiveOS custom-get parser simulation PASS
+Binary identity PASS
+Dynamic dependency inspection PASS
+Shell syntax PASS
+Python syntax PASS
+
+Runtime status:
+Tesla V100 physical test PENDING
+RTX 5060 Ti physical optimization test PENDING
+CMP unlock A/B test PENDING
+Mixed-generation multi-GPU test PENDING
+
+This is an internal test candidate. No GitHub Release should be published yet.

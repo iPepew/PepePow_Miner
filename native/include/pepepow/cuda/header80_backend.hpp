@@ -8,7 +8,7 @@ namespace pepepow {
 
 class Header80CudaBackend final : public MiningBackend {
 public:
-    explicit Header80CudaBackend(int device_index = 0);
+    explicit Header80CudaBackend(int device_index = 0, unsigned int threads_per_block = 0);
     ~Header80CudaBackend() override;
 
     Header80CudaBackend(const Header80CudaBackend&) = delete;
@@ -23,6 +23,7 @@ public:
 
 private:
     int device_index_{0};
+    unsigned int threads_per_block_{0};
     void* device_result_{nullptr};
     void* device_matrix_{nullptr};
     void* device_scaled_nibble_{nullptr};

@@ -34,7 +34,7 @@
     check_cuda_header80(cudaMemset(device_result_, 0, sizeof(std::uint32_t)),
                         "cudaMemset(header80 found flag)");
 
-    constexpr unsigned int threads = static_cast<unsigned int>(PEPEPOW_CUDA_THREADS);
+    const unsigned int threads = threads_per_block_;
     const unsigned int blocks = static_cast<unsigned int>((count + threads - 1U) / threads);
 
 #if PEPEPOW_CUDA_SPLIT_PIPELINE
