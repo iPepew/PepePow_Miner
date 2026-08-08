@@ -1,0 +1,214 @@
+name: Patch v1.0.5 session capture startup handling
+
+on:
+  push:
+    branches:
+      - release/v1.0.5
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix: robust v1.0.5 session startup capture'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: release/v1.0.5
+          fetch-depth: 0
+
+      - name: Patch session collector
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('tools/test-v105-live.sh')
+          s = p.read_text()
+
+          old = '''STOP_AT_END="${PEPEW_STOP_AT_END:-1}"
+SESSION_BASE="${PEPEW_SESSION_BASE:-/root/pepew-tests}"
+
+[[ "$CAPTURE_SECONDS" =~ ^[0-9]+$ ]] || CAPTURE_SECONDS=300
+[[ "$SAMPLE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || SAMPLE_INTERVAL=5
+[[ "$RESTART_MINER" =~ ^[01]$ ]] || RESTART_MINER=1
+[[ "$STOP_AT_END" =~ ^[01]$ ]] || STOP_AT_END=1
+'''
+          new = '''STOP_AT_END="${PEPEW_STOP_AT_END:-1}"
+SESSION_BASE="${PEPEW_SESSION_BASE:-/root/pepew-tests}"
+STARTUP_TIMEOUT="${PEPEW_STARTUP_TIMEOUT:-120}"
+PROCESS_LOSS_GRACE="${PEPEW_PROCESS_LOSS_GRACE:-20}"
+
+[[ "$CAPTURE_SECONDS" =~ ^[0-9]+$ ]] || CAPTURE_SECONDS=300
+[[ "$SAMPLE_INTERVAL" =~ ^[1-9][0-9]*$ ]] || SAMPLE_INTERVAL=5
+[[ "$RESTART_MINER" =~ ^[01]$ ]] || RESTART_MINER=1
+[[ "$STOP_AT_END" =~ ^[01]$ ]] || STOP_AT_END=1
+[[ "$STARTUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || STARTUP_TIMEOUT=120
+[[ "$PROCESS_LOSS_GRACE" =~ ^[1-9][0-9]*$ ]] || PROCESS_LOSS_GRACE=20
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''  printf 'capture_seconds=%s\\nsample_interval=%s\\nrestart_miner=%s\\nstop_at_end=%s\\n' \\
+    "$CAPTURE_SECONDS" "$SAMPLE_INTERVAL" "$RESTART_MINER" "$STOP_AT_END"
+'''
+          new = '''  printf 'capture_seconds=%s\\nsample_interval=%s\\nrestart_miner=%s\\nstop_at_end=%s\\nstartup_timeout=%s\\nprocess_loss_grace=%s\\n' \\
+    "$CAPTURE_SECONDS" "$SAMPLE_INTERVAL" "$RESTART_MINER" "$STOP_AT_END" "$STARTUP_TIMEOUT" "$PROCESS_LOSS_GRACE"
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''    echo "RESTART_MINER=$RESTART_MINER"
+    echo "STOP_AT_END=$STOP_AT_END"
+'''
+          new = '''    echo "RESTART_MINER=$RESTART_MINER"
+    echo "STOP_AT_END=$STOP_AT_END"
+    echo "STARTUP_TIMEOUT=$STARTUP_TIMEOUT"
+    echo "PROCESS_LOSS_GRACE=$PROCESS_LOSS_GRACE"
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''  start_epoch="$(date +%s)"
+  echo "$start_epoch" > "$session_dir/start_epoch"
+'''
+          new = '''  start_epoch="$(date +%s)"
+  echo "$start_epoch" > "$session_dir/start_epoch"
+  local ready_epoch=0 process_loss_since=0 session_result='STARTING'
+  echo '[CAPTURE] waiting for miner workers, proxies and positive hashrate...'
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''      echo "INTERRUPTED=$interrupted"
+      echo "EXPECTED_GPU_COUNT=$EXPECTED_GPU_COUNT"
+      echo
+'''
+          new = '''      echo "INTERRUPTED=$interrupted"
+      echo "EXPECTED_GPU_COUNT=$EXPECTED_GPU_COUNT"
+      echo "SESSION_RESULT=$session_result"
+      if (( ready_epoch > 0 )); then
+        echo "READY_UTC=$(date -u -d "@$ready_epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "$ready_epoch")"
+        echo "STARTUP_SEC=$((ready_epoch - start_epoch))"
+        echo "MINING_DURATION_SEC=$((end_epoch - ready_epoch))"
+      else
+        echo 'READY_UTC=never'
+        echo "STARTUP_SEC=$elapsed"
+        echo 'MINING_DURATION_SEC=0'
+      fi
+      echo
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''  local sample=0 now_epoch elapsed_now query_out load1 load5 load15 mem_avail swap_free miner_count proxy_count
+  while :; do
+    now_epoch="$(date +%s)"
+    elapsed_now=$((now_epoch - start_epoch))
+    if (( CAPTURE_SECONDS > 0 && elapsed_now >= CAPTURE_SECONDS )); then
+      break
+    fi
+    sample=$((sample + 1))
+'''
+          new = '''  local sample=0 now_epoch elapsed_now mining_elapsed query_out load1 load5 load15 mem_avail swap_free miner_count proxy_count ready_gpu_count
+  while :; do
+    now_epoch="$(date +%s)"
+    elapsed_now=$((now_epoch - start_epoch))
+    mining_elapsed=0
+    if (( ready_epoch > 0 )); then
+      mining_elapsed=$((now_epoch - ready_epoch))
+      if (( CAPTURE_SECONDS > 0 && mining_elapsed >= CAPTURE_SECONDS )); then
+        session_result='COMPLETED'
+        break
+      fi
+    elif (( elapsed_now >= STARTUP_TIMEOUT )); then
+      session_result='START_TIMEOUT'
+      echo "[CAPTURE] startup timeout after ${elapsed_now}s; worker never reached positive hashrate." | tee -a "$session_dir/session-events.txt"
+      break
+    fi
+    sample=$((sample + 1))
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''    for ((i=0; i<EXPECTED_GPU_COUNT; ++i)); do
+      local status="$DIR/gpu${i}/miner-status.env"
+'''
+          new = '''    ready_gpu_count=0
+    for ((i=0; i<EXPECTED_GPU_COUNT; ++i)); do
+      local status="$DIR/gpu${i}/miner-status.env"
+'''
+          # replace the occurrence inside the sampling loop, not the earlier loops
+          pos = s.find("  local sample=0")
+          idx = s.find(old, pos)
+          assert idx >= 0
+          s = s[:idx] + s[idx:].replace(old, new, 1)
+
+          old = '''        mhs="$(awk -v h="$hps" 'BEGIN{printf "%.6f", h/1000000.0}')"
+        if (( updated > 0 )); then age=$((now_epoch - updated)); fi
+'''
+          new = '''        mhs="$(awk -v h="$hps" 'BEGIN{printf "%.6f", h/1000000.0}')"
+        if (( hps > 0 )); then ready_gpu_count=$((ready_gpu_count + 1)); fi
+        if (( updated > 0 )); then age=$((now_epoch - updated)); fi
+'''
+          pos = s.find("  local sample=0")
+          idx = s.find(old, pos)
+          assert idx >= 0
+          s = s[:idx] + s[idx:].replace(old, new, 1)
+
+          old = '''    if (( elapsed_now >= 30 && RESTART_MINER == 1 && EXPECTED_GPU_COUNT > 0 && miner_count == 0 )); then
+      echo '[CAPTURE] miner process disappeared; ending capture early.' | tee -a "$session_dir/session-events.txt"
+      break
+    fi
+
+    sleep "$SAMPLE_INTERVAL"
+'''
+          new = '''    if (( ready_epoch == 0 && EXPECTED_GPU_COUNT > 0 && miner_count >= EXPECTED_GPU_COUNT && proxy_count >= EXPECTED_GPU_COUNT && ready_gpu_count >= EXPECTED_GPU_COUNT )); then
+      ready_epoch="$now_epoch"
+      process_loss_since=0
+      session_result='MINING'
+      echo "[CAPTURE] miner ready after ${elapsed_now}s; mining timer starts now." | tee -a "$session_dir/session-events.txt"
+    fi
+
+    if (( ready_epoch > 0 && EXPECTED_GPU_COUNT > 0 )); then
+      if (( miner_count < EXPECTED_GPU_COUNT || proxy_count < EXPECTED_GPU_COUNT )); then
+        if (( process_loss_since == 0 )); then
+          process_loss_since="$now_epoch"
+          echo "[CAPTURE] worker/proxy count dropped (miners=${miner_count}, proxies=${proxy_count}); grace timer started." | tee -a "$session_dir/session-events.txt"
+        elif (( now_epoch - process_loss_since >= PROCESS_LOSS_GRACE )); then
+          session_result='PROCESS_LOST'
+          echo "[CAPTURE] worker/proxy missing for ${PROCESS_LOSS_GRACE}s; ending capture early." | tee -a "$session_dir/session-events.txt"
+          break
+        fi
+      else
+        process_loss_since=0
+      fi
+    fi
+
+    sleep "$SAMPLE_INTERVAL"
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          old = '''      PEPEW_RESTART_MINER=1
+      PEPEW_STOP_AT_END=1
+'''
+          new = '''      PEPEW_RESTART_MINER=1
+      PEPEW_STOP_AT_END=1
+      PEPEW_STARTUP_TIMEOUT=120
+      PEPEW_PROCESS_LOSS_GRACE=20
+'''
+          assert old in s
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+
+      - name: Validate shell syntax
+        run: bash -n tools/test-v105-live.sh
+
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tools/test-v105-live.sh
+          git commit -m 'fix: robust v1.0.5 session startup capture'
+          git push origin HEAD:release/v1.0.5
