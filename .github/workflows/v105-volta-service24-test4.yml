@@ -3,8 +3,11 @@ name: v1.0.5 Volta service24 test4
 on:
   workflow_dispatch:
   push:
-    branches: [release/v1.0.5]
-    paths: [".github/workflows/v105-volta-service24-test4.yml"]
+    branches:
+      - release/v1.0.5
+    paths:
+      - ".github/workflows/v105-volta-service24-test4.yml"
+      - "tools/patch-v105-volta-service24-test4.py"
 
 permissions:
   contents: read
@@ -15,6 +18,7 @@ jobs:
     timeout-minutes: 120
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,125 +27,19 @@ jobs:
         run: |
           set -Eeuo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip tar gzip binutils
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip binutils
           python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          /usr/local/cuda/bin/nvcc --version
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
 
-      - name: Apply service24 experiment
+      - name: Apply reproducible service24 patch
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p5 = Path('native/src/cuda/v1/header80_backend_part05.inc')
-          t = p5.read_text(encoding='utf-8')
+          python3 tools/patch-v105-volta-service24-test4.py
 
-          old = '''    double task_x = 0.0;
-    if (task) {
-        const double cell = matrix[cell_index];
-        task_x = cell * hash_mod * value + nonce_mod;
-    }
-'''
-          new = '''    // test4: exact selector/transform is computed once by producer.
-    double task_y = 0.0;
-    unsigned int task_region = 0U;
-    if (task) {
-        const double cell = matrix[cell_index];
-        const double task_x = cell * hash_mod * value + nonce_mod;
-        const HooHashSelectorParts selector =
-            decode_selector_parts(task_x * kTransformMultiplier * 0.125);
-        task_region = selector.one_region;
-        const double two = selector.two;
-        if (two < 0.25) task_y = task_x + (1.0 + two);
-        else if (two < 0.50) task_y = task_x - (1.0 + two);
-        else if (two < 0.75) task_y = task_x * (1.0 + two);
-        else task_y = task_x / (1.0 + two);
-    }
-'''
-          if old not in t:
-              raise SystemExit('producer marker missing')
-          t = t.replace(old, new, 1)
-          t = t.replace('scratch.task_x[slot] = task_x;', 'scratch.task_x[slot] = task_y;', 1)
-          old_owner = '''            scratch.task_owner[slot] =
-                static_cast<unsigned int>(threadIdx.x);'''
-          new_owner = '''            scratch.task_owner[slot] =
-                static_cast<unsigned int>(threadIdx.x) |
-                (task_region << 16U);'''
-          if old_owner not in t:
-              raise SystemExit('owner marker missing')
-          t = t.replace(old_owner, new_owner, 1)
-
-          a = t.index('    __syncthreads();\n    const unsigned int task_count = scratch.task_count;\n')
-          b = t.index('\n\n    if (active) {', a)
-          executor = r'''    __syncthreads();
-    const unsigned int task_count = scratch.task_count;
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 700 && PEPEPOW_CUDA_ASSUME_FINITE
-    // All warps participate. 768 threads => 24 warps => 8 warps/region.
-    const unsigned int warp = static_cast<unsigned int>(threadIdx.x) >> 5U;
-    const unsigned int lane2 = static_cast<unsigned int>(threadIdx.x) & 31U;
-    const unsigned int total_warps = static_cast<unsigned int>(blockDim.x) >> 5U;
-    const unsigned int region = warp % 3U;
-    const unsigned int group_index = warp / 3U;
-    const unsigned int group_count = (total_warps + 2U - region) / 3U;
-    for (unsigned int ti = group_index * 32U + lane2;
-         ti < task_count; ti += group_count * 32U) {
-        const unsigned int enc = scratch.task_owner[ti];
-        if ((enc >> 16U) != region) continue;
-        const double y = scratch.task_x[ti];
-        double nv;
-        if (region == 0U) {
-            double s, c;
-            sincos(y, &s, &c);
-            nv = exp(s + c);
-        } else if (region == 1U) {
-            if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) nv = 0.0;
-            else { const double s = sin(y); nv = s * s; }
-        } else {
-            nv = 1.0 / sqrt(fabs(y) + 1.0);
-        }
-        const unsigned int owner = enc & 0xffffU;
-        scratch.task_result[owner] = nv * scratch.task_value[ti] * 1234.0;
-    }
-    __syncwarp();
-    if (threadIdx.x == 0U) scratch.task_count = 0U;
-#else
-    if (threadIdx.x < 32U) {
-        for (unsigned int ti = lane; ti < task_count; ti += 32U) {
-            const double nv = safe_nonlinear(scratch.task_x[ti]);
-            const unsigned int owner = scratch.task_owner[ti];
-            scratch.task_result[owner] = nv * scratch.task_value[ti] * 1234.0;
-        }
-        __syncwarp();
-        if (lane == 0U) scratch.task_count = 0U;
-    }
-#endif
-    __syncthreads();'''
-          t = t[:a] + executor + t[b:]
-
-          s0 = '#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ != 700\n'
-          s1 = '#endif\n\n    const std::size_t index'
-          a = t.index(s0)
-          b = t.index(s1, a)
-          repl = '    __shared__ ColdServiceScratch scratch;\n    if (threadIdx.x == 0U) scratch.task_count = 0U;\n    __syncthreads();\n\n    const std::size_t index'
-          t = t[:a] + repl + t[b + len(s1):]
-          p5.write_text(t, encoding='utf-8')
-
-          p6 = Path('native/src/cuda/v1/header80_backend_part06.inc')
-          t = p6.read_text(encoding='utf-8')
-          a = t.index('#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 700\n')
-          b = t.index('#endif', a) + len('#endif')
-          repl = '''    hoohash_mix_words_service(
-        matrix, scaled_nibble_table, byte_swap32(nonce), first_pass,
-        mixed, active, scratch);'''
-          p6.write_text(t[:a] + repl + t[b:], encoding='utf-8')
-
-          assert '(task_region << 16U)' in p5.read_text(encoding='utf-8')
-          assert 'group_count' in p5.read_text(encoding='utf-8')
-          assert 'hoohash_mix_words_service' in p6.read_text(encoding='utf-8')
-          print('VOLTA_SERVICE24_PATCH=PASS')
-          PY
-
-      - name: Configure and build
+      - name: Configure
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -160,12 +58,23 @@ jobs:
             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
             -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
             -DPEPEPOW_CUDA_SW_STATE_MODE=3
-          cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests
+
+      - name: Build and validate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark
           ./build/pepepowminer --version | tee binary-version.txt
           ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
           /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee volta-fatbin.txt
           grep -F sm_70 volta-fatbin.txt
           /usr/local/cuda/bin/cuobjdump --dump-resource-usage build/pepepowminer | tee volta-resource-usage.txt
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+          for script in hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh hiveos/console-monitor.sh tools/test-v105-passive-capture.sh; do
+            bash -n "$script"
+          done
 
       - name: Assemble HiveOS package
         shell: bash
@@ -175,7 +84,9 @@ jobs:
           ASSET='PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz'
           PACKAGE="$PWD/stage/$ROOT"
           OUT="$PWD/dist"
+          rm -rf "$PWD/stage" "$OUT"
           mkdir -p "$PACKAGE" "$OUT"
+
           install -m 0755 build/pepepowminer "$PACKAGE/pepepowminer"
           install -m 0755 hiveos/h-config.sh "$PACKAGE/h-config.sh"
           install -m 0755 hiveos/h-stats.sh "$PACKAGE/h-stats.sh"
@@ -186,17 +97,9 @@ jobs:
           install -m 0644 README.md "$PACKAGE/README.md"
           install -m 0644 RELEASE_NOTES_v1.0.5.md "$PACKAGE/RELEASE_NOTES_v1.0.5.md"
           printf '1.0.5\n' > "$PACKAGE/VERSION"
-          PACKAGE="$PACKAGE" python3 - <<'PY'
-          import os
-          from pathlib import Path
-          p = Path('hiveos/h-run.sh')
-          s = p.read_text(encoding='utf-8')
-          s = s.replace("    70) printf 'volta-auto' ;;", "    70) printf 'volta-service24' ;;")
-          s = s.replace("    70|120) printf '512' ;;", "    70) printf '768' ;;\n    120) printf '512' ;;")
-          out = Path(os.environ['PACKAGE']) / 'h-run.sh'
-          out.write_text(s, encoding='utf-8')
-          out.chmod(0o755)
-          PY
+
+          PACKAGE="$PACKAGE" python3 -c "import os; from pathlib import Path; s=Path('hiveos/h-run.sh').read_text(); s=s.replace(\"    70) printf 'volta-auto' ;;\", \"    70) printf 'volta-service24' ;;\"); s=s.replace(\"    70|120) printf '512' ;;\", \"    70) printf '768' ;;\\n    120) printf '512' ;;\"); p=Path(os.environ['PACKAGE'])/'h-run.sh'; p.write_text(s); p.chmod(0o755)"
+
           binary_sha="$(sha256sum "$PACKAGE/pepepowminer" | awk '{print $1}')"
           printf '%s  pepepowminer\n' "$binary_sha" > "$PACKAGE/pepepowminer.sha256"
           printf '%s\n' \
@@ -215,11 +118,14 @@ jobs:
             'fmad=false' \
             'cpu_candidate_validation=consensus-exact' \
             "binary_sha256=${binary_sha}" > "$PACKAGE/BUILD_PROFILE"
+
           bash -n "$PACKAGE/h-run.sh"
           (cd "$PACKAGE" && sha256sum -c pepepowminer.sha256)
           tar --sort=name --owner=0 --group=0 --numeric-owner -C "$PWD/stage" -cf - "$ROOT" | gzip -n > "$OUT/$ASSET"
           (cd "$OUT" && sha256sum "$ASSET" > "$ASSET.sha256")
-          tar -tzf "$OUT/$ASSET" | grep -Fqx "$ROOT/pepepowminer"
+          tar -tzf "$OUT/$ASSET" > "$OUT/archive-list.txt"
+          test "$(sed -n '1p' "$OUT/archive-list.txt")" = "$ROOT/"
+          grep -Fqx "$ROOT/pepepowminer" "$OUT/archive-list.txt"
           echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
 
       - name: Upload candidate
