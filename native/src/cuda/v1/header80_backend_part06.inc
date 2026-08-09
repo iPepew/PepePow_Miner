@@ -7,9 +7,21 @@
     std::uint32_t final_hash[8]{};
     if (active) blake3_header80_words(nonce, first_pass);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 700
+    // Volta has full-rate FP64 relative to its architecture. Running every
+    // nonce directly avoids the service-warp queue, atomics and thousands of
+    // block-wide synchronizations that are useful on consumer GPUs with weak
+    // FP64 but severely underutilize Tesla V100.
+    if (active) {
+        hoohash_mix_words(
+            matrix, scaled_nibble_table, byte_swap32(nonce), first_pass,
+            mixed);
+    }
+#else
     hoohash_mix_words_service(
         matrix, scaled_nibble_table, byte_swap32(nonce), first_pass,
         mixed, active, scratch);
+#endif
 
     if (!active) return;
     blake3_32_words(mixed, final_hash);
@@ -26,7 +38,31 @@
 
 } // namespace
 
-Header80CudaBackend::Header80CudaBackend(int device_index) : device_index_(device_index) {}
+Header80CudaBackend::Header80CudaBackend(int device_index, unsigned int threads_per_block)
+    : device_index_(device_index),
+      threads_per_block_(threads_per_block) {
+    if (threads_per_block_ == 0U) {
+        threads_per_block_ = static_cast<unsigned int>(PEPEPOW_CUDA_THREADS);
+        if (const char* value = std::getenv("PEPEPOW_CUDA_THREADS_RUNTIME");
+            value != nullptr && *value != '\0') {
+            try {
+                const auto parsed = std::stoul(value);
+                if (parsed <= std::numeric_limits<unsigned int>::max()) {
+                    threads_per_block_ = static_cast<unsigned int>(parsed);
+                }
+            } catch (...) {
+                throw std::invalid_argument("PEPEPOW_CUDA_THREADS_RUNTIME must be an integer");
+            }
+        }
+    }
+    if (threads_per_block_ < 64U ||
+        threads_per_block_ > static_cast<unsigned int>(PEPEPOW_CUDA_THREADS) ||
+        (threads_per_block_ % 32U) != 0U) {
+        throw std::invalid_argument(
+            "CUDA threads per block must be a multiple of 32 between 64 and " +
+            std::to_string(PEPEPOW_CUDA_THREADS));
+    }
+}
 
 Header80CudaBackend::~Header80CudaBackend() {
     if (device_result_ != nullptr || device_matrix_ != nullptr ||

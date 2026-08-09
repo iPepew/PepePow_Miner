@@ -1,0 +1,142 @@
+name: v1.0.5 Volta service24 test4
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/v1.0.5
+    paths:
+      - ".github/workflows/v105-volta-service24-test4.yml"
+      - "tools/patch-v105-volta-service24-test4.py"
+
+permissions:
+  contents: read
+
+jobs:
+  build-v100-test4:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          /usr/local/cuda/bin/nvcc --version
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Apply reproducible service24 patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 tools/patch-v105-volta-service24-test4.py
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES='70-real' \
+            -DPEPEPOW_CUDA_THREADS=768 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+
+      - name: Build and validate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark
+          ./build/pepepowminer --version | tee binary-version.txt
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee volta-fatbin.txt
+          grep -F sm_70 volta-fatbin.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build/pepepowminer | tee volta-resource-usage.txt
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+          for script in hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh hiveos/console-monitor.sh tools/test-v105-passive-capture.sh; do
+            bash -n "$script"
+          done
+
+      - name: Assemble HiveOS package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ROOT='PepeW-Miner-v1.0.5-HiveOS'
+          ASSET='PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz'
+          PACKAGE="$PWD/stage/$ROOT"
+          OUT="$PWD/dist"
+          rm -rf "$PWD/stage" "$OUT"
+          mkdir -p "$PACKAGE" "$OUT"
+
+          install -m 0755 build/pepepowminer "$PACKAGE/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "$PACKAGE/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$PACKAGE/h-stats.sh"
+          install -m 0755 hiveos/console-monitor.sh "$PACKAGE/console-monitor.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "$PACKAGE/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "$PACKAGE/h-manifest.conf"
+          install -m 0644 LICENSE "$PACKAGE/LICENSE"
+          install -m 0644 README.md "$PACKAGE/README.md"
+          install -m 0644 RELEASE_NOTES_v1.0.5.md "$PACKAGE/RELEASE_NOTES_v1.0.5.md"
+          printf '1.0.5\n' > "$PACKAGE/VERSION"
+
+          PACKAGE="$PACKAGE" python3 -c "import os; from pathlib import Path; s=Path('hiveos/h-run.sh').read_text(); s=s.replace(\"    70) printf 'volta-auto' ;;\", \"    70) printf 'volta-service24' ;;\"); s=s.replace(\"    70|120) printf '512' ;;\", \"    70) printf '768' ;;\\n    120) printf '512' ;;\"); p=Path(os.environ['PACKAGE'])/'h-run.sh'; p.write_text(s); p.chmod(0o755)"
+
+          binary_sha="$(sha256sum "$PACKAGE/pepepowminer" | awk '{print $1}')"
+          printf '%s  pepepowminer\n' "$binary_sha" > "$PACKAGE/pepepowminer.sha256"
+          printf '%s\n' \
+            'release=PepeW Miner v1.0.5 test4 V100 service24' \
+            "source_commit=${GITHUB_SHA}" \
+            'build_type=Release' \
+            'cuda_toolkit=12.8.1' \
+            'cuda_architectures=70-real' \
+            'cuda_native=sm_70' \
+            'kernel_mode=volta-service24' \
+            'service_regions=3' \
+            'service_warps_total=24' \
+            'service_warps_per_region=8' \
+            'default_test_threads=768' \
+            'chunk_size=262144' \
+            'fmad=false' \
+            'cpu_candidate_validation=consensus-exact' \
+            "binary_sha256=${binary_sha}" > "$PACKAGE/BUILD_PROFILE"
+
+          bash -n "$PACKAGE/h-run.sh"
+          (cd "$PACKAGE" && sha256sum -c pepepowminer.sha256)
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C "$PWD/stage" -cf - "$ROOT" | gzip -n > "$OUT/$ASSET"
+          (cd "$OUT" && sha256sum "$ASSET" > "$ASSET.sha256")
+          tar -tzf "$OUT/$ASSET" > "$OUT/archive-list.txt"
+          test "$(sed -n '1p' "$OUT/archive-list.txt")" = "$ROOT/"
+          grep -Fqx "$ROOT/pepepowminer" "$OUT/archive-list.txt"
+          echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: PepeW-Miner-v1.0.5-HiveOS-test4-v100-service24
+          path: |
+            dist/PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz
+            dist/PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz.sha256
+            binary-version.txt
+            volta-fatbin.txt
+            volta-resource-usage.txt
+          if-no-files-found: error
+          retention-days: 14

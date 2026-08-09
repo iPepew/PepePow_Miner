@@ -1,0 +1,287 @@
+name: v1.0.5 Volta triple-service test3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - release/v1.0.5
+    paths:
+      - ".github/workflows/v105-volta-service3-test3.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-v100-test3:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          cmake --version
+          /usr/local/cuda/bin/nvcc --version
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Apply Volta triple-service experiment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          part05 = Path("native/src/cuda/v1/header80_backend_part05.inc")
+          text = part05.read_text(encoding="utf-8")
+
+          executor_start_marker = (
+              "    __syncthreads();\n"
+              "    const unsigned int task_count = scratch.task_count;\n"
+              "    if (threadIdx.x < 32U) {"
+          )
+          executor_suffix_marker = "\n\n    if (active) {"
+          start = text.index(executor_start_marker)
+          end = text.index(executor_suffix_marker, start)
+          replacement = r'''    __syncthreads();
+              const unsigned int task_count = scratch.task_count;
+          #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 700 && PEPEPOW_CUDA_ASSUME_FINITE
+              // V100 test3: three independent service warps execute the three
+              // consensus nonlinear regions concurrently. Every task still
+              // uses the exact selector and exact FP64 operation ordering.
+              if (threadIdx.x < 96U) {
+                  const unsigned int service_region =
+                      static_cast<unsigned int>(threadIdx.x) >> 5U;
+                  const unsigned int service_lane =
+                      static_cast<unsigned int>(threadIdx.x) & 31U;
+                  for (unsigned int task_index = service_lane;
+                       task_index < task_count; task_index += 32U) {
+                      const double x = scratch.task_x[task_index];
+                      const HooHashSelectorParts selector =
+                          decode_selector_parts(x * kTransformMultiplier * 0.125);
+                      if (selector.one_region == service_region) {
+                          const double two = selector.two;
+                          double y;
+                          if (two < 0.25) y = x + (1.0 + two);
+                          else if (two < 0.50) y = x - (1.0 + two);
+                          else if (two < 0.75) y = x * (1.0 + two);
+                          else y = x / (1.0 + two);
+
+                          double nonlinear_value;
+                          if (service_region == 0U) {
+                              double sine, cosine;
+                              sincos(y, &sine, &cosine);
+                              nonlinear_value = exp(sine + cosine);
+                          } else if (service_region == 1U) {
+                              if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) {
+                                  nonlinear_value = 0.0;
+                              } else {
+                                  const double sine = sin(y);
+                                  nonlinear_value = sine * sine;
+                              }
+                          } else {
+                              nonlinear_value = 1.0 / sqrt(fabs(y) + 1.0);
+                          }
+
+                          const unsigned int owner =
+                              scratch.task_owner[task_index];
+                          scratch.task_result[owner] =
+                              nonlinear_value * scratch.task_value[task_index] * 1234.0;
+                      }
+                  }
+                  __syncwarp();
+              }
+              if (threadIdx.x == 0U) scratch.task_count = 0U;
+          #else
+              if (threadIdx.x < 32U) {
+                  for (unsigned int task_index = lane;
+                       task_index < task_count; task_index += 32U) {
+                      const double nonlinear_value =
+                          safe_nonlinear(scratch.task_x[task_index]);
+                      const unsigned int owner = scratch.task_owner[task_index];
+                      scratch.task_result[owner] =
+                          nonlinear_value * scratch.task_value[task_index] * 1234.0;
+                  }
+                  __syncwarp();
+                  if (lane == 0U) scratch.task_count = 0U;
+              }
+          #endif
+              __syncthreads();'''
+          replacement = "\n".join(line[10:] if line.startswith("          ") else line
+                                  for line in replacement.splitlines())
+          text = text[:start] + replacement + text[end:]
+
+          scratch_start_marker = "#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ != 700\n"
+          scratch_end_marker = "#endif\n\n    const std::size_t index"
+          start = text.index(scratch_start_marker)
+          end = text.index(scratch_end_marker, start)
+          scratch_replacement = (
+              "    __shared__ ColdServiceScratch scratch;\n"
+              "    if (threadIdx.x == 0U) scratch.task_count = 0U;\n"
+              "    __syncthreads();\n\n"
+              "    const std::size_t index"
+          )
+          text = text[:start] + scratch_replacement + text[end + len(scratch_end_marker):]
+          part05.write_text(text, encoding="utf-8")
+
+          part06 = Path("native/src/cuda/v1/header80_backend_part06.inc")
+          text = part06.read_text(encoding="utf-8")
+          dispatch_start_marker = "#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ == 700\n"
+          start = text.index(dispatch_start_marker)
+          end = text.index("#endif", start) + len("#endif")
+          dispatch_replacement = r'''    hoohash_mix_words_service(
+                  matrix, scaled_nibble_table, byte_swap32(nonce), first_pass,
+                  mixed, active, scratch);'''
+          dispatch_replacement = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in dispatch_replacement.splitlines()
+          )
+          text = text[:start] + dispatch_replacement + text[end:]
+          part06.write_text(text, encoding="utf-8")
+
+          assert "threadIdx.x < 96U" in part05.read_text(encoding="utf-8")
+          assert "three independent service warps" in part05.read_text(encoding="utf-8")
+          assert "__shared__ ColdServiceScratch scratch" in part05.read_text(encoding="utf-8")
+          assert "hoohash_mix_words_service" in part06.read_text(encoding="utf-8")
+          assert "direct exact HooHash path on Volta" not in part06.read_text(encoding="utf-8")
+          print("VOLTA_TRIPLE_SERVICE_PATCH=PASS")
+          PY
+
+      - name: Configure Tesla V100 triple-service build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = '1.0.5'
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build-v105-v100-test3 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES='70-real' \
+            -DPEPEPOW_CUDA_THREADS=768 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+
+      - name: Build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cmake --build build-v105-v100-test3 --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark
+          ./build-v105-v100-test3/pepepowminer --version | tee binary-version.txt
+          grep -F '1.0.5' binary-version.txt
+
+      - name: Hardware-independent validation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ctest --test-dir build-v105-v100-test3 --output-on-failure -R '^pepepow_core_tests$'
+          for script in hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh hiveos/console-monitor.sh tools/test-v105-live.sh; do
+            bash -n "$script"
+          done
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+
+      - name: Verify Volta cubin and inspect resources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /usr/local/cuda/bin/cuobjdump --list-elf build-v105-v100-test3/pepepowminer | tee volta-fatbin.txt
+          grep -F sm_70 volta-fatbin.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build-v105-v100-test3/pepepowminer | tee volta-resource-usage.txt
+          if grep -Fq 'sm_75' volta-fatbin.txt; then
+            echo 'Unexpected non-Volta cubin' >&2
+            exit 1
+          fi
+          echo 'VOLTA_TRIPLE_SERVICE_CUBIN=PASS'
+
+      - name: Assemble HiveOS Tesla V100 test3 package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          VERSION=1.0.5
+          ROOT="PepeW-Miner-v${VERSION}-HiveOS"
+          ASSET="${ROOT}-test3.tar.gz"
+          STAGE="$PWD/dist-stage"
+          PACKAGE="$STAGE/$ROOT"
+          OUT="$PWD/dist"
+          rm -rf "$STAGE" "$OUT"
+          mkdir -p "$PACKAGE" "$OUT"
+          install -m 0755 build-v105-v100-test3/pepepowminer "$PACKAGE/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "$PACKAGE/h-config.sh"
+          PACKAGE="$PACKAGE" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          source = Path("hiveos/h-run.sh").read_text(encoding="utf-8")
+          source = source.replace("    70) printf 'volta-auto' ;;", "    70) printf 'volta-service3' ;;")
+          source = source.replace("    70|120) printf '512' ;;", "    70) printf '768' ;;\n    120) printf '512' ;;")
+          assert "70) printf 'volta-service3'" in source
+          assert "70) printf '768'" in source
+          target = Path(os.environ["PACKAGE"]) / "h-run.sh"
+          target.write_text(source, encoding="utf-8")
+          target.chmod(0o755)
+          PY
+          install -m 0755 hiveos/h-stats.sh "$PACKAGE/h-stats.sh"
+          install -m 0755 hiveos/console-monitor.sh "$PACKAGE/console-monitor.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "$PACKAGE/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "$PACKAGE/h-manifest.conf"
+          install -m 0644 LICENSE "$PACKAGE/LICENSE"
+          install -m 0644 README.md "$PACKAGE/README.md"
+          install -m 0644 RELEASE_NOTES_v1.0.5.md "$PACKAGE/RELEASE_NOTES_v1.0.5.md"
+          printf '%s\n' "$VERSION" > "$PACKAGE/VERSION"
+          grep -Fq "70) printf 'volta-service3'" "$PACKAGE/h-run.sh"
+          grep -Fq "70) printf '768'" "$PACKAGE/h-run.sh"
+          bash -n "$PACKAGE/h-run.sh"
+          binary_sha="$(sha256sum "$PACKAGE/pepepowminer" | awk '{print $1}')"
+          printf '%s  pepepowminer\n' "$binary_sha" > "$PACKAGE/pepepowminer.sha256"
+          cat > "$PACKAGE/BUILD_PROFILE" <<PROFILE
+          release=PepeW Miner v1.0.5 test3 V100 triple-service
+          source_commit=${GITHUB_SHA}
+          build_type=Release
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          cuda_native=sm_70
+          kernel_mode=volta-service3
+          service_warps=3
+          service_regions=exp-sincos,sin-square,inverse-sqrt
+          default_test_threads=768
+          supported_runtime_threads=512,768
+          chunk_size=262144
+          fmad=false
+          cpu_candidate_validation=consensus-exact
+          binary_sha256=${binary_sha}
+          PROFILE
+          (cd "$PACKAGE" && sha256sum -c pepepowminer.sha256)
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C "$STAGE" -cf - "$ROOT" | gzip -n > "$OUT/$ASSET"
+          (cd "$OUT" && sha256sum "$ASSET" > "$ASSET.sha256")
+          tar -tzf "$OUT/$ASSET" > "$OUT/archive-list.txt"
+          test "$(sed -n '1p' "$OUT/archive-list.txt")" = "$ROOT/"
+          grep -Fqx "$ROOT/pepepowminer" "$OUT/archive-list.txt"
+          echo "ARCHIVE_SHA256=$(sha256sum "$OUT/$ASSET" | awk '{print $1}')"
+
+      - name: Upload Tesla V100 test3 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: PepeW-Miner-v1.0.5-HiveOS-test3-v100-service3
+          path: |
+            dist/PepeW-Miner-v1.0.5-HiveOS-test3.tar.gz
+            dist/PepeW-Miner-v1.0.5-HiveOS-test3.tar.gz.sha256
+            binary-version.txt
+            volta-fatbin.txt
+            volta-resource-usage.txt
+          if-no-files-found: error
+          retention-days: 14

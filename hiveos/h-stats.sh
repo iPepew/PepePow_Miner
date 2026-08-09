@@ -81,7 +81,7 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
   fi
 
   if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
-    latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\|[[:space:]]*([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
+    latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\[MINING\][[:space:]]+([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
     if [[ "${latest_mhs}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
       hps="$(awk -v value="${latest_mhs}" 'BEGIN { printf "%.0f", value*1000000 }')"
       fresh=1
@@ -130,6 +130,6 @@ temp_json="$(array_json "${gpu_temp[@]}")"
 fan_json="$(array_json "${gpu_fan[@]}")"
 bus_json="$(array_json "${gpu_bus[@]}")"
 
-stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.4","algo":"hoohash"}' \
+stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.5","algo":"hoohash"}' \
   "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
   "${total_accepted}" "${total_rejected}" "${bus_json}")

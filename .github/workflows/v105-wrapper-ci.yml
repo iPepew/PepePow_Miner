@@ -1,0 +1,175 @@
+name: v1.0.5 wrapper CI
+
+on:
+  push:
+    branches:
+      - release/v1.0.5
+    paths:
+      - "hiveos/**"
+      - "native/src/app/main_v105.cpp"
+      - "native/src/app/main.cpp"
+      - "tools/test-v105-live.sh"
+      - ".github/workflows/v105-wrapper-ci.yml"
+  pull_request:
+    paths:
+      - "hiveos/**"
+      - "native/src/app/main_v105.cpp"
+      - "native/src/app/main.cpp"
+      - "tools/test-v105-live.sh"
+      - ".github/workflows/v105-wrapper-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrapper-validation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runtime text must be ASCII-safe
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          files = [
+              Path('native/src/app/main_v105.cpp'),
+              Path('hiveos/h-config.sh'),
+              Path('hiveos/h-run.sh'),
+              Path('hiveos/h-stats.sh'),
+              Path('hiveos/console-monitor.sh'),
+          ]
+          banned = ['🐸', '🔨', '💰', '❌', '⏱']
+          for path in files:
+              data = path.read_text(encoding='utf-8')
+              for token in banned:
+                  if token in data:
+                      raise SystemExit(f'banned runtime symbol {token!r} in {path}')
+              if any(ord(ch) > 127 for ch in data):
+                  raise SystemExit(f'non-ASCII runtime source in {path}')
+          print('ASCII_RUNTIME_GATE=PASS')
+          PY
+
+      - name: Shell and Python syntax
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for script in hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh hiveos/console-monitor.sh tools/test-v105-live.sh; do
+            bash -n "$script"
+          done
+          python3 -m py_compile hiveos/stratum-replay-proxy.py
+
+      - name: Config generation self-test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          CUSTOM_URL='stratum+tcp://example.invalid:1234' \
+          CUSTOM_TEMPLATE='wallet.worker' \
+          CUSTOM_PASS='x' \
+          CUSTOM_CONFIG_FILENAME="$tmp/config.txt" \
+          PEPEW_DEVICES='0,2' \
+          PEPEW_PROFILE='auto' \
+          PEPEW_CUDA_THREADS_RUNTIME='auto' \
+          PEPEW_STATS_INTERVAL='10' \
+            bash -c 'source "$1"' _ "$PWD/hiveos/h-config.sh"
+          source "$tmp/config.txt"
+          test "$PEPEPOW_DEVICES" = '0,2'
+          test "$PEPEPOW_PROFILE" = 'auto'
+          test "$PEPEPOW_CUDA_THREADS_RUNTIME" = 'auto'
+          test "$PEPEPOW_STATS_INTERVAL" = '10'
+          test "${#PEPEPOW_EXTRA_ARGS[@]}" -eq 0
+          echo 'CONFIG_GATE=PASS'
+
+      - name: Volta and Blackwell wrapper profile self-test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          cp hiveos/h-run.sh hiveos/h-config.sh hiveos/h-stats.sh hiveos/console-monitor.sh hiveos/stratum-replay-proxy.py "$tmp/"
+          chmod +x "$tmp"/*.sh "$tmp"/*.py
+          cat > "$tmp/config.txt" <<'CONF'
+          PEPEPOW_UPSTREAM=stratum+tcp://example.invalid:1234
+          PEPEPOW_USER=wallet.worker
+          PEPEPOW_PASS=x
+          PEPEPOW_PROXY_PORT_BASE=49333
+          PEPEPOW_DEVICES=all
+          PEPEPOW_DIAGNOSTIC=0
+          PEPEPOW_PROFILE=auto
+          PEPEPOW_CUDA_THREADS_RUNTIME=auto
+          PEPEPOW_STATS_INTERVAL=10
+          PEPEPOW_EXTRA_ARGS=( )
+          CONF
+          cat > "$tmp/pepepowminer" <<'MINER'
+          #!/usr/bin/env bash
+          case "${1:-}" in
+            --version) echo 'PepeW Miner 1.0.5';;
+            --list-gpu)
+              echo '[0] Tesla V100-SXM2-16GB sm_70'
+              echo '[1] NVIDIA GeForce RTX 5060 Ti sm_120'
+              ;;
+            *) exit 0;;
+          esac
+          MINER
+          chmod +x "$tmp/pepepowminer"
+          mkdir "$tmp/bin"
+          cat > "$tmp/bin/nvidia-smi" <<'SMI'
+          #!/usr/bin/env bash
+          args="$*"
+          if [[ "$args" == *'index,uuid,name,pci.bus_id,memory.total'* ]]; then
+            echo '0, GPU-v100, Tesla V100-SXM2-16GB, 00000000:01:00.0, 16384'
+            echo '1, GPU-5060, NVIDIA GeForce RTX 5060 Ti, 00000000:02:00.0, 8192'
+          elif [[ "$args" == *'driver_version'* ]]; then
+            echo '550.142'
+          else
+            exit 0
+          fi
+          SMI
+          chmod +x "$tmp/bin/nvidia-smi"
+          output="$(cd "$tmp" && PATH="$tmp/bin:$PATH" PEPEW_WRAPPER_SELFTEST=1 PEPEW_LOG_ROOT="$tmp/log" CUSTOM_CONFIG_FILENAME="$tmp/config.txt" ./h-run.sh)"
+          printf '%s\n' "$output"
+          grep -Fq 'Tesla V100-SXM2-16GB | sm_70' <<<"$output"
+          grep -Fq 'profile=volta-auto | threads=512' <<<"$output"
+          grep -Fq 'RTX 5060 Ti | sm_120' <<<"$output"
+          grep -Fq 'profile=blackwell-auto | threads=512' <<<"$output"
+          grep -Fq 'PEPEW_V105_WRAPPER_GATE=PASS' <<<"$output"
+
+      - name: Multi-GPU telemetry fixture
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp -d)"
+          now="$(date +%s)"
+          mkdir -p "$tmp/gpu0" "$tmp/gpu1"
+          cat > "$tmp/nvidia.csv" <<CSV
+          0, 00000000:01:00.0, 66, 71
+          1, 00000000:02:00.0, 62, 55
+          CSV
+          cat > "$tmp/gpu0/miner-status.env" <<STATUS
+          HPS=1500000
+          ACCEPTED=7
+          REJECTED=0
+          UPTIME=120
+          UPDATED_EPOCH=$now
+          PID=1
+          STATE=mining
+          STATUS
+          cat > "$tmp/gpu1/miner-status.env" <<STATUS
+          HPS=1700000
+          ACCEPTED=5
+          REJECTED=1
+          UPTIME=118
+          UPDATED_EPOCH=$now
+          PID=1
+          STATE=mining
+          STATUS
+          output="$(PEPEW_STATUS_ROOT="$tmp" PEPEW_NVIDIA_SMI_FILE="$tmp/nvidia.csv" PEPEW_STATS_SELFTEST=1 PEPEW_NOW_EPOCH="$now" bash -c 'source "$1"; printf "%s\n%s\n" "$khs" "$stats"' _ hiveos/h-stats.sh)"
+          test "$(sed -n '1p' <<<"$output")" = '3200'
+          json="$(sed -n '2p' <<<"$output")"
+          grep -Fq '"hs":[1500,1700]' <<<"$json"
+          grep -Fq '"ar":[12,1,0]' <<<"$json"
+          grep -Fq '"ver":"1.0.5"' <<<"$json"
+          echo 'TELEMETRY_GATE=PASS'
