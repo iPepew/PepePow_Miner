@@ -55,10 +55,31 @@ if 'PepeW Miner v1.0.5' not in text:
 text = text.replace('PepeW Miner v1.0.5', 'PepeW Miner v1.0.6')
 main.write_text(text, encoding='utf-8')
 
+cmake = Path('native/CMakeLists.txt')
+text = cmake.read_text(encoding='utf-8')
+replacements = {
+    'tests/test_main.cpp': 'tests/core_tests.cpp',
+    'tests/test_cuda.cpp': 'tests/cuda_tests.cpp',
+    'tests/test_cuda_header80_validation.cpp': 'tests/cuda_header80_validation.cpp',
+}
+for old, new in replacements.items():
+    if old not in text:
+        raise SystemExit(f'CMake test marker not found: {old}')
+    text = text.replace(old, new)
+benchmark = '''        add_executable(pepepow_header80_benchmark tests/benchmark_header80.cpp)\n        target_link_libraries(pepepow_header80_benchmark PRIVATE pepepow_core pepepow_cuda)\n'''
+if benchmark in text:
+    text = text.replace(benchmark, '')
+cmake.write_text(text, encoding='utf-8')
+
 verify07 = part07.read_text(encoding='utf-8')
 verify_main = main.read_text(encoding='utf-8')
+verify_cmake = cmake.read_text(encoding='utf-8')
 assert 'kVoltaAsync3ServiceThreads = 96U' in verify07
 assert 'header80_pow_volta_async3_kernel<<<blocks, threads>>>' in verify07
 assert 'cudaFuncSetCacheConfig(header80_pow_volta_async3_kernel' in verify07
 assert 'PepeW Miner v1.0.6' in verify_main
+assert 'tests/core_tests.cpp' in verify_cmake
+assert 'tests/cuda_tests.cpp' in verify_cmake
+assert 'tests/cuda_header80_validation.cpp' in verify_cmake
+assert 'tests/benchmark_header80.cpp' not in verify_cmake
 print('V106_VOLTA_ASYNC3_PREPARE=PASS')
