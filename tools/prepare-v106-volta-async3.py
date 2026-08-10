@@ -1,5 +1,21 @@
 from pathlib import Path
 
+# Existing v1.0.5 CUDA source is split at arbitrary line boundaries, including
+# inside functions. Insert the v1.0.6 namespace-scope implementation at the
+# one safe structural boundary: after header80_pow_kernel closes and before
+# the anonymous namespace closes in part06.
+part06 = Path('native/src/cuda/v1/header80_backend_part06.inc')
+text06 = part06.read_text(encoding='utf-8')
+namespace_marker = '\n\n} // namespace\n\nHeader80CudaBackend::Header80CudaBackend'
+if namespace_marker not in text06:
+    raise SystemExit('part06 namespace insertion marker not found')
+text06 = text06.replace(
+    namespace_marker,
+    '\n\n#include "header80_async3_v106.inc"\n\n} // namespace\n\nHeader80CudaBackend::Header80CudaBackend',
+    1,
+)
+part06.write_text(text06, encoding='utf-8')
+
 part07 = Path('native/src/cuda/v1/header80_backend_part07.inc')
 text = part07.read_text(encoding='utf-8')
 
@@ -71,9 +87,12 @@ if benchmark in text:
     text = text.replace(benchmark, '')
 cmake.write_text(text, encoding='utf-8')
 
+verify06 = part06.read_text(encoding='utf-8')
 verify07 = part07.read_text(encoding='utf-8')
 verify_main = main.read_text(encoding='utf-8')
 verify_cmake = cmake.read_text(encoding='utf-8')
+assert '#include "header80_async3_v106.inc"' in verify06
+assert verify06.index('#include "header80_async3_v106.inc"') < verify06.index('} // namespace')
 assert 'kVoltaAsync3ServiceThreads = 96U' in verify07
 assert 'header80_pow_volta_async3_kernel<<<blocks, threads>>>' in verify07
 assert 'cudaFuncSetCacheConfig(header80_pow_volta_async3_kernel' in verify07
