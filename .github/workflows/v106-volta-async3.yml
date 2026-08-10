@@ -47,7 +47,7 @@ jobs:
           set -Eeuo pipefail
           export CUDACXX=/usr/local/cuda/bin/nvcc
           cmake -S native -B build-v106-v100 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DPEPEPOW_CUDA_ARCHITECTURES='70-real' -DPEPEPOW_CUDA_THREADS=768 -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF -DPEPEPOW_CUDA_SCALED_MATRIX=ON -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON -DPEPEPOW_CUDA_SW_STATE_MODE=3
-          cmake --build build-v106-v100 --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_benchmark
+          cmake --build build-v106-v100 --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation
           ./build-v106-v100/pepepowminer --version | tee binary-version.txt
           grep -F '1.0.6' binary-version.txt
           ctest --test-dir build-v106-v100 --output-on-failure -R '^pepepow_core_tests$'
