@@ -52,12 +52,16 @@ jobs:
           grep -F '1.0.6' binary-version.txt
           ctest --test-dir build-v106-v100 --output-on-failure -R '^pepepow_core_tests$'
 
-      - name: Inspect Volta binary
+      - name: Inspect Volta CUDA object
         run: |
           set -Eeuo pipefail
-          /usr/local/cuda/bin/cuobjdump --list-elf build-v106-v100/pepepowminer | tee volta-fatbin.txt
+          CUDA_OBJ='build-v106-v100/CMakeFiles/pepepow_cuda.dir/src/cuda/header80_backend.cu.o'
+          test -s "$CUDA_OBJ"
+          /usr/local/cuda/bin/cuobjdump --list-elf "$CUDA_OBJ" | tee volta-fatbin.txt
           grep -F sm_70 volta-fatbin.txt
-          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build-v106-v100/pepepowminer | tee volta-resource-usage.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage "$CUDA_OBJ" | tee volta-resource-usage.txt
+          grep -F 'header80_pow_volta_async3_kernel' volta-resource-usage.txt
+          readelf -S build-v106-v100/pepepowminer > binary-sections.txt
 
       - name: Package HiveOS candidate
         run: |
@@ -82,6 +86,7 @@ jobs:
             binary-version.txt
             volta-fatbin.txt
             volta-resource-usage.txt
+            binary-sections.txt
             package-info.txt
           if-no-files-found: error
           retention-days: 14
