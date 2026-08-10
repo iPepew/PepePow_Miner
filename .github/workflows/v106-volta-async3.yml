@@ -52,16 +52,21 @@ jobs:
           grep -F '1.0.6' binary-version.txt
           ctest --test-dir build-v106-v100 --output-on-failure -R '^pepepow_core_tests$'
 
-      - name: Inspect Volta CUDA object
+      - name: Verify final Volta executable
         run: |
           set -Eeuo pipefail
+          FINAL='build-v106-v100/pepepowminer'
           CUDA_OBJ='build-v106-v100/CMakeFiles/pepepow_cuda.dir/src/cuda/header80_backend.cu.o'
+          test -s "$FINAL"
           test -s "$CUDA_OBJ"
-          /usr/local/cuda/bin/cuobjdump --list-elf "$CUDA_OBJ" | tee volta-fatbin.txt
-          grep -F sm_70 volta-fatbin.txt
-          /usr/local/cuda/bin/cuobjdump --dump-resource-usage "$CUDA_OBJ" | tee volta-resource-usage.txt
-          grep -F 'header80_pow_volta_async3_kernel' volta-resource-usage.txt
-          readelf -S build-v106-v100/pepepowminer > binary-sections.txt
+          /usr/local/cuda/bin/cuobjdump --list-elf "$FINAL" | tee final-fatbin.txt
+          grep -F sm_70 final-fatbin.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage "$FINAL" | tee final-resource-usage.txt
+          grep -F 'header80_pow_volta_async3_kernel' final-resource-usage.txt
+          /usr/local/cuda/bin/cuobjdump --list-elf "$CUDA_OBJ" | tee object-fatbin.txt
+          grep -F sm_70 object-fatbin.txt
+          readelf -S "$FINAL" | tee binary-sections.txt
+          grep -E '\.nv_fatbin|\.nvFatBinSegment' binary-sections.txt
 
       - name: Package HiveOS candidate
         run: |
@@ -75,6 +80,7 @@ jobs:
           (cd dist && sha256sum PepeW-Miner-v1.0.6-HiveOS.tar.gz > PepeW-Miner-v1.0.6-HiveOS.tar.gz.sha256)
           tar -tzf dist/PepeW-Miner-v1.0.6-HiveOS.tar.gz > dist/archive-list.txt
           grep -Fqx 'PepeW-Miner-v1.0.6-HiveOS/pepepowminer' dist/archive-list.txt
+          tar -xOf dist/PepeW-Miner-v1.0.6-HiveOS.tar.gz PepeW-Miner-v1.0.6-HiveOS/BUILD_PROFILE | grep -F 'kernel_mode=volta-async3'
 
       - name: Upload v1.0.6 candidate
         uses: actions/upload-artifact@v4
@@ -84,8 +90,9 @@ jobs:
             dist/PepeW-Miner-v1.0.6-HiveOS.tar.gz
             dist/PepeW-Miner-v1.0.6-HiveOS.tar.gz.sha256
             binary-version.txt
-            volta-fatbin.txt
-            volta-resource-usage.txt
+            final-fatbin.txt
+            final-resource-usage.txt
+            object-fatbin.txt
             binary-sections.txt
             package-info.txt
           if-no-files-found: error
