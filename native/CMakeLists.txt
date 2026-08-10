@@ -130,7 +130,14 @@ endif()
 
 if(PEPEPOW_ENABLE_CUDA)
     add_executable(pepepowminer src/app/main_v105.cpp)
+    target_compile_definitions(pepepowminer PRIVATE PEPEPOW_HAS_CUDA=1)
     target_link_libraries(pepepowminer PRIVATE pepepow_core pepepow_cuda)
+    set_target_properties(pepepowminer PROPERTIES
+        LINKER_LANGUAGE CUDA
+        CUDA_STANDARD 20
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"
+        CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 else()
     add_executable(pepepowminer src/app/main.cpp)
     target_link_libraries(pepepowminer PRIVATE pepepow_core)
