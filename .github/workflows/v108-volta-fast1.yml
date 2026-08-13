@@ -97,6 +97,7 @@ jobs:
           bash -n "$ROOT/h-config.sh"
           bash -n "$ROOT/h-run.sh"
           python3 -m py_compile "$ROOT/stratum-replay-proxy.py"
+          rm -rf "$ROOT/__pycache__"
           grep -Fqx 'CUSTOM_NAME=PepeW-Miner-v1.0.8' "$ROOT/h-manifest.conf"
           grep -Fqx 'CUSTOM_VERSION=1.0.8' "$ROOT/h-manifest.conf"
           ! grep -Fq 'PepeW-Miner-v1.0.8-HiveOS' "$ROOT/h-manifest.conf"
@@ -110,6 +111,7 @@ jobs:
           tar -tzf dist/PepeW-Miner-v1.0.8-HiveOS.tar.gz > dist/archive-list.txt
           grep -Fqx 'PepeW-Miner-v1.0.8/pepepowminer' dist/archive-list.txt
           grep -Fqx 'PepeW-Miner-v1.0.8/h-manifest.conf' dist/archive-list.txt
+          ! grep -Fq '__pycache__' dist/archive-list.txt
           ! grep -Fq '^PepeW-Miner-v1.0.8-HiveOS/' dist/archive-list.txt
 
       - name: Upload v1.0.8 candidate
