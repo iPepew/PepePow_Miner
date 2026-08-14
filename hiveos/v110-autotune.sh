@@ -30,7 +30,7 @@ fi
 count="${PEPEW_V110_AUTOTUNE_COUNT:-1228800}"
 rounds="${PEPEW_V110_AUTOTUNE_ROUNDS:-3}"
 thresholds="${PEPEW_V110_COHORT_THRESHOLDS:-4 8 12 16 20 24 28 32}"
-blocks_per_sm_values="${PEPEW_V110_BLOCKS_PER_SM_VALUES:-4 8 10 12}"
+blocks_per_sm_values="${PEPEW_V110_BLOCKS_PER_SM_VALUES:-1 2 4 8 10 12}"
 
 : > "${log_file}"
 printf 'UTC=%s\nGPU_UUID=%s\nBINARY_SHA=%s\nCOUNT=%s\nROUNDS=%s\n' \
