@@ -1,0 +1,148 @@
+name: v1.0.9 Volta geometry autotune
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [release/v1.0.9]
+    paths:
+      - "VERSION"
+      - "native/**"
+      - "hiveos/**"
+      - "tools/prepare-v109-volta-geometry.py"
+      - "tools/stage-v109-hiveos.py"
+      - ".github/workflows/v109-volta-geometry.yml"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-v100-v109:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          /usr/local/cuda/bin/nvcc --version
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Prepare v1.0.9 source
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = '1.0.9'
+          python3 tools/prepare-v109-volta-geometry.py
+          python3 -m py_compile tools/prepare-v109-volta-geometry.py tools/stage-v109-hiveos.py hiveos/stratum-replay-proxy.py
+          bash -n hiveos/v100-autotune.sh
+
+      - name: Configure and build
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build-v109-v100 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES='70-real' \
+            -DPEPEPOW_CUDA_THREADS=768 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+          cmake --build build-v109-v100 --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_v100_autotune
+          ./build-v109-v100/pepepowminer --version | tee binary-version.txt
+          grep -F '1.0.9' binary-version.txt
+          ./build-v109-v100/pepepow_v100_autotune --help | tee autotune-help.txt
+          grep -F -- '--threads' autotune-help.txt
+          ctest --test-dir build-v109-v100 --output-on-failure -R '^pepepow_core_tests$'
+
+      - name: Verify final Volta executables
+        run: |
+          set -Eeuo pipefail
+          FINAL='build-v109-v100/pepepowminer'
+          TUNER='build-v109-v100/pepepow_v100_autotune'
+          CUDA_OBJ='build-v109-v100/CMakeFiles/pepepow_cuda.dir/src/cuda/header80_backend.cu.o'
+          test -s "$FINAL"
+          test -s "$TUNER"
+          test -s "$CUDA_OBJ"
+          /usr/local/cuda/bin/cuobjdump --list-elf "$FINAL" | tee final-fatbin.txt
+          grep -F sm_70 final-fatbin.txt
+          /usr/local/cuda/bin/cuobjdump --list-elf "$TUNER" | tee autotune-fatbin.txt
+          grep -F sm_70 autotune-fatbin.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage "$FINAL" | tee final-resource-usage.txt
+          grep -F 'header80_pow_kernel' final-resource-usage.txt
+          /usr/local/cuda/bin/cuobjdump --list-elf "$CUDA_OBJ" | tee object-fatbin.txt
+          grep -F sm_70 object-fatbin.txt
+          readelf -S "$FINAL" | tee binary-sections.txt
+          grep -E '\.nv_fatbin|\.nvFatBinSegment' binary-sections.txt
+
+      - name: Package HiveOS candidate
+        run: |
+          set -Eeuo pipefail
+          PEPEW_BUILD_DIR=build-v109-v100 python3 tools/stage-v109-hiveos.py | tee package-info.txt
+          ROOT='dist-stage/PepeW-Miner-v1.0.9'
+          test -d "$ROOT"
+          bash -n "$ROOT/h-config.sh"
+          bash -n "$ROOT/h-run.sh"
+          bash -n "$ROOT/h-stats.sh"
+          bash -n "$ROOT/console-monitor.sh"
+          bash -n "$ROOT/v100-autotune.sh"
+          grep -Fqx 'CUSTOM_NAME=PepeW-Miner-v1.0.9' "$ROOT/h-manifest.conf"
+          grep -Fqx 'CUSTOM_VERSION=1.0.9' "$ROOT/h-manifest.conf"
+          grep -Fqx 'kernel_mode=volta-geometry-auto' "$ROOT/BUILD_PROFILE"
+          grep -Fqx 'dynamic_shared_scratch=true' "$ROOT/BUILD_PROFILE"
+          grep -Fqx 'math_path=consensus-exact' "$ROOT/BUILD_PROFILE"
+          grep -Fqx 'cpu_candidate_validation=consensus-exact' "$ROOT/BUILD_PROFILE"
+          grep -F 'PepeW - твоя монета. Твои правила.' "$ROOT/h-run.sh"
+          test -x "$ROOT/pepepow-v100-autotune"
+          (cd "$ROOT" && sha256sum -c pepepowminer.sha256)
+          ! find "$ROOT" -type d -name '__pycache__' | grep -q .
+
+          mkdir -p dist
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            -C dist-stage -cf - PepeW-Miner-v1.0.9 | gzip -n > dist/PepeW-Miner-v1.0.9-HiveOS.tar.gz
+          (cd dist && sha256sum PepeW-Miner-v1.0.9-HiveOS.tar.gz > PepeW-Miner-v1.0.9-HiveOS.tar.gz.sha256)
+          tar -tzf dist/PepeW-Miner-v1.0.9-HiveOS.tar.gz > dist/archive-list.txt
+          grep -Fqx 'PepeW-Miner-v1.0.9/pepepowminer' dist/archive-list.txt
+          grep -Fqx 'PepeW-Miner-v1.0.9/pepepow-v100-autotune' dist/archive-list.txt
+          grep -Fqx 'PepeW-Miner-v1.0.9/v100-autotune.sh' dist/archive-list.txt
+          grep -Fqx 'PepeW-Miner-v1.0.9/h-manifest.conf' dist/archive-list.txt
+          ! grep -Fq '__pycache__' dist/archive-list.txt
+          ! grep -Fq '^PepeW-Miner-v1.0.9-HiveOS/' dist/archive-list.txt
+          echo "ARCHIVE_SHA256=$(sha256sum dist/PepeW-Miner-v1.0.9-HiveOS.tar.gz | awk '{print $1}')"
+
+      - name: Upload v1.0.9 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: PepeW-Miner-v1.0.9-HiveOS-v100-geometry
+          path: |
+            dist/PepeW-Miner-v1.0.9-HiveOS.tar.gz
+            dist/PepeW-Miner-v1.0.9-HiveOS.tar.gz.sha256
+            dist/archive-list.txt
+            binary-version.txt
+            autotune-help.txt
+            final-fatbin.txt
+            autotune-fatbin.txt
+            final-resource-usage.txt
+            object-fatbin.txt
+            binary-sections.txt
+            package-info.txt
+          if-no-files-found: error
+          retention-days: 14
