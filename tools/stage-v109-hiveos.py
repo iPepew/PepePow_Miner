@@ -131,12 +131,12 @@ bench_digest = hashlib.sha256((package / 'pepepow-v100-autotune').read_bytes()).
         'selector_path=consensus-exact',
         'cache_config=PreferL1',
         'shared_carveout=MaxL1',
-        'autotune_candidates=96,128,160,192,256,288,320,384,480,576,672,768',
+        'autotune_candidates=96,128,160,192,224,256,288,320,352,384,416,448,480,512,544,576,608,640,672,704,736,768',
         'autotune_count=1048576',
-        'autotune_rounds=2',
+        'autotune_rounds=3',
         'autotune_validation=6_cpu_gpu_nonces_per_candidate',
         'autotune_cache=per_gpu_uuid_and_binary_sha',
-        'fallback_threads=768',
+        'autotune_failure_policy=fail_closed',
         'chunk_size=262144',
         'fmad=false',
         'cpu_candidate_validation=consensus-exact',
@@ -149,8 +149,6 @@ bench_digest = hashlib.sha256((package / 'pepepow-v100-autotune').read_bytes()).
         ''
     ]), encoding='utf-8')
 
-# Python compilation can create __pycache__ next to the proxy; the release
-# archive must contain only the explicit package whitelist.
 for cache in package.rglob('__pycache__'):
     shutil.rmtree(cache, ignore_errors=True)
 
