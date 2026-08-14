@@ -10,6 +10,7 @@ on:
       - "hiveos/**"
       - "tools/prepare-v109-volta-geometry.py"
       - "tools/prepare-v110-warp-cohort.py"
+      - "tools/sanitize-v110-generated-source.py"
       - "tools/stage-v110-hiveos.py"
       - ".github/workflows/v110-v100-cohort.yml"
       - "README.md"
@@ -48,7 +49,20 @@ jobs:
           python3 tools/prepare-v110-warp-cohort.py | tee prepare-v110.txt
           grep -F 'V109_VOLTA_GEOMETRY_PREPARE=PASS' prepare-v110.txt
           grep -F 'V110_WARP_COHORT_PREPARE=PASS' prepare-v110.txt
-          python3 -m py_compile tools/prepare-v110-warp-cohort.py tools/stage-v110-hiveos.py hiveos/stratum-replay-proxy.py
+          python3 tools/sanitize-v110-generated-source.py | tee sanitize-v110.txt
+          grep -F 'V110_GENERATED_SOURCE_SANITIZE=PASS' sanitize-v110.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path('native/src/cuda/v1').glob('header80_backend_part*.inc'):
+              if b'\x00' in path.read_bytes():
+                  raise SystemExit(f'NUL byte remains in {path}')
+          print('V110_CUDA_SOURCE_NUL_GATE=PASS')
+          PY
+          python3 -m py_compile \
+            tools/prepare-v110-warp-cohort.py \
+            tools/sanitize-v110-generated-source.py \
+            tools/stage-v110-hiveos.py \
+            hiveos/stratum-replay-proxy.py
           bash -n hiveos/v110-autotune.sh
 
       - name: Configure and build
@@ -71,7 +85,8 @@ jobs:
             -DPEPEPOW_CUDA_SW_STATE_MODE=3
           cmake --build build-v110-v100 --parallel 4 --target \
             pepepowminer pepepow_core_tests pepepow_cuda_tests \
-            pepepow_cuda_header80_validation pepepow_v110_autotune
+            pepepow_cuda_header80_validation pepepow_v110_autotune 2>&1 | tee build-v110.txt
+          ! grep -F 'null character(s) preserved in literal' build-v110.txt
           ./build-v110-v100/pepepowminer --version | tee binary-version.txt
           grep -F '1.1.0' binary-version.txt
           ./build-v110-v100/pepepow_v110_autotune --help | tee autotune-help.txt
@@ -97,6 +112,8 @@ jobs:
           /usr/local/cuda/bin/cuobjdump --dump-resource-usage "$FINAL" | tee final-resource-usage.txt
           grep -F 'header80_pow_kernel' final-resource-usage.txt
           grep -F 'header80_pow_warp_cohort_kernel' final-resource-usage.txt
+          grep -A1 -F 'header80_pow_warp_cohort_kernel' final-resource-usage.txt | grep -F 'SHARED:0'
+          grep -A1 -F 'header80_pow_warp_cohort_kernel' final-resource-usage.txt | grep -F 'LOCAL:0'
 
           /usr/local/cuda/bin/cuobjdump --list-elf "$CUDA_OBJ" | tee object-fatbin.txt
           grep -F sm_70 object-fatbin.txt
@@ -121,6 +138,7 @@ jobs:
           grep -F 'PepeW Miner v1.1.0 - Performance & Stability Edition' "$ROOT/h-run.sh"
           grep -F 'PepeW - твоя монета. Твои правила.' "$ROOT/h-run.sh"
           grep -F 'PEPEPOW_V110_ENGINE' "$ROOT/h-run.sh"
+          grep -F '1 2 4 8 10 12' "$ROOT/v110-autotune.sh"
           test -x "$ROOT/pepepow-v110-autotune"
           (cd "$ROOT" && sha256sum -c pepepowminer.sha256)
           ! find "$ROOT" -type d -name '__pycache__' | grep -q .
@@ -153,6 +171,8 @@ jobs:
             object-fatbin.txt
             binary-sections.txt
             prepare-v110.txt
+            sanitize-v110.txt
+            build-v110.txt
             package-info.txt
           if-no-files-found: error
           retention-days: 14
