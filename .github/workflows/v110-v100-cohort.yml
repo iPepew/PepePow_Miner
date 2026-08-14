@@ -12,6 +12,7 @@ on:
       - "tools/prepare-v110-warp-cohort.py"
       - "tools/sanitize-v110-generated-source.py"
       - "tools/stage-v110-hiveos.py"
+      - "tools/finalize-v110-stage.py"
       - ".github/workflows/v110-v100-cohort.yml"
       - "README.md"
       - "RELEASE_NOTES_v1.1.0.md"
@@ -62,6 +63,7 @@ jobs:
             tools/prepare-v110-warp-cohort.py \
             tools/sanitize-v110-generated-source.py \
             tools/stage-v110-hiveos.py \
+            tools/finalize-v110-stage.py \
             hiveos/stratum-replay-proxy.py
           bash -n hiveos/v110-autotune.sh
 
@@ -124,6 +126,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           PEPEW_BUILD_DIR=build-v110-v100 python3 tools/stage-v110-hiveos.py | tee package-info.txt
+          python3 tools/finalize-v110-stage.py | tee finalize-v110.txt
           ROOT='dist-stage/PepeW-Miner-v1.1.0'
           test -d "$ROOT"
           for script in h-config.sh h-run.sh h-stats.sh console-monitor.sh v110-autotune.sh; do
@@ -133,6 +136,7 @@ jobs:
           grep -Fqx 'CUSTOM_VERSION=1.1.0' "$ROOT/h-manifest.conf"
           grep -Fqx 'new_engine=warp-cohort-persistent' "$ROOT/BUILD_PROFILE"
           grep -Fqx 'cohort_threads=256' "$ROOT/BUILD_PROFILE"
+          grep -Fqx 'blocks_per_sm_candidates=1,2,4,8,10,12' "$ROOT/BUILD_PROFILE"
           grep -Fqx 'hot_loop_block_barriers_cohort=0' "$ROOT/BUILD_PROFILE"
           grep -Fqx 'cpu_candidate_validation=consensus-exact' "$ROOT/BUILD_PROFILE"
           grep -F 'PepeW Miner v1.1.0 - Performance & Stability Edition' "$ROOT/h-run.sh"
@@ -148,7 +152,7 @@ jobs:
             -C dist-stage -cf - PepeW-Miner-v1.1.0 | gzip -n > dist/PepeW-Miner-v1.1.0-HiveOS.tar.gz
           (cd dist && sha256sum PepeW-Miner-v1.1.0-HiveOS.tar.gz > PepeW-Miner-v1.1.0-HiveOS.tar.gz.sha256)
           tar -tzf dist/PepeW-Miner-v1.1.0-HiveOS.tar.gz > dist/archive-list.txt
-          for item in pepepowminer pepepow-v110-autotune v110-autotune.sh h-manifest.conf BUILD_PROFILE; do
+          for item in pepepowminer pepepow-v110-autotune v110-autotune.sh h-manifest.conf BUILD_PROFILE README.md RELEASE_NOTES.md; do
             grep -Fqx "PepeW-Miner-v1.1.0/${item}" dist/archive-list.txt
           done
           ! grep -Fq '__pycache__' dist/archive-list.txt
@@ -174,5 +178,6 @@ jobs:
             sanitize-v110.txt
             build-v110.txt
             package-info.txt
+            finalize-v110.txt
           if-no-files-found: error
           retention-days: 14
