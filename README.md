@@ -1,93 +1,193 @@
 # PepeW Miner
 
-CUDA-майнер PEPEPOW HooHash V110 с интеграцией HiveOS.
+**PepeW Miner — Performance & Stability Edition**
+
+> PepeW — твоя монета. Твои правила.
+
+CUDA-майнер PEPEPOW HooHash V110 с интеграцией HiveOS и отдельной оптимизацией NVIDIA Tesla V100 / Volta `sm_70`.
 
 ## Current development release
 
 ```text
-PepeW Miner v1.0.4
+PepeW Miner v1.0.9
 ```
 
-Версия `v1.0.4` добавляет настоящий multi-GPU режим: для каждой выбранной NVIDIA
-карты запускается отдельный `pepepowminer` и отдельный локальный Stratum-прокси.
-HiveOS получает общий хешрейт и хешрейт каждой карты отдельно.
+`v1.0.9` — V100-first pre-release. Его главная задача — уйти от фиксированной геометрии CUDA-блока и автоматически подобрать на физической Tesla V100 лучший из двух движков и лучший размер блока перед запуском майнинга.
 
-## Поддерживаемые поколения NVIDIA
+## Что изменилось в v1.0.9
 
-Универсальный fat binary собирается CUDA Toolkit 12.8.x и содержит:
+### Dual-engine V100 autotune
+
+В пакет входят два HooHash CUDA-движка:
 
 ```text
-sm_61   GTX 10 series / Pascal
-sm_75   RTX 20 series / Turing
-sm_86   RTX 30 series / Ampere
-sm_89   RTX 40 series / Ada
-sm_120  RTX 50 series / Blackwell
-compute_120 PTX
+exact
+fasttrig
 ```
 
-CUDA 12.8.x используется намеренно: эта версия добавляет нативную поддержку
-`SM_120` и одновременно остаётся в CUDA 12.x, где ещё доступны Pascal и Turing.
+`exact` сохраняет проверенный FP64 service-path и стандартные CUDA `sin/sincos/exp/sqrt`.
 
-## Multi-GPU
+`fasttrig` сохраняет HooHash FP64, selector и CPU validation, но для реального диапазона больших аргументов HooHash выполняет собственную ограниченную редукцию аргумента перед `sincos()`. Это позволяет избежать общего медленного пути CUDA для больших double-аргументов, не заменяя сам `sincos()` низкоточной аппроксимацией.
 
-- все NVIDIA GPU включены по умолчанию;
-- выбор выполняется по UUID через `CUDA_VISIBLE_DEVICES`;
-- каждому GPU назначается отдельный CUDA-контекст и локальный proxy port;
-- статусы записываются в `gpu<N>/miner-status.env`;
-- `h-stats.sh` суммирует общий хешрейт и Accepted/Rejected;
-- `hs[]`, `temp[]`, `fan[]` и `bus_numbers[]` синхронизированы по GPU.
+Ни один fasttrig-профиль не выбирается только по скорости. Перед измерением производительности каждый профиль обязан пройти CPU/GPU HooHash validation.
 
-Для ограничения списка карт можно задать:
+### Полный sweep block geometry
+
+Для Tesla V100 автоматически проверяются все кратные 32 размеры блока от 96 до 768 потоков:
 
 ```text
-PEPEW_DEVICES=0,2,3
+96 128 160 192 224 256 288 320 352 384 416
+448 480 512 544 576 608 640 672 704 736 768
+```
+
+Для каждого сочетания `engine × threads`:
+
+1. проверяется набор детерминированных nonce CPU против GPU;
+2. выполняется warm-up;
+3. выполняются три timed benchmark run;
+4. выбирается медианный H/s;
+5. в майнинг допускаются только consensus-valid варианты.
+
+Победитель кэшируется по UUID GPU и SHA256 обоих бинарников. После обновления бинарника автотюнинг выполняется заново.
+
+### Dynamic shared scratch
+
+В предыдущем `service24` shared scratch всегда резервировался под 768 потоков. В v1.0.9 он зависит от фактического `threads/block`:
+
+```text
+shared_bytes = 8 + 28 * threads
+```
+
+Это позволяет маленьким CUDA-блокам конкурировать с 768-thread baseline без постоянного расхода ~21 KiB shared memory на каждый блок.
+
+### Volta cache profile
+
+Для основного HooHash kernel используется:
+
+```text
+cudaFuncCachePreferL1
+PreferredSharedMemoryCarveout = MaxL1
+```
+
+Это соответствует compute-bound характеру HooHash и освобождает максимум доступного L1 при сохранении требуемого dynamic shared memory.
+
+## Проверенные V100 результаты до v1.0.9
+
+Физические тесты Tesla V100-SXM2-16GB:
+
+| Версия / профиль | Средний хешрейт | Результат |
+|---|---:|---|
+| v1.0.5 test1 | ~3.10 MH/s | baseline Volta |
+| v1.0.5 test2 | ~1.51 MH/s | direct exact, откат |
+| v1.0.5 test3 | 5.801 MH/s | service3 |
+| v1.0.5 test4 | **6.094 MH/s** | лучший подтверждённый PepeW baseline |
+| v1.0.7 | 0.673 MH/s | async mailbox, откат |
+| v1.0.8 | 5.476 MH/s steady | fast exp/rsqrt, откат |
+
+До физического тестирования v1.0.9 никакой новый хешрейт не заявляется.
+
+Цель разработки на Tesla V100 остаётся:
+
+```text
+30 MH/s
 ```
 
 ## HiveOS package
 
 ```text
-Miner name:       PepeW-Miner-v1.0.4-HiveOS
-Installation URL: https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.4/PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz
+Miner name:       PepeW-Miner-v1.0.9
+Archive asset:    PepeW-Miner-v1.0.9-HiveOS.tar.gz
+Archive root:     PepeW-Miner-v1.0.9/
+Install path:     /hive/miners/custom/PepeW-Miner-v1.0.9
 Algorithm:        hoohash
 Wallet template:  %WAL%.%WORKER_NAME%
-Pool:             stratum+tcp://stratum-eu.pepepow.foztor.net:13232
 Password:         x
 ```
 
-Архив должен содержать верхний каталог:
+Release URL после публикации `v1.0.9`:
 
 ```text
-PepeW-Miner-v1.0.4-HiveOS/
+https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.9/PepeW-Miner-v1.0.9-HiveOS.tar.gz
 ```
 
-Штатные файлы `/hive/miners/custom/h-manifest.conf`, `h-config.sh`, `h-run.sh`
-и `h-stats.sh` принадлежат HiveOS и не должны удаляться.
+## Первый запуск на V100
 
-## Сборка
+При `PEPEPOW_CUDA_THREADS_RUNTIME=auto` HiveOS launcher сначала запускает V100 autotuner. В консоли отображаются только технические результаты профилей — wallet и password не выводятся.
 
-Требования:
+Пример логики:
 
 ```text
-Linux x86_64 / HiveOS
-CUDA Toolkit 12.8.x
-CMake 3.24+
+[AUTOTUNE] mode=exact    threads=256 consensus=PASS benchmark=...
+[AUTOTUNE] mode=fasttrig threads=256 consensus=PASS benchmark=...
+...
+[AUTOTUNE] selected mode=... threads=... benchmark=... MH/s
 ```
 
-Команда:
+После выбора miner запускается с выбранным engine и block size. Результат сохраняется в `autotune/` внутри каталога майнера.
+
+Повторный принудительный sweep:
 
 ```bash
-bash tools/build-v104-universal.sh
+PEPEW_V100_AUTOTUNE_FORCE=1 miner restart
 ```
 
-Скрипт собирает CUDA fat binary, запускает тесты, проверяет архитектуры,
-проверяет multi-GPU telemetry и создаёт готовый HiveOS-архив с SHA256.
+## Console design
 
-Подробности: [`RELEASE_NOTES_v1.0.4.md`](RELEASE_NOTES_v1.0.4.md).
+v1.0.9 сохраняет требования профессиональной HiveOS-консоли:
+
+- без большого ASCII-art логотипа;
+- без декоративного флага;
+- без emoji в runtime events;
+- компактные `[POOL]`, `[JOB]`, `[ACCEPTED]`, `[REJECTED]`, `[ERROR]`;
+- модель GPU, `sm`, профиль, выбранный engine, block size и chunk;
+- hashrate, temperature, fan, power, core/memory clocks, A/R и efficiency;
+- общий hashrate и total power;
+- без wallet/password в консоли.
+
+Стартовая идентификация:
+
+```text
+PepeW Miner v1.0.9 - Performance & Stability Edition
+PepeW - твоя монета. Твои правила.
+```
+
+## Correctness gates
+
+v1.0.9 использует несколько уровней защиты:
+
+- CPU reference HooHash остаётся источником истины;
+- exact engine сохраняет стандартный double math;
+- fasttrig меняет только argument reduction для больших trig-аргументов;
+- каждый autotune profile проходит CPU/GPU nonce validation до benchmark;
+- если нет consensus-valid профиля, miner не начинает работу;
+- каждый найденный GPU share candidate повторно проверяется CPU перед отправкой в pool;
+- `fmad=false` сохраняется для consensus-sensitive основного HooHash path.
+
+## Multi-GPU
+
+HiveOS-архитектура остаётся process-per-GPU:
+
+- отдельный `pepepowminer` на каждую выбранную NVIDIA GPU;
+- отдельный локальный Stratum proxy на GPU;
+- выбор физической карты по UUID через `CUDA_VISIBLE_DEVICES`;
+- отдельные логи/PID/status для каждого GPU;
+- агрегированная HiveOS telemetry.
+
+Для ограничения устройств:
+
+```text
+PEPEW_DEVICES=0,2,3
+```
+
+## Build
+
+Release candidate собирается GitHub Actions в CUDA Toolkit 12.8.1 для `sm_70` и проверяется на наличие Volta cubin уже в финальных ELF-файлах, а не только в промежуточном CUDA object.
+
+v1.0.9 является pre-release до завершения физического V100 autotune и длительного pool test.
 
 ## Safety
 
-Запускайте майнинг только на оборудовании, которым вы владеете или имеете право
-пользоваться. Контролируйте температуру, питание и стабильность системы.
+Запускайте майнинг только на оборудовании, которым вы владеете или имеете право пользоваться. Контролируйте температуру, питание и стабильность системы.
 
 ## License
 
