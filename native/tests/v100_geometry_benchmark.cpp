@@ -41,6 +41,22 @@ std::uint64_t parse_u64(const char* text, const char* name) {
     return std::stoull(text);
 }
 
+std::array<std::uint32_t, 32> validation_nonces() {
+    std::array<std::uint32_t, 32> values{};
+    values[0] = 0U;
+    values[1] = 1U;
+    values[2] = 0x0000ffffU;
+    values[3] = 0x12345678U;
+    values[4] = 0x80000000U;
+    values[5] = 0xffffffffU;
+    for (std::size_t i = 6; i < values.size(); ++i) {
+        const auto n = static_cast<std::uint32_t>(i);
+        values[i] = static_cast<std::uint32_t>(
+            0xa5a5a5a5U ^ (n * 0x9e3779b9U) ^ (n << 17U) ^ (n >> 3U));
+    }
+    return values;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -79,17 +95,17 @@ int main(int argc, char** argv) {
         auto job = make_benchmark_job();
         std::array<std::uint8_t, 32> maximum_target{};
         maximum_target.fill(0xffU);
-        constexpr std::array<std::uint32_t, 6> validation_nonces{
-            0U, 1U, 0x0000ffffU, 0x12345678U, 0x80000000U, 0xffffffffU};
+        const auto nonces = validation_nonces();
 
-        for (const auto nonce : validation_nonces) {
+        for (const auto nonce : nonces) {
             job.nonce = nonce;
             const auto header = pepepow::build_header80(job);
             const auto cpu_hash = pepepow::crypto::calculate_header80_pow(header);
             const auto gpu = backend.search(job, pepepow::SearchRange{nonce, 1U}, maximum_target);
             if (!gpu.has_value() || gpu->nonce != nonce || gpu->hash != cpu_hash) {
                 std::cout << "AUTOTUNE_RESULT threads=" << threads
-                          << " valid=0 hps=0 reason=consensus_mismatch\n";
+                          << " valid=0 hps=0 validation_samples=" << nonces.size()
+                          << " reason=consensus_mismatch nonce=" << nonce << "\n";
                 return 3;
             }
         }
@@ -119,7 +135,8 @@ int main(int argc, char** argv) {
 
         std::cout << std::fixed << std::setprecision(0)
                   << "AUTOTUNE_RESULT threads=" << threads
-                  << " valid=1 hps=" << median
+                  << " valid=1 validation_samples=" << nonces.size()
+                  << " hps=" << median
                   << " mean_hps=" << mean
                   << " mhs=" << std::setprecision(3) << median / 1000000.0
                   << " device=\"" << device.name << "\"\n";
