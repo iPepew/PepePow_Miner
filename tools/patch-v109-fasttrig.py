@@ -209,5 +209,6 @@ assert 'v109_nearest_pio2_multiple' in verify4
 assert 'v109_fast_sincos' in verify4
 assert '0x1.45c06e0000000p-86' in verify4
 assert verify5.count('v109_fast_sincos') >= 2
-assert 'sincos(y, &sine, &cosine);' not in verify5
+assert 'v109_fast_sincos(y, &sine, &cosine);\n            nonlinear_value = exp(sine + cosine);' in verify5
+assert 'v109_fast_sincos(y, &sine, &cosine_unused);\n                nonlinear_value = sine * sine;' in verify5
 print('V109_FASTTRIG_PATCH=PASS')
