@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
-conf_file="${CUSTOM_CONFIG_FILENAME:-${MINER_DIR:-.}/config.txt}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+conf_file="${CUSTOM_CONFIG_FILENAME:-${script_dir}/config.txt}"
 args=()
 
 if [[ -n "${CUSTOM_URL:-}" ]]; then
@@ -19,5 +19,7 @@ if [[ -n "${CUSTOM_USER_CONFIG:-}" ]]; then
   args+=("${extra[@]}")
 fi
 
+mkdir -p "$(dirname "${conf_file}")"
 printf '%q ' "${args[@]}" > "${conf_file}"
 printf '\n' >> "${conf_file}"
+echo "PepeW config generated: ${conf_file}"
