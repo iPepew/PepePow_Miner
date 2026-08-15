@@ -1,10 +1,12 @@
-name: HiveOS CUDA Package
+name: HiveOS DEV Package
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - "release/**"
       - main
+      - "dev/**"
+      - "agent/**"
     paths:
       - "native/**"
       - "hiveos/**"
@@ -14,10 +16,9 @@ on:
       - "native/**"
       - "hiveos/**"
       - ".github/workflows/hiveos-cuda-package.yml"
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 defaults:
   run:
@@ -29,19 +30,31 @@ jobs:
     container:
       image: nvidia/cuda:12.6.3-devel-ubuntu22.04
     env:
-      VERSION: 0.1.3
-      CUDA_ARCHS: "70;86"
+      CUDA_ARCHS: "70;75;86"
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+
     steps:
       - name: Install build tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
           python3 -m pip install --no-cache-dir cmake==3.30.5
           cmake --version
+          nvcc --version
+          gh --version
           rm -rf /var/lib/apt/lists/*
 
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Generate DEV version
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          build_version="dev-${short_sha}"
+          echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
+          echo "PepeW HiveOS DEV build: ${build_version}"
 
       - name: Configure CUDA release
         run: |
@@ -55,35 +68,96 @@ jobs:
       - name: Build miner
         run: cmake --build build/hiveos-cuda --target pepepowminer --parallel
 
-      - name: Assemble HiveOS archive
+      - name: Smoke test binary
         run: |
           set -euo pipefail
-          package_name="pepepowminer-v${VERSION}"
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          ldd build/hiveos-cuda/pepepowminer || true
+
+      - name: Assemble HiveOS DEV archive
+        run: |
+          set -euo pipefail
+          package_name="pepepowminer-${BUILD_VERSION}"
           package_dir="dist/${package_name}"
-          archive="dist/${package_name}-hiveos-sm70-sm86.tar.gz"
 
           rm -rf dist
           mkdir -p "${package_dir}"
+
           install -m 0755 build/hiveos-cuda/pepepowminer "${package_dir}/pepepowminer"
           install -m 0755 hiveos/h-run.sh "${package_dir}/h-run.sh"
           install -m 0755 hiveos/h-config.sh "${package_dir}/h-config.sh"
           install -m 0755 hiveos/h-stats.sh "${package_dir}/h-stats.sh"
           install -m 0644 hiveos/h-manifest.conf "${package_dir}/h-manifest.conf"
-          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${VERSION}/" "${package_dir}/h-manifest.conf"
+
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "${package_dir}/h-manifest.conf"
+
+          cat > "${package_dir}/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          cuda_archs=${CUDA_ARCHS}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
           strip "${package_dir}/pepepowminer" || true
 
-          file "${package_dir}/pepepowminer"
-          tar -C dist -czf "${archive}" "${package_name}"
-          sha256sum "${archive}" | tee "${archive}.sha256"
-          tar -tzf "${archive}"
+          tar -C dist -czf "dist/${ASSET_NAME}" "${package_name}"
+          sha256sum "dist/${ASSET_NAME}" | sed "s#dist/##" > "dist/${SHA_NAME}"
 
-      - name: Upload HiveOS package
+          echo "Archive contents:"
+          tar -tzf "dist/${ASSET_NAME}"
+          echo "Checksum:"
+          cat "dist/${SHA_NAME}"
+
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepepowminer-v0.1.3-hiveos-sm70-sm86
+          name: pepew-hiveos-${{ env.BUILD_VERSION }}
           path: |
-            dist/pepepowminer-v0.1.3-hiveos-sm70-sm86.tar.gz
-            dist/pepepowminer-v0.1.3-hiveos-sm70-sm86.tar.gz.sha256
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+
+      - name: Publish permanent hiveos-test asset
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          notes=$(cat <<EOF
+          Automated PepeW HiveOS DEV build.
+
+          Build: ${BUILD_VERSION}
+          Commit: ${GITHUB_SHA}
+          Ref: ${GITHUB_REF_NAME}
+          CUDA architectures: ${CUDA_ARCHS}
+
+          This is the rolling test channel. The asset URL stays constant while the file is replaced by each successful DEV build.
+          EOF
+          )
+
+          if gh release view hiveos-test >/dev/null 2>&1; then
+            gh release upload hiveos-test \
+              "dist/${ASSET_NAME}" \
+              "dist/${SHA_NAME}" \
+              --clobber
+            gh release edit hiveos-test \
+              --title "PepeW Miner HiveOS DEV" \
+              --notes "${notes}" \
+              --prerelease
+          else
+            gh release create hiveos-test \
+              "dist/${ASSET_NAME}" \
+              "dist/${SHA_NAME}" \
+              --target "${GITHUB_SHA}" \
+              --title "PepeW Miner HiveOS DEV" \
+              --notes "${notes}" \
+              --prerelease
+          fi
+
+          echo "Permanent DEV asset:"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/hiveos-test/${ASSET_NAME}"
