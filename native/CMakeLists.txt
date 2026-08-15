@@ -71,8 +71,14 @@ if(PEPEPOW_ENABLE_CUDA)
         CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION OFF
     )
+    # HooHashV110 is consensus-sensitive to floating-point behavior. Keep the
+    # CUDA path strict: no fused multiply-add, approximate div/sqrt, FTZ or
+    # fast-math transformations.
     target_compile_options(pepepow_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
+        $<$<COMPILE_LANGUAGE:CUDA>:--prec-div=true>
+        $<$<COMPILE_LANGUAGE:CUDA>:--prec-sqrt=true>
+        $<$<COMPILE_LANGUAGE:CUDA>:--ftz=false>
     )
 
     if(PEPEPOW_CUDA_PTXAS_VERBOSE)

@@ -1,6 +1,7 @@
 #include "pepepow/cuda/header80_backend.hpp"
 
 #include "pepepow/core/header_builder.hpp"
+#include "pepepow/crypto/blake3.hpp"
 #include "pepepow/crypto/hoohash_reference.hpp"
 #include "pepepow/mining/target.hpp"
 
@@ -22,6 +23,7 @@ constexpr std::size_t kHashSize = 32;
 constexpr std::size_t kHeaderSize = 80;
 constexpr std::size_t kMatrixElements = 64 * 64;
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kEpsilon = 1e-9;
 constexpr double kTransformMultiplier = 0.000001;
 constexpr std::uint32_t kChunkStart = 1U;
 constexpr std::uint32_t kChunkEnd = 2U;
@@ -117,6 +119,13 @@ __device__ __forceinline__ void store_le32(std::uint8_t* p, std::uint32_t v) {
     p[3] = static_cast<std::uint8_t>(v >> 24U);
 }
 
+__device__ __forceinline__ void store_be32(std::uint8_t* p, std::uint32_t v) {
+    p[0] = static_cast<std::uint8_t>(v >> 24U);
+    p[1] = static_cast<std::uint8_t>(v >> 16U);
+    p[2] = static_cast<std::uint8_t>(v >> 8U);
+    p[3] = static_cast<std::uint8_t>(v);
+}
+
 __device__ void blake3_80(const std::uint8_t input[80], std::uint8_t output[32]) {
     std::uint32_t cv[8], block[16], compressed[16];
     #pragma unroll
@@ -164,7 +173,10 @@ __device__ __forceinline__ double nonlinear(double x) {
         return exp(sine + cosine);
     }
     if (one < 0.66) {
-        if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) return 0.0;
+        if (fabs(y - kPi / 2.0) < kEpsilon ||
+            fabs(y - 3.0 * kPi / 2.0) < kEpsilon) {
+            return 0.0;
+        }
         const double s = sin(y);
         return s * s;
     }
@@ -173,12 +185,12 @@ __device__ __forceinline__ double nonlinear(double x) {
 
 __device__ __forceinline__ double safe_nonlinear(double x) {
     double rounds = 1.0;
-    double out = nonlinear(x);
+    const double out = nonlinear(x);
+    // Consensus quirk: the reference never recomputes out after reducing x.
     while (isnan(out) || isinf(out)) {
         x *= 0.1;
         if (x <= 1e-13) return 0.0;
         rounds += 1.0;
-        out = nonlinear(x);
     }
     return out * rounds;
 }
@@ -225,7 +237,7 @@ __global__ void header80_pow_kernel(
     std::uint8_t header[kHeaderSize];
     #pragma unroll
     for (int i = 0; i < static_cast<int>(kHeaderSize); ++i) header[i] = base_header[i];
-    store_le32(header + 76, nonce);
+    store_be32(header + 76, nonce);
 
     std::uint8_t first_pass[32];
     std::uint8_t mixed[32];
@@ -235,7 +247,7 @@ __global__ void header80_pow_kernel(
     #pragma unroll
     for (int i = 0; i < 8; ++i) hash_mod ^= load_be32(first_pass + i * 4);
 
-    const double nonce_mod = static_cast<double>(nonce & 0xffU);
+    const double nonce_mod = static_cast<double>(load_le32(header + 76) & 0xffU);
     double sw = 0.0;
     #pragma unroll 1
     for (int pair = 0; pair < 32; ++pair) {
@@ -283,7 +295,14 @@ std::optional<ShareCandidate> Header80CudaBackend::search(
     MiningJob base_job = job;
     base_job.nonce = static_cast<std::uint32_t>(range.begin);
     const Header80 header = build_header80(base_job);
-    const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(job.previous_hash);
+
+    Header80 masked_header = header;
+    masked_header[76] = 0;
+    masked_header[77] = 0;
+    masked_header[78] = 0;
+    masked_header[79] = 0;
+    const Hash256 matrix_seed = crypto::blake3_hash(masked_header);
+    const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(matrix_seed);
 
     check_cuda_header80(cudaSetDevice(device_index_), "cudaSetDevice(header80)");
     check_cuda_header80(

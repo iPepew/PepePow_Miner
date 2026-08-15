@@ -40,12 +40,21 @@ Hash256 calculate_pow(const PowInput& input) {
 }
 
 Hash256 calculate_header80_pow(const Header80& header) {
-    Hash256 matrix_seed{};
-    std::copy_n(header.begin() + 4, matrix_seed.size(), matrix_seed.begin());
+    // HoohashV110 derives the per-job matrix from BLAKE3(header80 with the
+    // four nonce bytes zeroed), not from prevhash alone.
+    Header80 masked_header = header;
+    masked_header[76] = 0;
+    masked_header[77] = 0;
+    masked_header[78] = 0;
+    masked_header[79] = 0;
 
-    const std::uint32_t nonce = load_le32(header.data() + 76);
     const Hash256 first_pass = blake3_hash(header);
+    const Hash256 matrix_seed = blake3_hash(masked_header);
     const HoohashMatrix matrix = generate_hoohash_matrix(matrix_seed);
+
+    // Consensus HooHash interprets the canonical header nonce bytes as LE for
+    // nonceMod, even though the scan nonce itself is serialized BE in header80.
+    const std::uint32_t nonce = load_le32(header.data() + 76);
     const Hash256 mixed = hoohash_matrix_mix(matrix, first_pass, nonce);
     return blake3_hash(mixed);
 }
