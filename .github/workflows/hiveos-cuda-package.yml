@@ -147,10 +147,7 @@ jobs:
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --clobber
-            gh release edit hiveos-test \
-              --title "PepeW Miner HiveOS DEV" \
-              --notes "${notes}" \
-              --prerelease
+            echo "Updated hiveos-test assets with ${BUILD_VERSION}"
           else
             gh release create hiveos-test \
               "dist/${ASSET_NAME}" \
