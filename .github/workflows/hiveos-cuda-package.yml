@@ -113,7 +113,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-hiveos-${{ env.BUILD_VERSION }}
+          name: pepew-hiveos-${{ github.sha }}
           path: |
             dist/${{ env.ASSET_NAME }}
             dist/${{ env.SHA_NAME }}
