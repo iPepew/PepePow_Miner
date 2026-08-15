@@ -31,6 +31,7 @@ jobs:
       image: nvidia/cuda:12.6.3-devel-ubuntu22.04
     env:
       CUDA_ARCHS: "70;75;86"
+      CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
 
@@ -75,11 +76,26 @@ jobs:
           test -x build/hiveos-cuda/pepepowminer
           ldd build/hiveos-cuda/pepepowminer || true
 
+      - name: Test HiveOS config callback
+        run: |
+          set -euo pipefail
+          test_config=/tmp/pepew-hiveos-config.txt
+          rm -f "${test_config}"
+          CUSTOM_CONFIG_FILENAME="${test_config}" \
+          CUSTOM_URL="stratum+tcp://example.invalid:13232" \
+          CUSTOM_TEMPLATE="wallet.worker" \
+          CUSTOM_PASS="x" \
+          bash -c 'source hiveos/h-config.sh'
+          test -s "${test_config}"
+          grep -F -- '-o stratum+tcp://example.invalid:13232' "${test_config}"
+          grep -F -- '-u wallet.worker' "${test_config}"
+          grep -F -- '--pepepow' "${test_config}"
+          cat "${test_config}"
+
       - name: Assemble HiveOS DEV archive
         run: |
           set -euo pipefail
-          package_name="pepepowminer-${BUILD_VERSION}"
-          package_dir="dist/${package_name}"
+          package_dir="dist/${CUSTOM_MINER_NAME}"
 
           rm -rf dist
           mkdir -p "${package_dir}"
@@ -97,18 +113,29 @@ jobs:
           commit=${GITHUB_SHA}
           ref=${GITHUB_REF_NAME}
           cuda_archs=${CUDA_ARCHS}
+          custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
 
           strip "${package_dir}/pepepowminer" || true
 
-          tar -C dist -czf "dist/${ASSET_NAME}" "${package_name}"
+          tar -C dist -czf "dist/${ASSET_NAME}" "${CUSTOM_MINER_NAME}"
           sha256sum "dist/${ASSET_NAME}" | sed "s#dist/##" > "dist/${SHA_NAME}"
 
           echo "Archive contents:"
           tar -tzf "dist/${ASSET_NAME}"
           echo "Checksum:"
           cat "dist/${SHA_NAME}"
+
+      - name: Validate HiveOS archive layout
+        run: |
+          set -euo pipefail
+          first_entry="$(tar -tzf "dist/${ASSET_NAME}" | head -n1)"
+          test "${first_entry}" = "${CUSTOM_MINER_NAME}/"
+          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf"
+          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh"
+          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh"
+          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -137,6 +164,7 @@ jobs:
           Commit: ${GITHUB_SHA}
           Ref: ${GITHUB_REF_NAME}
           CUDA architectures: ${CUDA_ARCHS}
+          HiveOS custom miner: ${CUSTOM_MINER_NAME}
 
           This is the rolling test channel. The asset URL stays constant while the file is replaced by each successful DEV build.
           EOF
