@@ -72,6 +72,7 @@ public:
     void stop();
     bool submit(const Share& share);
     [[nodiscard]] Stats stats() const noexcept;
+    [[nodiscard]] bool connected() const noexcept;
 
 private:
     class Impl;

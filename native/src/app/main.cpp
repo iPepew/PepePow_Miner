@@ -6,6 +6,7 @@
 #endif
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <csignal>
 #include <cstdint>
@@ -26,6 +27,7 @@ pepepow::stratum::Client* active_client = nullptr;
 // The PEPEPOW pool advertises Stratum difficulty as effective pool difficulty
 // multiplied by 65,536. Share targets must be built from the effective value.
 constexpr double kPepepowWireDifficultyScale = 65536.0;
+constexpr auto kStatsInterval = std::chrono::seconds(5);
 
 void signal_handler(int) {
     if (active_client != nullptr) active_client->stop();
@@ -36,6 +38,16 @@ std::string encode_submit_word(std::uint32_t value) {
     // this number and serializes it little-endian into the block header.
     std::ostringstream stream;
     stream << std::hex << std::nouppercase << std::setfill('0') << std::setw(8) << value;
+    return stream.str();
+}
+
+std::string format_uptime(std::uint64_t total_seconds) {
+    const auto hours = total_seconds / 3600U;
+    const auto minutes = (total_seconds % 3600U) / 60U;
+    const auto seconds = total_seconds % 60U;
+    std::ostringstream stream;
+    stream << std::setfill('0') << std::setw(2) << hours << ':'
+           << std::setw(2) << minutes << ':' << std::setw(2) << seconds;
     return stream.str();
 }
 
@@ -89,10 +101,33 @@ public:
     }
 
 private:
+    using Clock = std::chrono::steady_clock;
+
+    void emit_stats(double megahashes_per_second, std::string_view state) const {
+        const auto now = Clock::now();
+        const auto uptime = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::seconds>(now - started_at_).count());
+        const auto pool_stats = client_.stats();
+
+        std::ostringstream line;
+        line << std::fixed << std::setprecision(3)
+             << "[MINING] " << megahashes_per_second << " MH/s"
+             << " | A " << pool_stats.accepted
+             << " | R " << pool_stats.rejected
+             << " | UP " << format_uptime(uptime)
+             << " | REC " << pool_stats.reconnects
+             << " | STATE " << state;
+        std::cout << line.str() << '\n';
+    }
+
     void run() {
         // Larger batches reduce CUDA allocation, launch and copy overhead while
         // keeping job-switch latency low enough for Stratum clean-job updates.
         constexpr std::uint64_t chunk_size = 65536;
+        bool stats_window_active = false;
+        std::uint64_t stats_window_hashes = 0;
+        Clock::time_point stats_window_start{};
+
         while (!stopped_.load()) {
             WorkItem item;
             {
@@ -116,12 +151,36 @@ private:
                           << " backend=" << backend_.name() << '\n';
 
                 while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
+                    if (!client_.connected()) {
+                        emit_stats(0.0, "disconnected");
+                        stats_window_active = false;
+                        stats_window_hashes = 0;
+                        break;
+                    }
+
+                    if (!stats_window_active) {
+                        stats_window_start = Clock::now();
+                        stats_window_hashes = 0;
+                        stats_window_active = true;
+                    }
+
                     const std::uint64_t remaining = 0x100000000ULL - nonce;
                     const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
                     const auto candidate = backend_.search(
                         mining_job,
                         pepepow::SearchRange{nonce, count},
                         target);
+                    stats_window_hashes += count;
+
+                    const auto now = Clock::now();
+                    const auto elapsed = now - stats_window_start;
+                    if (elapsed >= kStatsInterval) {
+                        const double seconds = std::chrono::duration<double>(elapsed).count();
+                        const double mhs = static_cast<double>(stats_window_hashes) / seconds / 1'000'000.0;
+                        emit_stats(mhs, "online");
+                        stats_window_start = now;
+                        stats_window_hashes = 0;
+                    }
 
                     if (candidate.has_value()) {
                         pepepow::stratum::Share share;
@@ -129,9 +188,12 @@ private:
                         share.extranonce2 = item.extranonce2;
                         share.ntime = item.stratum_job.ntime;
                         share.nonce = encode_submit_word(candidate->nonce);
-                        std::cout << "Share candidate nonce_u32=" << candidate->nonce
-                                  << " nonce_wire=" << share.nonce << '\n';
-                        client_.submit(share);
+                        if (!client_.submit(share)) {
+                            emit_stats(0.0, "disconnected");
+                            stats_window_active = false;
+                            stats_window_hashes = 0;
+                            break;
+                        }
                     }
                     nonce += count;
                 }
@@ -148,12 +210,18 @@ private:
     std::optional<WorkItem> latest_;
     std::atomic_uint64_t generation_{0};
     std::atomic_bool stopped_{false};
+    const Clock::time_point started_at_{Clock::now()};
     std::thread thread_;
 };
 } // namespace
 
 int main(int argc, char** argv) {
     try {
+        // HiveOS pipes stdout through tee; unit buffering keeps telemetry and
+        // Stratum state visible immediately instead of waiting for a full buffer.
+        std::cout.setf(std::ios::unitbuf);
+        std::cerr.setf(std::ios::unitbuf);
+
         std::string pool;
         std::optional<std::string> fallback;
         std::string username;

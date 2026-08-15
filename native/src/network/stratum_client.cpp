@@ -216,11 +216,13 @@ public:
 
     void run() {
         stop_=false;
+        connected_=false;
         while (!stop_) {
             try {
                 socket_=connect_tcp(config_.primary);
                 log("Connected to "+config_.primary.host+":"+std::to_string(config_.primary.port));
                 handshake();
+                connected_=true;
                 std::string buffer; std::array<char,8192> chunk{};
                 while (!stop_) {
 #ifdef _WIN32
@@ -237,8 +239,10 @@ public:
                     }
                 }
             } catch (const std::exception& error) {
+                connected_=false;
                 log(std::string("Stratum error: ")+error.what());
             }
+            connected_=false;
             if (socket_!=invalid_socket) { close_socket(socket_); socket_=invalid_socket; }
             if (!stop_) { ++reconnects_; std::this_thread::sleep_for(std::chrono::seconds(config_.reconnect_seconds)); }
         }
@@ -246,6 +250,7 @@ public:
 
     void stop() {
         stop_=true;
+        connected_=false;
         if (socket_!=invalid_socket) {
 #ifdef _WIN32
             shutdown(socket_,SD_BOTH);
@@ -257,15 +262,27 @@ public:
     }
 
     bool submit(const Share& share) {
+        if (!connected_.load()) return false;
+
+        const int id=next_id_++;
+        {
+            std::lock_guard lock(pending_mutex_);
+            pending_submit_[id]=share.job_id;
+        }
         try {
-            const int id=next_id_++;
-            { std::lock_guard lock(pending_mutex_); pending_submit_[id]=share.job_id; }
             send_json({{"id",id},{"method","mining.submit"},{"params",json::array({config_.username,share.job_id,share.extranonce2,share.ntime,share.nonce})}});
             return true;
-        } catch (const std::exception& error) { log(std::string("Submit failed: ")+error.what()); return false; }
+        } catch (const std::exception& error) {
+            {
+                std::lock_guard lock(pending_mutex_);
+                pending_submit_.erase(id);
+            }
+            log(std::string("Submit failed: ")+error.what());
+            return false;
+        }
     }
 
-    Config config_; JobHandler job_handler_; LogHandler log_handler_; std::atomic_bool stop_{false}; socket_handle socket_{invalid_socket};
+    Config config_; JobHandler job_handler_; LogHandler log_handler_; std::atomic_bool stop_{false}; std::atomic_bool connected_{false}; socket_handle socket_{invalid_socket};
     std::mutex send_mutex_; std::mutex pending_mutex_; std::unordered_map<int,std::string> pending_submit_; std::atomic_int next_id_{10};
     std::string extranonce1_; std::size_t extranonce2_size_{4}; double difficulty_{1.0};
     std::atomic_uint64_t accepted_{0},rejected_{0},reconnects_{0};
@@ -279,6 +296,7 @@ void Client::run(){impl_->run();}
 void Client::stop(){impl_->stop();}
 bool Client::submit(const Share& share){return impl_->submit(share);}
 Stats Client::stats() const noexcept{return {impl_->accepted_.load(),impl_->rejected_.load(),impl_->reconnects_.load()};}
+bool Client::connected() const noexcept{return impl_->connected_.load();}
 
 Endpoint parse_endpoint(const std::string& url) {
     Endpoint endpoint; std::string value=url;
