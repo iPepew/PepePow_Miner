@@ -72,6 +72,7 @@ public:
     void stop();
     bool submit(const Share& share);
     [[nodiscard]] Stats stats() const noexcept;
+    [[nodiscard]] bool connected() const noexcept;
 
 private:
     class Impl;
@@ -82,4 +83,4 @@ private:
 [[nodiscard]] MiningJob build_mining_job(const Job& job, const std::string& extranonce2);
 [[nodiscard]] std::string encode_u32_le_hex(std::uint32_t value);
 
-} // namespace pepepow::stratum
+} // namespace pepepow::stratum;
