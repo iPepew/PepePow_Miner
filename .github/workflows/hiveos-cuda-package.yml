@@ -125,8 +125,10 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
           notes=$(cat <<EOF
           Automated PepeW HiveOS DEV build.
