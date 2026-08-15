@@ -65,7 +65,7 @@ constexpr std::array<std::uint32_t, 64> sha_k{
     0x983e5152U,0xa831c66dU,0xb00327c8U,0xbf597fc7U,0xc6e00bf3U,0xd5a79147U,0x06ca6351U,0x14292967U,
     0x27b70a85U,0x2e1b2138U,0x4d2c6dfcU,0x53380d13U,0x650a7354U,0x766a0abbU,0x81c2c92eU,0x92722c85U,
     0xa2bfe8a1U,0xa81a664bU,0xc24b8b70U,0xc76c51a3U,0xd192e819U,0xd6990624U,0xf40e3585U,0x106aa070U,
-    0x19a4c116U,0x1e376c08U,0x2748774cU,0x34b0bcb5U,0x391c0cb3U,0x4ed8aa4aU,0x5b9cca4fU,0x682e6ff3U,
+    0x19a4c116U,0x1e376c08U,0x2748774cU,0x34b0b5U,0x391c0cb3U,0x4ed8aa4aU,0x5b9cca4fU,0x682e6ff3U,
     0x748f82eeU,0x78a5636fU,0x84c87814U,0x8cc70208U,0x90befffaU,0xa4506cebU,0xbef9a3f7U,0xc67178f2U};
 
 std::uint32_t rotr(std::uint32_t x, unsigned n) { return (x >> n) | (x << (32U - n)); }
@@ -216,11 +216,13 @@ public:
 
     void run() {
         stop_=false;
+        connected_=false;
         while (!stop_) {
             try {
                 socket_=connect_tcp(config_.primary);
                 log("Connected to "+config_.primary.host+":"+std::to_string(config_.primary.port));
                 handshake();
+                connected_=true;
                 std::string buffer; std::array<char,8192> chunk{};
                 while (!stop_) {
 #ifdef _WIN32
@@ -237,8 +239,10 @@ public:
                     }
                 }
             } catch (const std::exception& error) {
+                connected_=false;
                 log(std::string("Stratum error: ")+error.what());
             }
+            connected_=false;
             if (socket_!=invalid_socket) { close_socket(socket_); socket_=invalid_socket; }
             if (!stop_) { ++reconnects_; std::this_thread::sleep_for(std::chrono::seconds(config_.reconnect_seconds)); }
         }
@@ -246,6 +250,7 @@ public:
 
     void stop() {
         stop_=true;
+        connected_=false;
         if (socket_!=invalid_socket) {
 #ifdef _WIN32
             shutdown(socket_,SD_BOTH);
@@ -257,15 +262,27 @@ public:
     }
 
     bool submit(const Share& share) {
+        if (!connected_.load()) return false;
+
+        const int id=next_id_++;
+        {
+            std::lock_guard lock(pending_mutex_);
+            pending_submit_[id]=share.job_id;
+        }
         try {
-            const int id=next_id_++;
-            { std::lock_guard lock(pending_mutex_); pending_submit_[id]=share.job_id; }
             send_json({{"id",id},{"method","mining.submit"},{"params",json::array({config_.username,share.job_id,share.extranonce2,share.ntime,share.nonce})}});
             return true;
-        } catch (const std::exception& error) { log(std::string("Submit failed: ")+error.what()); return false; }
+        } catch (const std::exception& error) {
+            {
+                std::lock_guard lock(pending_mutex_);
+                pending_submit_.erase(id);
+            }
+            log(std::string("Submit failed: ")+error.what());
+            return false;
+        }
     }
 
-    Config config_; JobHandler job_handler_; LogHandler log_handler_; std::atomic_bool stop_{false}; socket_handle socket_{invalid_socket};
+    Config config_; JobHandler job_handler_; LogHandler log_handler_; std::atomic_bool stop_{false}; std::atomic_bool connected_{false}; socket_handle socket_{invalid_socket};
     std::mutex send_mutex_; std::mutex pending_mutex_; std::unordered_map<int,std::string> pending_submit_; std::atomic_int next_id_{10};
     std::string extranonce1_; std::size_t extranonce2_size_{4}; double difficulty_{1.0};
     std::atomic_uint64_t accepted_{0},rejected_{0},reconnects_{0};
@@ -279,6 +296,7 @@ void Client::run(){impl_->run();}
 void Client::stop(){impl_->stop();}
 bool Client::submit(const Share& share){return impl_->submit(share);}
 Stats Client::stats() const noexcept{return {impl_->accepted_.load(),impl_->rejected_.load(),impl_->reconnects_.load()};}
+bool Client::connected() const noexcept{return impl_->connected_.load();}
 
 Endpoint parse_endpoint(const std::string& url) {
     Endpoint endpoint; std::string value=url;
