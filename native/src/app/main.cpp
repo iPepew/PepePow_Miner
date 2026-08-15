@@ -5,6 +5,7 @@
 #include "pepepow/cuda/header80_backend.hpp"
 #endif
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -23,21 +24,20 @@
 
 namespace {
 pepepow::stratum::Client* active_client = nullptr;
-
-// The PEPEPOW pool advertises Stratum difficulty as effective pool difficulty
-// multiplied by 65,536. Share targets must be built from the effective value.
-constexpr double kPepepowWireDifficultyScale = 65536.0;
 constexpr auto kStatsInterval = std::chrono::seconds(5);
 
 void signal_handler(int) {
     if (active_client != nullptr) active_client->stop();
 }
 
-std::string encode_submit_word(std::uint32_t value) {
-    // Stratum submit fields are eight-digit numeric hex words. The pool parses
-    // this number and serializes it little-endian into the block header.
+std::string encode_submit_nonce(std::uint32_t value) {
+    // Standard Stratum submits the scan nonce as the four little-endian bytes
+    // rendered as hex (ccminer: le32enc + bin2hex).
     std::ostringstream stream;
-    stream << std::hex << std::nouppercase << std::setfill('0') << std::setw(8) << value;
+    stream << std::hex << std::nouppercase << std::setfill('0');
+    for (unsigned shift = 0; shift < 32; shift += 8) {
+        stream << std::setw(2) << ((value >> shift) & 0xffU);
+    }
     return stream.str();
 }
 
@@ -50,6 +50,49 @@ std::string format_uptime(std::uint64_t total_seconds) {
            << std::setw(2) << minutes << ':' << std::setw(2) << seconds;
     return stream.str();
 }
+
+#ifdef PEPEPOW_HAS_CUDA
+void run_hoohash_consensus_self_test(pepepow::MiningBackend& backend) {
+    // Real PEPEPOW block KAT, height 0x4734dd. This validates the actual CUDA
+    // mining path (header byte order, matrix seed, FP behavior and final digest)
+    // on the installed GPU before any pool work is accepted.
+    pepepow::MiningJob job;
+    job.job_id = "hoohash-v110-real-block-kat";
+    job.version = 0x20004000U;
+    job.previous_hash = {
+        0xdf,0x13,0xf8,0xc7,0x24,0x3b,0x6b,0x22,
+        0x6c,0x33,0x99,0xf4,0x85,0xe9,0x02,0x34,
+        0x7e,0x41,0xba,0x37,0x0e,0x0c,0x8f,0xea,
+        0x75,0x67,0x2f,0x45,0x01,0x00,0x00,0x00};
+    job.merkle_root = {
+        0x22,0xda,0x19,0x46,0xe7,0xdb,0xa6,0x53,
+        0x52,0xae,0x0f,0x65,0xce,0x77,0xdc,0xff,
+        0x51,0x05,0xe2,0xf4,0x6a,0x44,0x3e,0x3a,
+        0x86,0xbb,0x35,0x9b,0xb6,0x78,0x8b,0xf9};
+    job.ntime = 0x6a41a262U;
+    job.bits = 0x1d01ce33U;
+    job.nonce = 0x4d94e755U;
+
+    constexpr pepepow::Hash256 expected{
+        0x00,0x00,0x00,0x01,0x3e,0x74,0xaa,0xd7,
+        0x1e,0x79,0xfd,0x0e,0x33,0x03,0xc5,0x14,
+        0xaf,0x06,0xbc,0x1b,0x9f,0x26,0xd6,0xa9,
+        0x94,0xb6,0x5e,0xb6,0x6d,0x17,0x84,0x5d};
+    constexpr pepepow::Hash256 maximum_target = [] {
+        pepepow::Hash256 value{};
+        value.fill(0xffU);
+        return value;
+    }();
+
+    const auto result = backend.search(
+        job, pepepow::SearchRange{job.nonce, 1U}, maximum_target);
+    if (!result.has_value() || result->nonce != job.nonce || result->hash != expected) {
+        throw std::runtime_error(
+            "HooHashV110 CUDA consensus self-test FAILED; refusing to mine");
+    }
+    std::cout << "HooHashV110 CUDA consensus self-test: PASS\n";
+}
+#endif
 
 void print_help() {
     std::cout
@@ -121,8 +164,6 @@ private:
     }
 
     void run() {
-        // Larger batches reduce CUDA allocation, launch and copy overhead while
-        // keeping job-switch latency low enough for Stratum clean-job updates.
         constexpr std::uint64_t chunk_size = 65536;
         bool stats_window_active = false;
         std::uint64_t stats_window_hashes = 0;
@@ -140,14 +181,13 @@ private:
 
             try {
                 auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, item.extranonce2);
-                const double effective_difficulty =
-                    item.stratum_job.difficulty / kPepepowWireDifficultyScale;
-                const auto target = pepepow::mining::target_from_difficulty(effective_difficulty);
+                // PEPEPOW/HooHashV110 uses the pool's Stratum difficulty directly
+                // with the standard 0xffff diff1 target. No 65,536 scale factor.
+                const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
                 std::uint64_t nonce = 0;
 
                 std::cout << "Mining job " << mining_job.job_id
-                          << " wire_difficulty=" << item.stratum_job.difficulty
-                          << " effective_difficulty=" << effective_difficulty
+                          << " difficulty=" << item.stratum_job.difficulty
                           << " backend=" << backend_.name() << '\n';
 
                 while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
@@ -187,7 +227,7 @@ private:
                         share.job_id = item.stratum_job.job_id;
                         share.extranonce2 = item.extranonce2;
                         share.ntime = item.stratum_job.ntime;
-                        share.nonce = encode_submit_word(candidate->nonce);
+                        share.nonce = encode_submit_nonce(candidate->nonce);
                         if (!client_.submit(share)) {
                             emit_stats(0.0, "disconnected");
                             stats_window_active = false;
@@ -217,8 +257,6 @@ private:
 
 int main(int argc, char** argv) {
     try {
-        // HiveOS pipes stdout through tee; unit buffering keeps telemetry and
-        // Stratum state visible immediately instead of waiting for a full buffer.
         std::cout.setf(std::ios::unitbuf);
         std::cerr.setf(std::ios::unitbuf);
 
@@ -264,6 +302,10 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (devices.empty()) throw std::runtime_error("no mining device available");
+
+#ifdef PEPEPOW_HAS_CUDA
+        run_hoohash_consensus_self_test(*backend);
+#endif
 
         if (pool.empty() || username.empty()) {
             print_help();
