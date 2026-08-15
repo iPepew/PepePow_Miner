@@ -81,9 +81,26 @@ if old_fraction not in t:
 t = t.replace(old_fraction, new_fraction, 1)
 
 p.write_text(t, encoding='utf-8')
+
+# prepare-v120-magic-lut.py contains C++ snippets in normal Python triple-quoted
+# strings. A C++ '\0' literal is interpreted by Python as a real NUL unless it
+# is double escaped. Sanitize generated text here before NVCC sees it.
+for generated in (
+    Path('native/src/cuda/v1/header80_backend_part07.inc'),
+    Path('native/src/app/main.cpp'),
+):
+    data = generated.read_bytes()
+    if b'\x00' in data:
+        generated.write_bytes(data.replace(b'\x00', b'\\0'))
+
 verify = p.read_text(encoding='utf-8')
 assert 'v120_phase48' in verify
 assert 'v120_phase32' not in verify
 assert '0x0000ffffffffffffULL' in verify
 assert '1.0 / 4294967296.0' in verify
+for generated in (
+    Path('native/src/cuda/v1/header80_backend_part07.inc'),
+    Path('native/src/app/main.cpp'),
+):
+    assert b'\x00' not in generated.read_bytes()
 print('V120_PHASE48_PATCH=PASS')
