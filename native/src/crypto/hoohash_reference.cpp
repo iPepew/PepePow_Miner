@@ -7,6 +7,7 @@
 namespace pepepow::crypto {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kEpsilon = 1e-9;
 constexpr double kTransformMultiplier = 0.000001;
 
 [[nodiscard]] std::uint64_t load_le64(const std::uint8_t* p) noexcept {
@@ -19,7 +20,10 @@ constexpr double kTransformMultiplier = 0.000001;
 
 [[nodiscard]] double medium(double x) { return std::exp(std::sin(x) + std::cos(x)); }
 [[nodiscard]] double intermediate(double x) {
-    if (x == kPi / 2.0 || x == 3.0 * kPi / 2.0) return 0.0;
+    if (std::fabs(x - kPi / 2.0) < kEpsilon ||
+        std::fabs(x - 3.0 * kPi / 2.0) < kEpsilon) {
+        return 0.0;
+    }
     const double s = std::sin(x);
     return s * s;
 }
@@ -39,16 +43,18 @@ constexpr double kTransformMultiplier = 0.000001;
     return apply(high);
 }
 
-[[nodiscard]] double for_complex(double x) {
+[[nodiscard]] double for_complex(double input) {
+    // Preserve the HoohashV110 reference behavior exactly. The reference does
+    // not recompute transformed_value inside this loop; a non-finite first
+    // transform therefore shrinks input until the function returns zero.
     double rounds = 1.0;
-    double out = complex_nonlinear(x);
-    while (std::isnan(out) || std::isinf(out)) {
-        x *= 0.1;
-        if (x <= 1e-13) return 0.0;
+    const double transformed_value = complex_nonlinear(input);
+    while (std::isnan(transformed_value) || std::isinf(transformed_value)) {
+        input *= 0.1;
+        if (input <= 1e-13) return 0.0;
         rounds += 1.0;
-        out = complex_nonlinear(x);
     }
-    return out * rounds;
+    return transformed_value * rounds;
 }
 
 [[nodiscard]] std::uint32_t load_be32(const std::uint8_t* p) noexcept {
