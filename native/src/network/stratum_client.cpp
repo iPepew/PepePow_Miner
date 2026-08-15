@@ -182,16 +182,30 @@ public:
     void handle(const json& message) {
         if (message.contains("id") && message["id"].is_number_integer()) {
             const auto id=message["id"].get<int>();
-            if (id==1 && message.value("error",json{})==nullptr && message["result"].is_array()) {
+            if (id==1 && message.value("error",json{})==nullptr && message.contains("result") && message["result"].is_array()) {
                 const auto& result=message["result"];
                 if (result.size()>=3U) { extranonce1_=result[1].get<std::string>(); extranonce2_size_=result[2].get<std::size_t>(); log("Stratum subscribed: extranonce1="+extranonce1_); }
             } else if (id==2) {
-                if (message.value("result",false)) log("Stratum authorized: "+config_.username); else throw std::runtime_error("pool authorization rejected");
+                const auto result_it=message.find("result");
+                const bool authorized=result_it!=message.end() && result_it->is_boolean() && result_it->get<bool>();
+                if (authorized) {
+                    log("Stratum authorized: "+config_.username);
+                } else {
+                    throw std::runtime_error("pool authorization rejected: "+message.value("error",json{}).dump());
+                }
             } else {
                 std::lock_guard lock(pending_mutex_);
                 auto it=pending_submit_.find(id);
                 if (it!=pending_submit_.end()) {
-                    if (message.value("result",false)) { ++accepted_; log("Share accepted"); } else { ++rejected_; log("Share rejected: "+message.value("error",json{}).dump()); }
+                    const auto result_it=message.find("result");
+                    const bool accepted=result_it!=message.end() && result_it->is_boolean() && result_it->get<bool>();
+                    if (accepted) {
+                        ++accepted_;
+                        log("Share accepted");
+                    } else {
+                        ++rejected_;
+                        log("Share rejected: "+message.value("error",json{}).dump());
+                    }
                     pending_submit_.erase(it);
                 }
             }
@@ -243,6 +257,10 @@ public:
                 log(std::string("Stratum error: ")+error.what());
             }
             connected_=false;
+            {
+                std::lock_guard lock(pending_mutex_);
+                pending_submit_.clear();
+            }
             if (socket_!=invalid_socket) { close_socket(socket_); socket_=invalid_socket; }
             if (!stop_) { ++reconnects_; std::this_thread::sleep_for(std::chrono::seconds(config_.reconnect_seconds)); }
         }
