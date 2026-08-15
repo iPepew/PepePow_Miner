@@ -83,4 +83,4 @@ private:
 [[nodiscard]] MiningJob build_mining_job(const Job& job, const std::string& extranonce2);
 [[nodiscard]] std::string encode_u32_le_hex(std::uint32_t value);
 
-} // namespace pepepow::stratum;
+} // namespace pepepow::stratum
