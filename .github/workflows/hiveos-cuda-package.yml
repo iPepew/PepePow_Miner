@@ -75,6 +75,25 @@ jobs:
           file build/hiveos-cuda/pepepowminer
           test -x build/hiveos-cuda/pepepowminer
           ldd build/hiveos-cuda/pepepowminer || true
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+
+      - name: Validate HiveOS callbacks
+        run: |
+          set -euo pipefail
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+          test_log=/tmp/pepew-stats-test
+          printf '%s\n' '[MINING] 12.345 MH/s | A 7 | R 1 | UP 00:01:23 | REC 2 | STATE online' > "${test_log}.log"
+          stats_result=$(
+            CUSTOM_LOG_BASENAME="${test_log}" \
+            CUSTOM_VERSION="dev-test" \
+            bash -c 'source hiveos/h-stats.sh; printf "khs=%s\nstats=%s\n" "$khs" "$stats"'
+          )
+          printf '%s\n' "${stats_result}"
+          grep -F 'khs=12345' <<< "${stats_result}"
+          grep -F '"uptime":83' <<< "${stats_result}"
+          grep -F '"ar":[7,1]' <<< "${stats_result}"
+          grep -F '"algo":"hoohash"' <<< "${stats_result}"
 
       - name: Test HiveOS config callback
         run: |
@@ -135,6 +154,7 @@ jobs:
           tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf"
           tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh"
           tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh"
+          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-stats.sh"
           tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer"
 
       - name: Upload workflow artifact
