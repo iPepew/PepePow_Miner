@@ -9,6 +9,7 @@ on:
       - "native/**"
       - "hiveos/**"
       - "tools/prepare-v120-magic-lut.py"
+      - "tools/patch-v120-phase48.py"
       - "tools/stage-v120-hiveos.py"
       - "README.md"
       - "RELEASE_NOTES_v1.2.0.md"
@@ -46,12 +47,23 @@ jobs:
           test "$(tr -d '\r\n' < VERSION)" = '1.2.0'
           python3 tools/prepare-v120-magic-lut.py | tee prepare-v120.txt
           grep -F 'V120_MAGIC_LUT_PREPARE=PASS' prepare-v120.txt
-          python3 -m py_compile tools/prepare-v120-magic-lut.py tools/stage-v120-hiveos.py hiveos/stratum-replay-proxy.py
+          python3 tools/patch-v120-phase48.py | tee phase48.txt
+          grep -F 'V120_PHASE48_PATCH=PASS' phase48.txt
+          python3 -m py_compile \
+            tools/prepare-v120-magic-lut.py tools/patch-v120-phase48.py \
+            tools/stage-v120-hiveos.py hiveos/stratum-replay-proxy.py
           bash -n hiveos/v120-autotune.sh
-          if LC_ALL=C grep -RIl $'\x00' native/src/cuda native/src/app | grep -q .; then
-            echo 'NUL byte detected in generated source' >&2
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          bad = []
+          for root in (Path('native/src/cuda'), Path('native/src/app')):
+              for path in root.rglob('*'):
+                  if path.is_file() and b'\x00' in path.read_bytes():
+                      bad.append(str(path))
+          if bad:
+              raise SystemExit('NUL byte detected in generated source: ' + ', '.join(bad))
+          print('V120_GENERATED_SOURCE_NUL_GATE=PASS')
+          PY
 
       - name: Configure and build
         run: |
@@ -100,9 +112,6 @@ jobs:
           grep -F sm_70 object-fatbin.txt
           readelf -S "$FINAL" | tee binary-sections.txt
           grep -E '\.nv_fatbin|\.nvFatBinSegment' binary-sections.txt
-          if grep -E 'header80_pow_magic_kernel.*REGISTERS[^0-9]*([2-9][0-9]{2}|[0-9]{4,})' final-resource-usage.txt; then
-            echo 'Magic kernel register count unexpectedly high' >&2
-          fi
 
       - name: Package HiveOS candidate
         run: |
@@ -153,6 +162,7 @@ jobs:
             object-fatbin.txt
             binary-sections.txt
             prepare-v120.txt
+            phase48.txt
             package-info.txt
           if-no-files-found: error
           retention-days: 14
