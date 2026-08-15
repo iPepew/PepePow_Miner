@@ -4,19 +4,17 @@
 
 > PepeW — твоя монета. Твои правила.
 
-CUDA-майнер PEPEPOW HooHash V110 с интеграцией HiveOS. Ветка `v1.1.0` сфокусирована на NVIDIA Tesla V100 / Volta `sm_70` и вводит новый HooHash execution model вместо дальнейшей настройки старого service-kernel.
+CUDA-майнер PEPEPOW HooHash V110 с интеграцией HiveOS. Текущая экспериментальная ветка `v1.2.0` сфокусирована на NVIDIA Tesla V100 / Volta `sm_70` и вводит speculative `Magic LUT` solver с обязательной CPU-проверкой share-кандидатов.
 
 ## Current development release
 
 ```text
-PepeW Miner v1.1.0
+PepeW Miner v1.2.0
 ```
-
-`v1.1.0` — experimental V100 pre-release. Новый `warp-cohort` kernel работает рядом с проверенным exact-kernel из v1.0.9. На первом старте физический autotuner сравнивает их и автоматически оставляет exact fallback, если новый engine не даёт убедительного прироста.
 
 ## Проверенная история Tesla V100
 
-Физические тесты на Tesla V100-SXM2-16GB:
+Физические результаты на Tesla V100-SXM2-16GB:
 
 | Версия / профиль | Средний хешрейт | Итог |
 |---|---:|---|
@@ -27,183 +25,167 @@ PepeW Miner v1.1.0
 | v1.0.7 | 0.673 MH/s | async mailbox, откат |
 | v1.0.8 | 5.476 MH/s | fast exp/rsqrt, откат |
 | v1.0.9 | **5.871 MH/s** | официальный 600-секундный pool test |
+| v1.1.0 | ~5.86–5.87 MH/s live | cohort autotune снова выбрал exact |
 
-v1.0.9 дополнительно подтвердил:
+v1.1.0 физически подтвердил, что дальнейший tuning service/geometry/cohort сам по себе не выводит текущий exact execution family из области примерно 6 MH/s.
 
-- 619/619 GPU candidates совпали с CPU reference;
-- `exact / 768 threads` оказался лучшим из block-geometry sweep;
-- fasttrig оказался медленнее exact;
-- изменение geometry само по себе не преодолевает ~6 MH/s потолок текущего service execution model.
+## v1.2.0: Magic LUT Solver
 
-Поэтому v1.1.0 меняет именно способ исполнения HooHash.
+Новый V100 engine сохраняет exact HooHash selector, exact SW state, FP64 accumulation, BLAKE3 и CPU share validation, но меняет самые дорогие periodic nonlinear branches.
 
-## v1.1.0: Persistent Warp Cohort
+### Periodic nonlinear LUT
 
-В старом `service24` редкие nonlinear-задачи уплотняются хорошо, но CUDA block синхронизируется на каждом matrix cell. В direct exact отсутствуют эти block-wide barriers, но редкие `sin/sincos/exp/sqrt` создают тяжёлую warp divergence.
-
-`warp-cohort` использует третью схему:
+Вместо large-argument `sin/sincos/exp` на каждом cold-cell GPU использует две периодические FP64 таблицы:
 
 ```text
-warp = 32 независимых nonce state machines
-
-warm lane  -> продолжает дешёвые matrix cells
-cold lane  -> сохраняет exact nonlinear input и временно паркуется
-             ↓
-несколько cold lanes накопились
-             ↓
-nonlinear cohort выполняется плотной группой
-             ↓
-каждый nonce продолжает строго со своего следующего cell
+f0(theta) = exp(sin(theta) + cos(theta))
+f1(theta) = sin(theta)^2
 ```
 
-Основные свойства нового kernel:
+Каждая таблица имеет 65,536 узлов. Узел хранит `value + derivative`, поэтому между узлами используется cubic-Hermite interpolation.
+
+Общий размер двух таблиц — около 2 MiB.
+
+### Direct phase extraction
+
+Для больших аргументов `2^31 <= |y| < 2^57` периодическая фаза извлекается напрямую из fixed-point умножения mantissa × 128-bit `2/pi`.
+
+Это позволяет избежать формирования общего large-argument floating-point remainder перед trig evaluation.
+
+Для значений вне ограниченного диапазона остаётся стандартный CUDA double math fallback.
+
+### Warm path
+
+Magic engine не использует 512-KiB scaled-nibble lookup для warm-cells. Вместо этого:
 
 ```text
-threads/block:            256
-persistent grid:          yes
-hot-loop block barriers:  0
-shared task queue:         no
-shared atomics:            no
-shared memory:             0
-GPU math:                  FP64 consensus path
-CPU candidate validation:  exact
+32-KiB scaled matrix in constant memory
++
+FP64 multiply by nibble
 ```
 
-CI `ptxas` для нового Volta kernel:
+Это уменьшает lookup footprint и лучше использует сильный FP64 V100.
+
+### Optional fast rsqrt
+
+Третий nonlinear region autotuner проверяет в двух режимах:
 
 ```text
-Registers/thread: 128
-Stack:            192 bytes
-Spill stores:     0
-Spill loads:      0
-Barriers:         0
-Shared:           0
-Local:            0
+exact 1/sqrt()
+FP32 rsqrt seed + 1 FP64 Newton step
 ```
 
-Проверенный exact-kernel остаётся в том же бинарнике как safety fallback.
+## Autotune считает effective rate
 
-## V100 physical autotune
+Для exact baseline требуется 100% CPU/GPU совпадений.
 
-Первый запуск на V100 сравнивает:
+Для Magic профилей перед benchmark выполняются 256 deterministic CPU↔GPU full-HooHash comparisons.
+
+Главная метрика:
 
 ```text
-exact:  768 threads
-cohort: 256 threads
+effective_hps = raw_hps × exact_hash_quality
 ```
 
-Для cohort проверяются пороги накопления nonlinear lanes:
+Поэтому большой raw MH/s сам по себе не считается успехом.
+
+Проверяются:
 
 ```text
-4 8 12 16 20 24 28 32
+threads:       128, 256
+blocks/SM:     1, 2, 4, 6, 8
+fast_rsqrt:    0, 1
+batch:         1,228,800
+rounds:        3
+min quality:   90%
 ```
 
-и persistent grid density:
+Magic выбирается только если его effective rate минимум на 5% превосходит exact baseline. Иначе miner автоматически остаётся на exact service768.
+
+## Candidate safety
+
+Каждый найденный GPU share candidate повторно пересчитывается точным CPU HooHash. Share отправляется в pool только если:
 
 ```text
-1 2 4 8 10 12 blocks/SM
+GPU hash == CPU hash
+CPU hash meets target
 ```
 
-Каждый профиль перед benchmark обязан пройти **64 CPU ↔ GPU HooHash nonce comparisons**.
+Это позволяет экспериментировать со speculative GPU solver без отправки заведомо неправильных shares.
 
-Benchmark использует batch:
+## Batch policy
 
 ```text
-1,228,800 nonce
-3 timed rounds
-median H/s
+exact: 262,144 nonce
+magic: 1,228,800 nonce
 ```
 
-Чтобы экспериментальный kernel не заменил рабочий exact-код из-за шума benchmark, cohort автоматически выбирается только если он быстрее exact минимум на 2%.
-
-Если exact baseline не проходит consensus validation, v1.1.0 работает по fail-closed политике и не начинает майнинг.
-
-Результат autotune кэшируется по UUID физической GPU и SHA256 бинарника.
-
-## Correctness
-
-v1.1.0 не меняет consensus-математику ради заявленного хешрейта:
-
-- FP64 HooHash сохраняется;
-- selector и SW state сохраняют exact logic;
-- `fmad=false` остаётся включённым;
-- parked nonce не переходит к следующему matrix cell до завершения собственной nonlinear-операции;
-- каждый autotune profile проверяется CPU reference до измерения скорости;
-- каждый найденный GPU share candidate повторно проверяется CPU перед отправкой в pool.
-
-Хешрейт нового cohort engine **не заявляется до физического теста на Tesla V100**.
-
-Цель разработки:
-
-```text
-30 MH/s on Tesla V100
-```
+Большой Magic batch используется только после победы профиля на физическом autotune.
 
 ## HiveOS package
 
 ```text
-Miner name:       PepeW-Miner-v1.1.0
-Archive asset:    PepeW-Miner-v1.1.0-HiveOS.tar.gz
-Archive root:     PepeW-Miner-v1.1.0/
-Install path:     /hive/miners/custom/PepeW-Miner-v1.1.0
+Miner name:       PepeW-Miner-v1.2.0
+Archive asset:    PepeW-Miner-v1.2.0-HiveOS.tar.gz
+Archive root:     PepeW-Miner-v1.2.0/
+Install path:     /hive/miners/custom/PepeW-Miner-v1.2.0
 Algorithm:        hoohash
 Wallet template:  %WAL%.%WORKER_NAME%
 Password:         x
 ```
 
-После публикации release:
+Release URL после публикации:
 
 ```text
-https://github.com/iPepew/PepePow_Miner/releases/download/v1.1.0/PepeW-Miner-v1.1.0-HiveOS.tar.gz
+https://github.com/iPepew/PepePow_Miner/releases/download/v1.2.0/PepeW-Miner-v1.2.0-HiveOS.tar.gz
 ```
 
 ## Console design
 
-Стартовая идентификация сохранена:
-
 ```text
-PepeW Miner v1.1.0 - Performance & Stability Edition
+PepeW Miner v1.2.0 - Performance & Stability Edition
 PepeW - твоя монета. Твои правила.
 ```
 
-Runtime console остаётся компактной:
+Console остаётся компактной и ASCII-safe:
 
 - без большого ASCII-art;
-- без декоративного флага;
-- без emoji в событиях;
+- без флага;
+- без emoji runtime events;
+- без wallet/password;
 - `[POOL]`, `[JOB]`, `[ACCEPTED]`, `[REJECTED]`, `[ERROR]`;
-- GPU model, `sm`, engine, profile, threads, cohort threshold, blocks/SM и chunk;
-- hashrate, temperature, power, clocks, A/R и efficiency;
-- без wallet/password в выводе.
+- engine, profile, threads, blocks/SM, rsqrt mode, quality, raw/effective tune rate и chunk;
+- hashrate, temperature, power, clocks, A/R и efficiency.
 
 ## Multi-GPU
 
-HiveOS сохраняет process-per-GPU модель:
-
-- отдельный miner process;
-- отдельный local Stratum proxy;
-- выбор GPU по UUID через `CUDA_VISIBLE_DEVICES`;
-- отдельные PID/log/status;
-- агрегированная HiveOS telemetry.
-
-Ограничение GPU:
+HiveOS сохраняет process-per-GPU модель с отдельным local Stratum proxy, PID/log/status и выбором GPU через UUID.
 
 ```text
 PEPEW_DEVICES=0,2,3
 ```
 
-## Build gates
+## Build / correctness gates
 
-Release candidate собирается GitHub Actions на CUDA Toolkit 12.8.1 для `sm_70`. CI проверяет:
+CI для v1.2.0 проверяет:
 
-- наличие Volta cubin в финальном miner ELF;
-- наличие `header80_pow_warp_cohort_kernel`;
-- отсутствие spill/shared/local в cohort kernel;
-- clean generated CUDA source без NUL bytes;
-- shell syntax HiveOS wrapper/autotuner;
+- CUDA Toolkit 12.8.1 / `sm_70`;
+- Volta cubin в финальном miner ELF;
+- наличие exact и `header80_pow_magic_kernel`;
+- resource usage нового kernel;
+- core tests;
+- shell syntax HiveOS integration;
 - manifest/package-root consistency;
-- SHA256 бинарника;
-- отсутствие `__pycache__` и временного мусора в archive.
+- SHA256;
+- отсутствие временного мусора в archive.
+
+До физического теста **v1.2.0 не заявляет новый V100 hashrate**.
+
+Цель разработки остаётся:
+
+```text
+30 MH/s on Tesla V100
+```
 
 ## Safety
 
