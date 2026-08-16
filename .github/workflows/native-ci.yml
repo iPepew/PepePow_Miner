@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - "native/**"
+      - "lab/pepew-hardware-test.sh"
       - ".github/workflows/native-ci.yml"
   pull_request:
     paths:
       - "native/**"
+      - "lab/pepew-hardware-test.sh"
       - ".github/workflows/native-ci.yml"
   workflow_dispatch:
 
@@ -29,6 +31,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate hardware test harness
+        if: runner.os == 'Linux'
+        run: bash -n lab/pepew-hardware-test.sh
 
       - name: Configure
         run: cmake -S native -B native/build -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
