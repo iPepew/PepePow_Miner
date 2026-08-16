@@ -32,8 +32,8 @@ jobs:
     env:
       CUDA_ARCHS: "70;75;86"
       CUSTOM_MINER_NAME: PepeW-Miner
-      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
-      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      ASSET_NAME: PepeW-Miner-HiveOS-CUDA118.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS-CUDA118.tar.gz.sha256
 
     steps:
       - name: Install build tools
@@ -53,9 +53,9 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="dev-${short_sha}"
+          build_version="dev-${short_sha}-cuda118"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
-          echo "PepeW HiveOS DEV build: ${build_version}"
+          echo "PepeW HiveOS CUDA 11.8 KAT build: ${build_version}"
 
       - name: Configure CUDA release
         run: |
@@ -178,34 +178,20 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
-          notes=$(cat <<EOF
-          Automated PepeW HiveOS DEV build.
-
-          Build: ${BUILD_VERSION}
-          Commit: ${GITHUB_SHA}
-          Ref: ${GITHUB_REF_NAME}
-          CUDA architectures: ${CUDA_ARCHS}
-          HiveOS custom miner: ${CUSTOM_MINER_NAME}
-
-          This is the rolling test channel. The asset URL stays constant while the file is replaced by each successful DEV build.
-          EOF
-          )
-
           if gh release view hiveos-test >/dev/null 2>&1; then
             gh release upload hiveos-test \
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --clobber
-            echo "Updated hiveos-test assets with ${BUILD_VERSION}"
           else
             gh release create hiveos-test \
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --target "${GITHUB_SHA}" \
               --title "PepeW Miner HiveOS DEV" \
-              --notes "${notes}" \
+              --notes "CUDA 11.8 KAT experiment" \
               --prerelease
           fi
 
-          echo "Permanent DEV asset:"
+          echo "CUDA 11.8 experimental asset:"
           echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/hiveos-test/${ASSET_NAME}"
