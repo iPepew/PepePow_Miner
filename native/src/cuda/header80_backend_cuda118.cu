@@ -1,6 +1,5 @@
 #include "pepepow/cuda/header80_backend.hpp"
 #include "pepepow/core/header_builder.hpp"
-#include "pepepow/crypto/blake3.hpp"
 #include "pepepow/crypto/hoohash_reference.hpp"
 
 #include <cuda_runtime.h>
@@ -11,7 +10,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -39,9 +37,9 @@ constexpr std::uint8_t kHostSchedule[7][16] = {
     {9,14,11,5,8,12,15,1,13,3,0,10,2,6,4,7},
     {11,15,5,0,1,9,8,6,14,10,2,12,3,4,7,13}};
 
-// The matrix is job-constant and all threads in a warp read the same cell at
-// the same point in the sequential HooHash loop. Constant memory turns those
-// accesses into broadcasts and removes 32 KiB of global-memory traffic state.
+// The matrix is job-constant. All active threads execute the same matrix cell
+// at a given loop position, so constant-memory broadcast is a good fit and
+// avoids keeping a private/global matrix pointer in the hot path.
 __device__ __constant__ double d_matrix[kMatrixElements];
 __device__ __constant__ std::uint32_t d_midstate[8];
 __device__ __constant__ std::uint32_t d_tail_words[3];
@@ -84,6 +82,12 @@ std::uint32_t host_load_le32(const std::uint8_t* p) noexcept {
            (static_cast<std::uint32_t>(p[2]) << 16U) |
            (static_cast<std::uint32_t>(p[3]) << 24U);
 }
+void host_store_le32(std::uint8_t* p,std::uint32_t value) noexcept {
+    p[0]=static_cast<std::uint8_t>(value);
+    p[1]=static_cast<std::uint8_t>(value>>8U);
+    p[2]=static_cast<std::uint8_t>(value>>16U);
+    p[3]=static_cast<std::uint8_t>(value>>24U);
+}
 void host_compress(const std::uint32_t cv[8],const std::uint32_t block[16],
                    std::uint32_t len,std::uint32_t flags,std::uint32_t out[16]) noexcept {
     std::uint32_t v[16];
@@ -110,6 +114,25 @@ std::array<std::uint32_t,8> first_block_midstate(const Header80& header) noexcep
     host_compress(kHostIv.data(),block,64,kChunkStart,compressed);
     std::array<std::uint32_t,8> out{};
     std::copy_n(compressed,8,out.begin());
+    return out;
+}
+
+// Local host BLAKE3-80 helper keeps this CUDA 11.8 translation unit on C++17.
+// It is intentionally the same two-compression one-chunk construction used by
+// the GPU path and by the verified HooHash matrix-seed logic.
+crypto::Hash256 host_blake3_80(const Header80& input) noexcept {
+    std::uint32_t cv[8]{};
+    std::uint32_t block[16]{};
+    std::uint32_t compressed[16]{};
+    std::copy(kHostIv.begin(),kHostIv.end(),cv);
+    for(int i=0;i<16;++i)block[i]=host_load_le32(input.data()+i*4);
+    host_compress(cv,block,64,kChunkStart,compressed);
+    std::copy_n(compressed,8,cv);
+    std::fill(std::begin(block),std::end(block),0U);
+    for(int i=0;i<4;++i)block[i]=host_load_le32(input.data()+64+i*4);
+    host_compress(cv,block,16,kChunkEnd|kRoot,compressed);
+    crypto::Hash256 out{};
+    for(int i=0;i<8;++i)host_store_le32(out.data()+i*4,compressed[i]);
     return out;
 }
 
@@ -143,10 +166,12 @@ __device__ void compress(const std::uint32_t cv[8],const std::uint32_t block[16]
 __device__ __forceinline__ std::uint32_t le32(const std::uint8_t* p){return std::uint32_t(p[0])|(std::uint32_t(p[1])<<8)|(std::uint32_t(p[2])<<16)|(std::uint32_t(p[3])<<24);}
 __device__ __forceinline__ std::uint32_t be32(const std::uint8_t* p){return (std::uint32_t(p[0])<<24)|(std::uint32_t(p[1])<<16)|(std::uint32_t(p[2])<<8)|std::uint32_t(p[3]);}
 __device__ __forceinline__ void put_le32(std::uint8_t* p,std::uint32_t v){p[0]=v;p[1]=v>>8;p[2]=v>>16;p[3]=v>>24;}
-__device__ __forceinline__ std::uint32_t bswap32(std::uint32_t v){return __byte_perm(v,0,0x0123);}
+__device__ __forceinline__ std::uint32_t bswap32(std::uint32_t v){
+    return ((v&0x000000ffU)<<24U)|((v&0x0000ff00U)<<8U)|((v&0x00ff0000U)>>8U)|((v&0xff000000U)>>24U);
+}
 
 // Only the last 16 bytes of the 80-byte header change per nonce. The first
-// 64-byte BLAKE3 block is compressed on the CPU once per job and uploaded as a
+// 64-byte BLAKE3 block is compressed on the CPU once per scan and uploaded as a
 // midstate, eliminating one complete BLAKE3 compression from every hash.
 __device__ void blake80_from_midstate(std::uint32_t nonce,std::uint8_t out[32]){
     std::uint32_t cv[8],b[16],c[16];
@@ -185,16 +210,16 @@ __device__ __forceinline__ double complex_transform(double x){
     return 1.0/sqrt(fabs(y)+1.0);
 }
 __device__ __forceinline__ double safe_complex(double input){
-    // Consensus quirk: the reference intentionally does not recompute value in
-    // this loop. Keep it byte-for-byte equivalent to the validated CPU oracle.
+    // Consensus quirk: the validated reference intentionally does not
+    // recompute value inside this loop. Preserve it exactly.
     double rounds=1.0;
     const double value=complex_transform(input);
     while(isnan(value)||isinf(value)){input*=0.1;if(input<=1e-13)return 0.0;rounds+=1.0;}
     return value*rounds;
 }
 __device__ __forceinline__ void accumulate_cell(double cell,double value,double hm,double nm,double& sum,double& sw){
-    // A zero nibble contributes exactly +0.0 in either branch. Skipping the
-    // expensive transcendental path is exact; sw is still updated from sum.
+    // A zero nibble contributes exactly +0.0. Skipping the transcendental path
+    // is exact, while sw is still recomputed just as in the consensus loop.
     if(value!=0.0){
         if(sw<=0.02){const double x=cell*hm*value+nm;sum+=safe_complex(x)*value*1234.0;}
         else sum+=cell*0.0001*value;
@@ -227,8 +252,8 @@ __device__ void hash_one(std::uint32_t nonce,std::uint8_t* final,std::uint8_t* c
     const double nm=static_cast<double>(mix_nonce&0xffU);
     double sw=0.0;
 
-    // Produce each output byte as soon as its two rows are complete. This keeps
-    // only two FP64 row accumulators live instead of a 64-double local array.
+    // Emit each mixed byte as soon as its two rows are complete. This removes
+    // the old 64-double product[] local array from every mining thread.
     #pragma unroll 1
     for(int pair=0;pair<32;++pair){
         const double even=matrix_row(pair*2,first,hm,nm,sw);
@@ -267,15 +292,15 @@ void prepare_job(int device,const MiningJob& job){
     const Header80 header=build_header80(base_job);
     Header80 masked=header;
     std::fill(masked.begin()+76,masked.end(),0U);
-    const crypto::Hash256 matrix_seed=crypto::blake3_hash(std::span<const std::uint8_t>(masked.data(),masked.size()));
+    const crypto::Hash256 matrix_seed=host_blake3_80(masked);
     const auto midstate=first_block_midstate(header);
     const std::array<std::uint32_t,3> tail_words{
         host_load_le32(header.data()+64),host_load_le32(header.data()+68),host_load_le32(header.data()+72)};
 
     cuda_check(cudaSetDevice(device),"cudaSetDevice");
 
-    // One worker thread owns one CUDA device. Cache matrix uploads across scan
-    // chunks; a new matrix is copied only when the job seed changes.
+    // One worker thread owns one CUDA device. Cache matrix upload across scan
+    // chunks; regenerate only when the masked-header BLAKE3 seed changes.
     static thread_local bool matrix_cached=false;
     static thread_local int matrix_device=-1;
     static thread_local crypto::Hash256 cached_seed{};
@@ -323,8 +348,6 @@ std::optional<ShareCandidate> Header80CudaBackend::search(const MiningJob& job,S
         cuda_check(cudaMemcpyToSymbol(d_target,target.data(),target.size()),"copy target");
         cuda_check(cudaMalloc(reinterpret_cast<void**>(&dresult),sizeof(DeviceSearchResult)),"cudaMalloc search result");
         cuda_check(cudaMemset(dresult,0,sizeof(DeviceSearchResult)),"clear search result");
-        // 64 threads/block is the consensus reference geometry for this FP64-heavy
-        // kernel and is safe on Volta sm_70 as well as newer supported devices.
         constexpr unsigned threads=64;
         const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
         search_kernel<<<blocks,threads>>>(static_cast<std::uint32_t>(range.begin),dresult,count);
