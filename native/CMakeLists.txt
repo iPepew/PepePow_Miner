@@ -63,7 +63,7 @@ if(PEPEPOW_ENABLE_CUDA)
     target_include_directories(pepepow_cuda PUBLIC include)
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
     set_target_properties(pepepow_cuda PROPERTIES
-        CUDA_STANDARD 17
+        CUDA_STANDARD 20
         CUDA_STANDARD_REQUIRED ON
         CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION OFF
