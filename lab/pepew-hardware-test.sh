@@ -113,7 +113,7 @@ EOF
 
 cleanup() {
   local rc=$?
-  if [[ "${rc}" -ne 0 && "${LEAVE_RUNNING}" != "1" ]]; then
+  if [[ "${rc}" -ne 0 || "${LEAVE_RUNNING}" != "1" ]]; then
     miner stop >/dev/null 2>&1 || true
   fi
   if [[ ! -f "${report_json}" ]]; then
