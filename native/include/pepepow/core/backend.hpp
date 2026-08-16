@@ -3,7 +3,6 @@
 #include "pepepow/core/types.hpp"
 
 #include <optional>
-#include <span>
 #include <string_view>
 #include <vector>
 
@@ -18,7 +17,7 @@ public:
     [[nodiscard]] virtual std::optional<ShareCandidate> search(
         const MiningJob& job,
         SearchRange range,
-        std::span<const std::uint8_t, 32> target) = 0;
+        const Hash256& target) = 0;
 };
 
 class CpuReferenceBackend final : public MiningBackend {
@@ -28,7 +27,7 @@ public:
     [[nodiscard]] std::optional<ShareCandidate> search(
         const MiningJob& job,
         SearchRange range,
-        std::span<const std::uint8_t, 32> target) override;
+        const Hash256& target) override;
 };
 
 } // namespace pepepow
