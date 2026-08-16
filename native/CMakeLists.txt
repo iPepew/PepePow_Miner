@@ -56,24 +56,19 @@ endif()
 
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
+
     add_library(pepepow_cuda
-        src/cuda/cuda_backend.cu
-        src/cuda/header80_backend.cu
-        src/cuda/hoohash_matrix_reference.cu
-        src/cuda/pow_pipeline_reference.cu
-        src/cuda/warp_divergence_probe.cu
+        src/cuda/header80_backend_cuda118.cu
     )
     target_include_directories(pepepow_cuda PUBLIC include)
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
     set_target_properties(pepepow_cuda PROPERTIES
-        CUDA_STANDARD 20
+        CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
         CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION OFF
     )
-    # HooHashV110 is consensus-sensitive to floating-point behavior. Keep the
-    # CUDA path strict: no fused multiply-add, approximate div/sqrt, FTZ or
-    # fast-math transformations.
+
     target_compile_options(pepepow_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
         $<$<COMPILE_LANGUAGE:CUDA>:--prec-div=true>
@@ -96,12 +91,6 @@ if(PEPEPOW_ENABLE_CUDA)
             $<$<COMPILE_LANGUAGE:CUDA>:--maxrregcount=${PEPEPOW_CUDA_MAX_REGISTERS}>
         )
     endif()
-
-    add_executable(pepepow_cuda_benchmark src/benchmark/cuda_benchmark.cpp)
-    target_link_libraries(pepepow_cuda_benchmark PRIVATE pepepow_cuda)
-
-    add_executable(pepepow_cuda_warp_probe src/benchmark/warp_divergence_probe.cpp)
-    target_link_libraries(pepepow_cuda_warp_probe PRIVATE pepepow_cuda)
 endif()
 
 add_executable(pepepowminer src/app/main.cpp)
@@ -117,14 +106,4 @@ if(PEPEPOW_BUILD_TESTS)
     add_executable(pepepow_core_tests tests/core_tests.cpp)
     target_link_libraries(pepepow_core_tests PRIVATE pepepow_core)
     add_test(NAME pepepow_core_tests COMMAND pepepow_core_tests)
-
-    if(PEPEPOW_ENABLE_CUDA)
-        add_executable(pepepow_cuda_tests tests/cuda_tests.cpp)
-        target_link_libraries(pepepow_cuda_tests PRIVATE pepepow_cuda)
-        add_test(NAME pepepow_cuda_tests COMMAND pepepow_cuda_tests)
-
-        add_executable(pepepow_cuda_header80_validation tests/cuda_header80_validation.cpp)
-        target_link_libraries(pepepow_cuda_header80_validation PRIVATE pepepow_cuda)
-        add_test(NAME pepepow_cuda_header80_validation COMMAND pepepow_cuda_header80_validation)
-    endif()
 endif()
