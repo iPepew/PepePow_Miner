@@ -12,15 +12,14 @@ if [[ ! -s "${log_file}" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-# Do not keep reporting a stale speed after a stopped/crashed miner.
+# Do not keep reporting stale miner telemetry after a stop/crash.
 now_epoch=$(date +%s)
 log_mtime=$(stat -c %Y "${log_file}" 2>/dev/null || echo 0)
 if (( now_epoch - log_mtime > 30 )); then
   return 0 2>/dev/null || exit 0
 fi
 
-# The aggregate line is kept for backwards compatibility with the hardware
-# test and is the authoritative source for total speed and pool share counts.
+# Aggregate line is authoritative for total speed, uptime and pool counters.
 line=$(grep -a '^\[MINING\]' "${log_file}" 2>/dev/null | tail -n 1)
 if [[ -z "${line}" ]]; then
   return 0 2>/dev/null || exit 0
@@ -41,15 +40,38 @@ uptime_seconds=$((10#${uptime_hours} * 3600 + 10#${uptime_minutes} * 60 + 10#${u
 khs=$(awk -v mhs="${mhs}" 'BEGIN { printf "%.0f", mhs * 1000.0 }')
 version="${CUSTOM_VERSION:-dev}"
 
-# Miner emits one line per CUDA device: [GPU0], [GPU1], ... . Hive expects
-# hs[] in GPU order. We use the currently visible NVIDIA device count and fall
-# back to the aggregate speed when no per-GPU telemetry is available yet.
+# Read hardware telemetry once. Arrays are keyed by CUDA/NVIDIA index so that
+# hs[], temp[], fan[] and bus_numbers[] describe the same physical card.
 gpu_count=0
+declare -a gpu_temp=()
+declare -a gpu_fan=()
+declare -a gpu_bus=()
 if command -v nvidia-smi >/dev/null 2>&1; then
-  gpu_count=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || true)
-fi
-[[ "${gpu_count}" =~ ^[0-9]+$ ]] || gpu_count=0
+  while IFS=',' read -r smi_index pci_bus_id smi_temp smi_fan; do
+    smi_index=$(printf '%s' "${smi_index}" | xargs)
+    pci_bus_id=$(printf '%s' "${pci_bus_id}" | xargs)
+    smi_temp=$(printf '%s' "${smi_temp}" | xargs)
+    smi_fan=$(printf '%s' "${smi_fan}" | xargs)
 
+    [[ "${smi_index}" =~ ^[0-9]+$ ]] || continue
+    gpu_id=$((10#${smi_index}))
+    (( gpu_id + 1 > gpu_count )) && gpu_count=$((gpu_id + 1))
+
+    # Hive requires numeric temperature/fan values. Tesla SXM modules commonly
+    # report fan.speed as N/A because cooling belongs to the chassis; report 0
+    # rather than inventing a fan speed.
+    [[ "${smi_temp}" =~ ^[0-9]+([.][0-9]+)?$ ]] && gpu_temp[gpu_id]="${smi_temp%.*}" || gpu_temp[gpu_id]=0
+    [[ "${smi_fan}" =~ ^[0-9]+([.][0-9]+)?$ ]] && gpu_fan[gpu_id]="${smi_fan%.*}" || gpu_fan[gpu_id]=0
+
+    bus_hex=$(printf '%s' "${pci_bus_id}" | awk -F: '{if (NF >= 3) print $(NF-1)}')
+    if [[ "${bus_hex}" =~ ^[0-9A-Fa-f]+$ ]]; then
+      gpu_bus[gpu_id]=$((16#${bus_hex}))
+    fi
+  done < <(nvidia-smi --query-gpu=index,pci.bus_id,temperature.gpu,fan.speed --format=csv,noheader,nounits 2>/dev/null)
+fi
+
+# Miner emits one line per CUDA device: [GPU0], [GPU1], ... . Hive expects hs[]
+# in the same device order. Fall back to aggregate speed during early startup.
 hs_values=()
 if (( gpu_count > 0 )); then
   for ((gpu_id=0; gpu_id<gpu_count; ++gpu_id)); do
@@ -60,47 +82,41 @@ if (( gpu_count > 0 )); then
     hs_values+=("${gpu_khs}")
   done
 fi
-
 if (( ${#hs_values[@]} == 0 )); then
   hs_values=("${khs}")
 fi
-
 hs_json=$(IFS=,; printf '%s' "${hs_values[*]}")
 
-# bus_numbers lets Hive map hs[0], hs[1], ... to the correct physical cards.
-bus_values=()
-if command -v nvidia-smi >/dev/null 2>&1; then
-  while IFS=',' read -r smi_index pci_bus_id; do
-    smi_index=$(printf '%s' "${smi_index}" | xargs)
-    pci_bus_id=$(printf '%s' "${pci_bus_id}" | xargs)
-    bus_hex=$(printf '%s' "${pci_bus_id}" | awk -F: '{if (NF >= 3) print $(NF-1)}')
-    if [[ "${smi_index}" =~ ^[0-9]+$ && "${bus_hex}" =~ ^[0-9A-Fa-f]+$ ]]; then
-      bus_dec=$((16#${bus_hex}))
-      bus_values[10#${smi_index}]="${bus_dec}"
-    fi
-  done < <(nvidia-smi --query-gpu=index,pci.bus_id --format=csv,noheader,nounits 2>/dev/null)
-fi
-
+# Build optional hardware arrays only when every reported mining GPU has a
+# corresponding system value. This avoids shifting card telemetry in HiveOS.
+temp_json=""
+fan_json=""
 bus_json=""
 if (( gpu_count > 0 && ${#hs_values[@]} == gpu_count )); then
-  mapped_buses=()
-  buses_complete=1
+  mapped_temp=()
+  mapped_fan=()
+  mapped_bus=()
+  hardware_complete=1
   for ((gpu_id=0; gpu_id<gpu_count; ++gpu_id)); do
-    if [[ -n "${bus_values[gpu_id]:-}" ]]; then
-      mapped_buses+=("${bus_values[gpu_id]}")
+    if [[ -n "${gpu_temp[gpu_id]:-}" && -n "${gpu_fan[gpu_id]:-}" && -n "${gpu_bus[gpu_id]:-}" ]]; then
+      mapped_temp+=("${gpu_temp[gpu_id]}")
+      mapped_fan+=("${gpu_fan[gpu_id]}")
+      mapped_bus+=("${gpu_bus[gpu_id]}")
     else
-      buses_complete=0
+      hardware_complete=0
       break
     fi
   done
-  if (( buses_complete == 1 )); then
-    bus_json=$(IFS=,; printf '%s' "${mapped_buses[*]}")
+  if (( hardware_complete == 1 )); then
+    temp_json=$(IFS=,; printf '%s' "${mapped_temp[*]}")
+    fan_json=$(IFS=,; printf '%s' "${mapped_fan[*]}")
+    bus_json=$(IFS=,; printf '%s' "${mapped_bus[*]}")
   fi
 fi
 
 if [[ -n "${bus_json}" ]]; then
-  stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
-    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}" "${bus_json}")
+  stats=$(printf '{"hs":[%s],"hs_units":"khs","temp":[%s],"fan":[%s],"uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
+    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}" "${bus_json}")
 else
   stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash"}' \
     "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}")
