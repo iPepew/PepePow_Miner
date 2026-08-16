@@ -19,11 +19,8 @@ public:
     [[nodiscard]] std::optional<ShareCandidate> search(
         const MiningJob& job,
         SearchRange range,
-        std::span<const std::uint8_t, 32> target) override;
+        const Hash256& target) override;
 
-    // Runs exactly one nonce through the CUDA HooHashV110 pipeline and captures
-    // the three consensus-critical stages. Used only by the startup KAT so a
-    // hardware mismatch can be localized without allowing invalid pool shares.
     [[nodiscard]] Header80CudaDiagnostics diagnose(
         const MiningJob& job,
         std::uint32_t nonce);
