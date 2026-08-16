@@ -48,6 +48,30 @@ void check_cuda_header80(cudaError_t status, const char* operation) {
     }
 }
 
+Header80 prepare_header_and_matrix(
+    int device_index,
+    const MiningJob& job,
+    std::uint32_t nonce) {
+    MiningJob base_job = job;
+    base_job.nonce = nonce;
+    const Header80 header = build_header80(base_job);
+
+    Header80 masked_header = header;
+    masked_header[76] = 0;
+    masked_header[77] = 0;
+    masked_header[78] = 0;
+    masked_header[79] = 0;
+    const Hash256 matrix_seed = crypto::blake3_hash(masked_header);
+    const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(matrix_seed);
+
+    check_cuda_header80(cudaSetDevice(device_index), "cudaSetDevice(header80)");
+    check_cuda_header80(
+        cudaMemcpyToSymbol(kHeader80Matrix, matrix.data()->data(),
+                           kMatrixElements * sizeof(double), 0, cudaMemcpyHostToDevice),
+        "cudaMemcpyToSymbol(header80 matrix)");
+    return header;
+}
+
 __device__ __forceinline__ std::uint32_t rotr32(std::uint32_t value, int bits) {
     return __funnelshift_r(value, value, bits);
 }
@@ -225,15 +249,13 @@ __device__ double matrix_row(
     return sum;
 }
 
-__global__ void header80_pow_kernel(
-    const std::uint8_t* __restrict__ base_header,
-    std::uint32_t first_nonce,
-    std::uint8_t* __restrict__ hashes,
-    std::size_t count) {
-    const std::size_t index = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-    if (index >= count) return;
-
-    const std::uint32_t nonce = first_nonce + static_cast<std::uint32_t>(index);
+template <bool CaptureStages>
+__device__ void header80_pow_one(
+    const std::uint8_t* base_header,
+    std::uint32_t nonce,
+    std::uint8_t* final_hash,
+    std::uint8_t* captured_first_pass,
+    std::uint8_t* captured_mixed) {
     std::uint8_t header[kHeaderSize];
     #pragma unroll
     for (int i = 0; i < static_cast<int>(kHeaderSize); ++i) header[i] = base_header[i];
@@ -242,6 +264,11 @@ __global__ void header80_pow_kernel(
     std::uint8_t first_pass[32];
     std::uint8_t mixed[32];
     blake3_80(header, first_pass);
+
+    if constexpr (CaptureStages) {
+        #pragma unroll
+        for (int i = 0; i < 32; ++i) captured_first_pass[i] = first_pass[i];
+    }
 
     std::uint32_t hash_mod = 0;
     #pragma unroll
@@ -257,7 +284,39 @@ __global__ void header80_pow_kernel(
                                        static_cast<std::uint64_t>(odd_sum);
         mixed[pair] = first_pass[pair] ^ static_cast<std::uint8_t>(combined & 0xffU);
     }
-    blake3_32(mixed, hashes + index * kHashSize);
+
+    if constexpr (CaptureStages) {
+        #pragma unroll
+        for (int i = 0; i < 32; ++i) captured_mixed[i] = mixed[i];
+    }
+
+    blake3_32(mixed, final_hash);
+}
+
+__global__ void header80_pow_kernel(
+    const std::uint8_t* __restrict__ base_header,
+    std::uint32_t first_nonce,
+    std::uint8_t* __restrict__ hashes,
+    std::size_t count) {
+    const std::size_t index = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    header80_pow_one<false>(
+        base_header,
+        first_nonce + static_cast<std::uint32_t>(index),
+        hashes + index * kHashSize,
+        nullptr,
+        nullptr);
+}
+
+__global__ void header80_diagnostic_kernel(
+    const std::uint8_t* base_header,
+    std::uint32_t nonce,
+    std::uint8_t* first_pass,
+    std::uint8_t* mixed,
+    std::uint8_t* final_hash) {
+    if (blockIdx.x != 0 || threadIdx.x != 0) return;
+    header80_pow_one<true>(base_header, nonce, final_hash, first_pass, mixed);
 }
 
 } // namespace
@@ -280,6 +339,55 @@ std::vector<DeviceInfo> Header80CudaBackend::enumerate_devices() const {
     return devices;
 }
 
+Header80CudaDiagnostics Header80CudaBackend::diagnose(
+    const MiningJob& job,
+    std::uint32_t nonce) {
+    const Header80 header = prepare_header_and_matrix(device_index_, job, nonce);
+
+    std::uint8_t* device_header = nullptr;
+    std::uint8_t* device_first = nullptr;
+    std::uint8_t* device_mixed = nullptr;
+    std::uint8_t* device_final = nullptr;
+
+    check_cuda_header80(cudaMalloc(reinterpret_cast<void**>(&device_header), kHeaderSize),
+                        "cudaMalloc(KAT header)");
+    try {
+        check_cuda_header80(cudaMalloc(reinterpret_cast<void**>(&device_first), kHashSize),
+                            "cudaMalloc(KAT first_pass)");
+        check_cuda_header80(cudaMalloc(reinterpret_cast<void**>(&device_mixed), kHashSize),
+                            "cudaMalloc(KAT mixed)");
+        check_cuda_header80(cudaMalloc(reinterpret_cast<void**>(&device_final), kHashSize),
+                            "cudaMalloc(KAT final)");
+        check_cuda_header80(cudaMemcpy(device_header, header.data(), kHeaderSize,
+                                       cudaMemcpyHostToDevice), "cudaMemcpy(KAT header)");
+
+        header80_diagnostic_kernel<<<1, 1>>>(
+            device_header, nonce, device_first, device_mixed, device_final);
+        check_cuda_header80(cudaGetLastError(), "header80_diagnostic_kernel launch");
+        check_cuda_header80(cudaDeviceSynchronize(), "header80_diagnostic_kernel synchronize");
+
+        Header80CudaDiagnostics diagnostics{};
+        check_cuda_header80(cudaMemcpy(diagnostics.first_pass.data(), device_first, kHashSize,
+                                       cudaMemcpyDeviceToHost), "cudaMemcpy(KAT first_pass)");
+        check_cuda_header80(cudaMemcpy(diagnostics.mixed.data(), device_mixed, kHashSize,
+                                       cudaMemcpyDeviceToHost), "cudaMemcpy(KAT mixed)");
+        check_cuda_header80(cudaMemcpy(diagnostics.final_hash.data(), device_final, kHashSize,
+                                       cudaMemcpyDeviceToHost), "cudaMemcpy(KAT final)");
+
+        cudaFree(device_final);
+        cudaFree(device_mixed);
+        cudaFree(device_first);
+        cudaFree(device_header);
+        return diagnostics;
+    } catch (...) {
+        if (device_final != nullptr) cudaFree(device_final);
+        if (device_mixed != nullptr) cudaFree(device_mixed);
+        if (device_first != nullptr) cudaFree(device_first);
+        if (device_header != nullptr) cudaFree(device_header);
+        throw;
+    }
+}
+
 std::optional<ShareCandidate> Header80CudaBackend::search(
     const MiningJob& job,
     SearchRange range,
@@ -292,23 +400,8 @@ std::optional<ShareCandidate> Header80CudaBackend::search(
     const std::size_t count = static_cast<std::size_t>(std::min(range.count, max_count));
     if (count == 0) return std::nullopt;
 
-    MiningJob base_job = job;
-    base_job.nonce = static_cast<std::uint32_t>(range.begin);
-    const Header80 header = build_header80(base_job);
-
-    Header80 masked_header = header;
-    masked_header[76] = 0;
-    masked_header[77] = 0;
-    masked_header[78] = 0;
-    masked_header[79] = 0;
-    const Hash256 matrix_seed = crypto::blake3_hash(masked_header);
-    const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(matrix_seed);
-
-    check_cuda_header80(cudaSetDevice(device_index_), "cudaSetDevice(header80)");
-    check_cuda_header80(
-        cudaMemcpyToSymbol(kHeader80Matrix, matrix.data()->data(),
-                           kMatrixElements * sizeof(double), 0, cudaMemcpyHostToDevice),
-        "cudaMemcpyToSymbol(header80 matrix)");
+    const Header80 header = prepare_header_and_matrix(
+        device_index_, job, static_cast<std::uint32_t>(range.begin));
 
     std::uint8_t* device_header = nullptr;
     std::uint8_t* device_hashes = nullptr;
