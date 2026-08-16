@@ -28,7 +28,7 @@ jobs:
   build-hiveos-package:
     runs-on: ubuntu-latest
     container:
-      image: nvidia/cuda:12.6.3-devel-ubuntu22.04
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
     env:
       CUDA_ARCHS: "70;75;86"
       CUSTOM_MINER_NAME: PepeW-Miner
@@ -131,6 +131,7 @@ jobs:
           version=${BUILD_VERSION}
           commit=${GITHUB_SHA}
           ref=${GITHUB_REF_NAME}
+          cuda_toolkit=11.8
           cuda_archs=${CUDA_ARCHS}
           custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
