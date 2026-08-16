@@ -1,0 +1,119 @@
+name: Reference HooHash KAT CUDA 11.8
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/test-cuda118-kat
+    paths:
+      - ".github/workflows/reference-kat-cuda118.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-reference-kat:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      REFERENCE_REPO: https://github.com/tpfuemp/ccminer-tpfuemp.git
+      REFERENCE_COMMIT: 10cc9de05f7031077e7f3542b1410213e90a92bc
+      ASSET_NAME: PepeW-Reference-KAT-CUDA118-sm70.tar.gz
+      SHA_NAME: PepeW-Reference-KAT-CUDA118-sm70.tar.gz.sha256
+
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates gh
+          nvcc --version
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout control repository
+        uses: actions/checkout@v4
+
+      - name: Fetch pinned reference HooHash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout "${REFERENCE_REPO}" /tmp/ccminer-reference
+          git -C /tmp/ccminer-reference fetch --depth=1 origin "${REFERENCE_COMMIT}"
+          git -C /tmp/ccminer-reference checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/ccminer-reference rev-parse HEAD)" = "${REFERENCE_COMMIT}"
+
+      - name: Build isolated sm_70 KAT
+        run: |
+          set -euo pipefail
+          cat > /tmp/reference_kat_main.cu <<'EOF'
+          #include <cstdio>
+          extern "C" int hoohash_gpu_self_test(void);
+          int main() {
+              const int ok = hoohash_gpu_self_test();
+              std::printf("REFERENCE_HOOHASH_KAT_CUDA118_SM70=%s\n", ok ? "PASS" : "FAIL");
+              return ok ? 0 : 1;
+          }
+          EOF
+
+          cd /tmp/ccminer-reference
+          nvcc \
+            -O3 \
+            -std=c++17 \
+            -gencode arch=compute_70,code=sm_70 \
+            --maxrregcount=128 \
+            --fmad=false \
+            --prec-div=true \
+            --prec-sqrt=true \
+            --ftz=false \
+            -I. \
+            algos/hoohash/cuda_hoohashv110.cu \
+            /tmp/reference_kat_main.cu \
+            -o /tmp/reference-hoohash-kat-cuda118-sm70
+
+          file /tmp/reference-hoohash-kat-cuda118-sm70
+          ldd /tmp/reference-hoohash-kat-cuda118-sm70 || true
+
+      - name: Package reference KAT
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/reference-kat-cuda118-sm70
+          install -m 0755 /tmp/reference-hoohash-kat-cuda118-sm70 \
+            dist/reference-kat-cuda118-sm70/reference-hoohash-kat
+          cat > dist/reference-kat-cuda118-sm70/BUILD_INFO.txt <<EOF
+          purpose=isolated-reference-hoohash-real-block-kat
+          source_repo=${REFERENCE_REPO}
+          source_commit=${REFERENCE_COMMIT}
+          cuda_toolkit=11.8.0
+          nvcc=11.8.89
+          cuda_arch=sm_70
+          strict_fp=fmad_false,prec_div_true,prec_sqrt_true,ftz_false,maxrregcount_128
+          expected_digest=000000013e74aad71e79fd0e3303c514af06bc1b9f26d6a994b65eb66d17845d
+          EOF
+          tar -C dist -czf "dist/${ASSET_NAME}" reference-kat-cuda118-sm70
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-hoohash-kat-cuda118-sm70
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+          compression-level: 0
+
+      - name: Publish separate hiveos-test asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          gh release upload hiveos-test \
+            "dist/${ASSET_NAME}" \
+            "dist/${SHA_NAME}" \
+            --clobber
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/hiveos-test/${ASSET_NAME}"
