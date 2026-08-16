@@ -30,7 +30,7 @@ jobs:
       - name: Install tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates gh
+          apt-get install -y --no-install-recommends git ca-certificates gh file
           nvcc --version
           rm -rf /var/lib/apt/lists/*
 
