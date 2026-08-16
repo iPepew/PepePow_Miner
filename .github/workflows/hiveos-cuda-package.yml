@@ -154,13 +154,15 @@ jobs:
       - name: Validate HiveOS archive layout
         run: |
           set -euo pipefail
-          first_entry="$(tar -tzf "dist/${ASSET_NAME}" | head -n1)"
+          archive_list=/tmp/pepew-hiveos-archive-list.txt
+          tar -tzf "dist/${ASSET_NAME}" > "${archive_list}"
+          first_entry="$(sed -n '1p' "${archive_list}")"
           test "${first_entry}" = "${CUSTOM_MINER_NAME}/"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-stats.sh"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-stats.sh" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer" "${archive_list}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
