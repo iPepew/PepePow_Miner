@@ -1,6 +1,5 @@
 #include "pepepow/cuda/header80_backend.hpp"
 #include "pepepow/core/header_builder.hpp"
-#include "pepepow/mining/target.hpp"
 
 #include <cuda_runtime.h>
 #include <algorithm>
@@ -22,7 +21,14 @@ constexpr std::uint32_t kChunkStart = 1U;
 constexpr std::uint32_t kChunkEnd = 2U;
 constexpr std::uint32_t kRoot = 8U;
 
+struct DeviceSearchResult {
+    unsigned int found;
+    std::uint32_t nonce;
+    std::uint8_t hash[32];
+};
+
 __device__ double d_matrix[64][64];
+__device__ __constant__ std::uint8_t d_target[32];
 __device__ __constant__ std::uint32_t kIv[8] = {
     0x6A09E667U,0xBB67AE85U,0x3C6EF372U,0xA54FF53AU,
     0x510E527FU,0x9B05688CU,0x1F83D9ABU,0x5BE0CD19U};
@@ -165,8 +171,28 @@ __device__ void hash_one(const std::uint8_t* base,std::uint32_t nonce,std::uint8
         for(int i=0;i<32;++i){cap1[i]=first[i];cap2[i]=mixed[i];}
     }
 }
-__global__ void pow_kernel(const std::uint8_t* base,std::uint32_t first,std::uint8_t* hashes,std::size_t count){
-    const std::size_t idx=std::size_t(blockIdx.x)*blockDim.x+threadIdx.x;if(idx>=count)return;hash_one<false>(base,first+static_cast<std::uint32_t>(idx),hashes+32*idx,nullptr,nullptr);
+
+__device__ __forceinline__ bool hash_meets_target_be_device(const std::uint8_t hash[32]){
+    #pragma unroll
+    for(int i=0;i<32;++i){
+        if(hash[i]<d_target[i])return true;
+        if(hash[i]>d_target[i])return false;
+    }
+    return true;
+}
+
+__global__ void search_kernel(const std::uint8_t* base,std::uint32_t first,DeviceSearchResult* result,std::size_t count){
+    const std::size_t idx=std::size_t(blockIdx.x)*blockDim.x+threadIdx.x;
+    if(idx>=count)return;
+    const std::uint32_t nonce=first+static_cast<std::uint32_t>(idx);
+    std::uint8_t hash[32];
+    hash_one<false>(base,nonce,hash,nullptr,nullptr);
+    if(!hash_meets_target_be_device(hash))return;
+    if(atomicCAS(&result->found,0U,1U)==0U){
+        result->nonce=nonce;
+        #pragma unroll
+        for(int i=0;i<32;++i)result->hash[i]=hash[i];
+    }
 }
 __global__ void diag_kernel(const std::uint8_t* base,std::uint32_t nonce,std::uint8_t* first,std::uint8_t* mixed,std::uint8_t* final){if(blockIdx.x||threadIdx.x)return;hash_one<true>(base,nonce,final,first,mixed);}
 
@@ -180,7 +206,7 @@ void prepare(int device,const Header80& header,std::uint8_t** d_header){
 } // namespace
 
 Header80CudaBackend::Header80CudaBackend(int device_index):device_index_(device_index){}
-std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-cuda118";}
+std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-target-cuda118";}
 std::vector<DeviceInfo> Header80CudaBackend::enumerate_devices() const{
     int n=0;cuda_check(cudaGetDeviceCount(&n),"cudaGetDeviceCount");std::vector<DeviceInfo> out;out.reserve(static_cast<std::size_t>(n));
     for(int i=0;i<n;++i){cudaDeviceProp p{};cuda_check(cudaGetDeviceProperties(&p,i),"cudaGetDeviceProperties");out.push_back(DeviceInfo{i,p.name,p.major,p.minor,p.totalGlobalMem});}return out;
@@ -197,13 +223,18 @@ Header80CudaDiagnostics Header80CudaBackend::diagnose(const MiningJob& job,std::
 std::optional<ShareCandidate> Header80CudaBackend::search(const MiningJob& job,SearchRange range,const Hash256& target){
     if(range.count==0||range.begin>std::numeric_limits<std::uint32_t>::max())return std::nullopt;
     const std::uint64_t avail=0x100000000ULL-range.begin;const std::size_t count=static_cast<std::size_t>(std::min(range.count,avail));if(!count)return std::nullopt;
-    const Header80 header=make_header(job,static_cast<std::uint32_t>(range.begin));std::uint8_t *dh=nullptr,*dhash=nullptr;prepare(device_index_,header,&dh);
+    const Header80 header=make_header(job,static_cast<std::uint32_t>(range.begin));std::uint8_t* dh=nullptr;DeviceSearchResult* dresult=nullptr;prepare(device_index_,header,&dh);
     try{
-        const std::size_t bytes=count*32;cuda_check(cudaMalloc(reinterpret_cast<void**>(&dhash),bytes),"cudaMalloc hashes");constexpr unsigned threads=64;const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
-        pow_kernel<<<blocks,threads>>>(dh,static_cast<std::uint32_t>(range.begin),dhash,count);cuda_check(cudaGetLastError(),"pow launch");cuda_check(cudaDeviceSynchronize(),"pow sync");
-        std::vector<std::uint8_t> hashes(bytes);cuda_check(cudaMemcpy(hashes.data(),dhash,bytes,cudaMemcpyDeviceToHost),"copy hashes");cudaFree(dhash);cudaFree(dh);dhash=dh=nullptr;
-        for(std::size_t i=0;i<count;++i){Hash256 h{};std::copy_n(hashes.begin()+static_cast<std::ptrdiff_t>(32*i),32,h.begin());if(mining::hash_meets_target_be(h,target))return ShareCandidate{job.job_id,static_cast<std::uint32_t>(range.begin+i),h};}
-        return std::nullopt;
-    }catch(...){if(dhash)cudaFree(dhash);if(dh)cudaFree(dh);throw;}
+        cuda_check(cudaMemcpyToSymbol(d_target,target.data(),target.size()),"copy target");
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&dresult),sizeof(DeviceSearchResult)),"cudaMalloc search result");
+        cuda_check(cudaMemset(dresult,0,sizeof(DeviceSearchResult)),"clear search result");
+        constexpr unsigned threads=64;const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
+        search_kernel<<<blocks,threads>>>(dh,static_cast<std::uint32_t>(range.begin),dresult,count);cuda_check(cudaGetLastError(),"search launch");cuda_check(cudaDeviceSynchronize(),"search sync");
+        DeviceSearchResult result{};cuda_check(cudaMemcpy(&result,dresult,sizeof(result),cudaMemcpyDeviceToHost),"copy search result");
+        cudaFree(dresult);cudaFree(dh);dresult=nullptr;dh=nullptr;
+        if(!result.found)return std::nullopt;
+        Hash256 hash{};std::copy_n(result.hash,32,hash.begin());
+        return ShareCandidate{job.job_id,result.nonce,hash};
+    }catch(...){if(dresult)cudaFree(dresult);if(dh)cudaFree(dh);throw;}
 }
 } // namespace pepepow
