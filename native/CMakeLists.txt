@@ -4,8 +4,8 @@ project(PepePowMiner VERSION 0.1.3 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
-option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
-set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
+option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" ON)
+set(PEPEPOW_CUDA_MAX_REGISTERS "128" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_ARCHITECTURES "70;86" CACHE STRING "CUDA architectures for release builds (Tesla V100 sm_70; RTX 3080 sm_86)")
 
 set(CMAKE_CXX_STANDARD 20)
@@ -63,12 +63,14 @@ if(PEPEPOW_ENABLE_CUDA)
     target_include_directories(pepepow_cuda PUBLIC include)
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
     set_target_properties(pepepow_cuda PROPERTIES
-        CUDA_STANDARD 20
+        CUDA_STANDARD 17
         CUDA_STANDARD_REQUIRED ON
         CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"
         CUDA_SEPARABLE_COMPILATION OFF
     )
 
+    # HooHashV110 is floating-point consensus-sensitive. These flags mirror the
+    # validated reference CUDA TU; do not enable fast-math or FMA contraction.
     target_compile_options(pepepow_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
         $<$<COMPILE_LANGUAGE:CUDA>:--prec-div=true>
