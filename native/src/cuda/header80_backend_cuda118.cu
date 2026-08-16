@@ -1,0 +1,209 @@
+#include "pepepow/cuda/header80_backend.hpp"
+#include "pepepow/core/header_builder.hpp"
+#include "pepepow/mining/target.hpp"
+
+#include <cuda_runtime.h>
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace pepepow {
+namespace {
+constexpr std::size_t kHeaderSize = 80;
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kEpsilon = 1e-9;
+constexpr double kTM = 0.000001;
+constexpr std::uint32_t kChunkStart = 1U;
+constexpr std::uint32_t kChunkEnd = 2U;
+constexpr std::uint32_t kRoot = 8U;
+
+__device__ double d_matrix[64][64];
+__device__ __constant__ std::uint32_t kIv[8] = {
+    0x6A09E667U,0xBB67AE85U,0x3C6EF372U,0xA54FF53AU,
+    0x510E527FU,0x9B05688CU,0x1F83D9ABU,0x5BE0CD19U};
+__device__ __constant__ std::uint8_t kSchedule[7][16] = {
+    {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15},
+    {2,6,3,10,7,0,4,13,1,11,12,5,9,14,15,8},
+    {3,4,10,12,13,2,7,14,6,5,9,0,11,15,8,1},
+    {10,7,12,9,14,3,13,15,4,0,11,2,5,8,1,6},
+    {12,13,9,11,15,10,14,8,7,2,5,3,0,1,6,4},
+    {9,14,11,5,8,12,15,1,13,3,0,10,2,6,4,7},
+    {11,15,5,0,1,9,8,6,14,10,2,12,3,4,7,13}};
+
+void cuda_check(cudaError_t rc, const char* what) {
+    if (rc != cudaSuccess) throw std::runtime_error(std::string(what)+": "+cudaGetErrorString(rc));
+}
+__device__ __forceinline__ std::uint32_t rotr(std::uint32_t x,int n){return __funnelshift_r(x,x,n);}
+__device__ __forceinline__ void g(std::uint32_t& a,std::uint32_t& b,std::uint32_t& c,std::uint32_t& d,std::uint32_t mx,std::uint32_t my){
+    a=a+b+mx; d=rotr(d^a,16); c+=d; b=rotr(b^c,12);
+    a=a+b+my; d=rotr(d^a,8); c+=d; b=rotr(b^c,7);
+}
+__device__ void compress(const std::uint32_t cv[8],const std::uint32_t block[16],std::uint32_t len,std::uint32_t flags,std::uint32_t out[16]){
+    std::uint32_t v[16];
+    #pragma unroll
+    for(int i=0;i<8;++i)v[i]=cv[i];
+    #pragma unroll
+    for(int i=0;i<4;++i)v[8+i]=kIv[i];
+    v[12]=0;v[13]=0;v[14]=len;v[15]=flags;
+    #pragma unroll
+    for(int r=0;r<7;++r){
+        const std::uint8_t* s=kSchedule[r];
+        g(v[0],v[4],v[8],v[12],block[s[0]],block[s[1]]);
+        g(v[1],v[5],v[9],v[13],block[s[2]],block[s[3]]);
+        g(v[2],v[6],v[10],v[14],block[s[4]],block[s[5]]);
+        g(v[3],v[7],v[11],v[15],block[s[6]],block[s[7]]);
+        g(v[0],v[5],v[10],v[15],block[s[8]],block[s[9]]);
+        g(v[1],v[6],v[11],v[12],block[s[10]],block[s[11]]);
+        g(v[2],v[7],v[8],v[13],block[s[12]],block[s[13]]);
+        g(v[3],v[4],v[9],v[14],block[s[14]],block[s[15]]);
+    }
+    #pragma unroll
+    for(int i=0;i<8;++i){out[i]=v[i]^v[i+8];out[i+8]=v[i+8]^cv[i];}
+}
+__device__ __forceinline__ std::uint32_t le32(const std::uint8_t* p){return std::uint32_t(p[0])|(std::uint32_t(p[1])<<8)|(std::uint32_t(p[2])<<16)|(std::uint32_t(p[3])<<24);}
+__device__ __forceinline__ std::uint32_t be32(const std::uint8_t* p){return (std::uint32_t(p[0])<<24)|(std::uint32_t(p[1])<<16)|(std::uint32_t(p[2])<<8)|std::uint32_t(p[3]);}
+__device__ __forceinline__ std::uint64_t le64(const std::uint8_t* p){std::uint64_t v=0;for(int i=0;i<8;++i)v|=std::uint64_t(p[i])<<(8*i);return v;}
+__device__ __forceinline__ void put_le32(std::uint8_t* p,std::uint32_t v){p[0]=v;p[1]=v>>8;p[2]=v>>16;p[3]=v>>24;}
+__device__ __forceinline__ void put_be32(std::uint8_t* p,std::uint32_t v){p[0]=v>>24;p[1]=v>>16;p[2]=v>>8;p[3]=v;}
+
+__device__ void blake80(const std::uint8_t in[80],std::uint8_t out[32]){
+    std::uint32_t cv[8],b[16],c[16];
+    #pragma unroll
+    for(int i=0;i<8;++i)cv[i]=kIv[i];
+    #pragma unroll
+    for(int i=0;i<16;++i)b[i]=le32(in+4*i);
+    compress(cv,b,64,kChunkStart,c);
+    #pragma unroll
+    for(int i=0;i<8;++i)cv[i]=c[i];
+    #pragma unroll
+    for(int i=0;i<16;++i)b[i]=0;
+    #pragma unroll
+    for(int i=0;i<4;++i)b[i]=le32(in+64+4*i);
+    compress(cv,b,16,kChunkEnd|kRoot,c);
+    #pragma unroll
+    for(int i=0;i<8;++i)put_le32(out+4*i,c[i]);
+}
+__device__ void blake32(const std::uint8_t in[32],std::uint8_t out[32]){
+    std::uint32_t cv[8],b[16],c[16];
+    #pragma unroll
+    for(int i=0;i<8;++i)cv[i]=kIv[i];
+    #pragma unroll
+    for(int i=0;i<16;++i)b[i]=0;
+    #pragma unroll
+    for(int i=0;i<8;++i)b[i]=le32(in+4*i);
+    compress(cv,b,32,kChunkStart|kChunkEnd|kRoot,c);
+    #pragma unroll
+    for(int i=0;i<8;++i)put_le32(out+4*i,c[i]);
+}
+
+struct Xoshiro{std::uint64_t s0,s1,s2,s3;};
+__device__ __forceinline__ std::uint64_t rol64(std::uint64_t x,int k){return (x<<k)|(x>>(64-k));}
+__device__ __forceinline__ std::uint64_t xnext(Xoshiro& s){
+    const std::uint64_t result=rol64(s.s0+s.s3,23)+s.s0;
+    const std::uint64_t t=s.s1<<17;
+    s.s2^=s.s0;s.s3^=s.s1;s.s1^=s.s2;s.s0^=s.s3;s.s2^=t;s.s3=rol64(s.s3,45);return result;
+}
+__global__ void matrix_kernel(const std::uint8_t* header){
+    if(blockIdx.x||threadIdx.x)return;
+    std::uint8_t masked[80];
+    #pragma unroll
+    for(int i=0;i<80;++i)masked[i]=header[i];
+    masked[76]=masked[77]=masked[78]=masked[79]=0;
+    std::uint8_t seed[32];blake80(masked,seed);
+    Xoshiro s{le64(seed),le64(seed+8),le64(seed+16),le64(seed+24)};
+    for(int i=0;i<64;++i)for(int j=0;j<64;++j){
+        const std::uint32_t low=static_cast<std::uint32_t>(xnext(s));
+        d_matrix[i][j]=static_cast<double>(low)/static_cast<double>(0xffffffffU)*1000000.0;
+    }
+}
+
+__device__ __forceinline__ double complex_transform(double x){
+    const double one=(x*kTM)/8.0-floor((x*kTM)/8.0);
+    const double two=(x*kTM)/4.0-floor((x*kTM)/4.0);
+    double y;
+    if(two<0.25)y=x+(1.0+two);else if(two<0.50)y=x-(1.0+two);else if(two<0.75)y=x*(1.0+two);else y=x/(1.0+two);
+    if(one<0.33){double s,c;sincos(y,&s,&c);return exp(s+c);}
+    if(one<0.66){if(fabs(y-kPi/2.0)<kEpsilon||fabs(y-3.0*kPi/2.0)<kEpsilon)return 0.0;const double s=sin(y);return s*s;}
+    return 1.0/sqrt(fabs(y)+1.0);
+}
+__device__ __forceinline__ double safe_complex(double input){
+    double rounds=1.0;const double value=complex_transform(input);
+    while(isnan(value)||isinf(value)){input*=0.1;if(input<=1e-13)return 0.0;rounds+=1.0;}return value*rounds;
+}
+__device__ void mix(const std::uint8_t first[32],std::uint8_t out[32],std::uint32_t nonce){
+    std::uint8_t vec[64];double prod[64]={0.0};std::uint32_t h[8];
+    #pragma unroll
+    for(int i=0;i<8;++i)h[i]=be32(first+4*i);
+    const double hm=static_cast<double>(h[0]^h[1]^h[2]^h[3]^h[4]^h[5]^h[6]^h[7]);
+    const double nm=static_cast<double>(nonce&0xffU);
+    #pragma unroll
+    for(int i=0;i<32;++i){vec[2*i]=first[i]>>4;vec[2*i+1]=first[i]&0xf;}
+    double sw=0.0;
+    for(int i=0;i<64;++i)for(int j=0;j<64;++j){
+        if(sw<=0.02){const double x=d_matrix[i][j]*hm*static_cast<double>(vec[j])+nm;prod[i]+=safe_complex(x)*static_cast<double>(vec[j])*1234.0;}
+        else prod[i]+=d_matrix[i][j]*0.0001*static_cast<double>(vec[j]);
+        sw=prod[i]/1024.0-floor(prod[i]/1024.0);
+    }
+    #pragma unroll
+    for(int i=0;i<32;++i){const std::uint64_t p=static_cast<std::uint64_t>(prod[2*i])+static_cast<std::uint64_t>(prod[2*i+1]);out[i]=first[i]^static_cast<std::uint8_t>(p&0xffU);}
+}
+
+template<bool Capture>
+__device__ void hash_one(const std::uint8_t* base,std::uint32_t nonce,std::uint8_t* final,std::uint8_t* cap1,std::uint8_t* cap2){
+    std::uint8_t header[80];
+    #pragma unroll
+    for(int i=0;i<80;++i)header[i]=base[i];
+    put_be32(header+76,nonce);
+    std::uint8_t first[32],mixed[32];blake80(header,first);mix(first,mixed,le32(header+76));blake32(mixed,final);
+    if(Capture){
+        #pragma unroll
+        for(int i=0;i<32;++i){cap1[i]=first[i];cap2[i]=mixed[i];}
+    }
+}
+__global__ void pow_kernel(const std::uint8_t* base,std::uint32_t first,std::uint8_t* hashes,std::size_t count){
+    const std::size_t idx=std::size_t(blockIdx.x)*blockDim.x+threadIdx.x;if(idx>=count)return;hash_one<false>(base,first+static_cast<std::uint32_t>(idx),hashes+32*idx,nullptr,nullptr);
+}
+__global__ void diag_kernel(const std::uint8_t* base,std::uint32_t nonce,std::uint8_t* first,std::uint8_t* mixed,std::uint8_t* final){if(blockIdx.x||threadIdx.x)return;hash_one<true>(base,nonce,final,first,mixed);}
+
+Header80 make_header(const MiningJob& job,std::uint32_t nonce){MiningJob j=job;j.nonce=nonce;return build_header80(j);}
+void prepare(int device,const Header80& header,std::uint8_t** d_header){
+    cuda_check(cudaSetDevice(device),"cudaSetDevice");
+    cuda_check(cudaMalloc(reinterpret_cast<void**>(d_header),80),"cudaMalloc header");
+    cuda_check(cudaMemcpy(*d_header,header.data(),80,cudaMemcpyHostToDevice),"cudaMemcpy header");
+    matrix_kernel<<<1,1>>>(*d_header);cuda_check(cudaGetLastError(),"matrix_kernel launch");cuda_check(cudaDeviceSynchronize(),"matrix_kernel sync");
+}
+} // namespace
+
+Header80CudaBackend::Header80CudaBackend(int device_index):device_index_(device_index){}
+std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-cuda118";}
+std::vector<DeviceInfo> Header80CudaBackend::enumerate_devices() const{
+    int n=0;cuda_check(cudaGetDeviceCount(&n),"cudaGetDeviceCount");std::vector<DeviceInfo> out;out.reserve(static_cast<std::size_t>(n));
+    for(int i=0;i<n;++i){cudaDeviceProp p{};cuda_check(cudaGetDeviceProperties(&p,i),"cudaGetDeviceProperties");out.push_back(DeviceInfo{i,p.name,p.major,p.minor,p.totalGlobalMem});}return out;
+}
+Header80CudaDiagnostics Header80CudaBackend::diagnose(const MiningJob& job,std::uint32_t nonce){
+    const Header80 header=make_header(job,nonce);std::uint8_t *dh=nullptr,*d1=nullptr,*d2=nullptr,*df=nullptr;prepare(device_index_,header,&dh);
+    try{
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&d1),32),"cudaMalloc diag first");cuda_check(cudaMalloc(reinterpret_cast<void**>(&d2),32),"cudaMalloc diag mixed");cuda_check(cudaMalloc(reinterpret_cast<void**>(&df),32),"cudaMalloc diag final");
+        diag_kernel<<<1,1>>>(dh,nonce,d1,d2,df);cuda_check(cudaGetLastError(),"diag launch");cuda_check(cudaDeviceSynchronize(),"diag sync");
+        Header80CudaDiagnostics r{};cuda_check(cudaMemcpy(r.first_pass.data(),d1,32,cudaMemcpyDeviceToHost),"copy diag first");cuda_check(cudaMemcpy(r.mixed.data(),d2,32,cudaMemcpyDeviceToHost),"copy diag mixed");cuda_check(cudaMemcpy(r.final_hash.data(),df,32,cudaMemcpyDeviceToHost),"copy diag final");
+        cudaFree(df);cudaFree(d2);cudaFree(d1);cudaFree(dh);return r;
+    }catch(...){if(df)cudaFree(df);if(d2)cudaFree(d2);if(d1)cudaFree(d1);if(dh)cudaFree(dh);throw;}
+}
+std::optional<ShareCandidate> Header80CudaBackend::search(const MiningJob& job,SearchRange range,const Hash256& target){
+    if(range.count==0||range.begin>std::numeric_limits<std::uint32_t>::max())return std::nullopt;
+    const std::uint64_t avail=0x100000000ULL-range.begin;const std::size_t count=static_cast<std::size_t>(std::min(range.count,avail));if(!count)return std::nullopt;
+    const Header80 header=make_header(job,static_cast<std::uint32_t>(range.begin));std::uint8_t *dh=nullptr,*dhash=nullptr;prepare(device_index_,header,&dh);
+    try{
+        const std::size_t bytes=count*32;cuda_check(cudaMalloc(reinterpret_cast<void**>(&dhash),bytes),"cudaMalloc hashes");constexpr unsigned threads=64;const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
+        pow_kernel<<<blocks,threads>>>(dh,static_cast<std::uint32_t>(range.begin),dhash,count);cuda_check(cudaGetLastError(),"pow launch");cuda_check(cudaDeviceSynchronize(),"pow sync");
+        std::vector<std::uint8_t> hashes(bytes);cuda_check(cudaMemcpy(hashes.data(),dhash,bytes,cudaMemcpyDeviceToHost),"copy hashes");cudaFree(dhash);cudaFree(dh);dhash=dh=nullptr;
+        for(std::size_t i=0;i<count;++i){Hash256 h{};std::copy_n(hashes.begin()+static_cast<std::ptrdiff_t>(32*i),32,h.begin());if(mining::hash_meets_target_be(h,target))return ShareCandidate{job.job_id,static_cast<std::uint32_t>(range.begin+i),h};}
+        return std::nullopt;
+    }catch(...){if(dhash)cudaFree(dhash);if(dh)cudaFree(dh);throw;}
+}
+} // namespace pepepow
