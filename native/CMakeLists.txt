@@ -57,11 +57,8 @@ endif()
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
 
-    # Production miner uses only the canonical 80-byte PEPEPOW/HooHashV110 path.
-    # Keep that translation unit C++17-compatible so it can be built by CUDA 11.8,
-    # the toolkit generation used by the known-working reference implementation.
     add_library(pepepow_cuda
-        src/cuda/header80_backend_legacy.cu
+        src/cuda/header80_backend_cuda118.cu
     )
     target_include_directories(pepepow_cuda PUBLIC include)
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
@@ -72,7 +69,6 @@ if(PEPEPOW_ENABLE_CUDA)
         CUDA_SEPARABLE_COMPILATION OFF
     )
 
-    # HooHashV110 is consensus-sensitive to floating-point behavior.
     target_compile_options(pepepow_cuda PRIVATE
         $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>
         $<$<COMPILE_LANGUAGE:CUDA>:--prec-div=true>
