@@ -1,0 +1,77 @@
+name: PepeW V100 Hardware Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_seconds:
+        description: Measurement duration in seconds
+        required: true
+        default: "180"
+      min_mhs:
+        description: Minimum average V100 hashrate before regression failure
+        required: true
+        default: "4.50"
+      leave_running:
+        description: Leave successful miner running after the test
+        type: choice
+        options:
+          - "1"
+          - "0"
+        default: "1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pepew-v100-hardware-test
+  cancel-in-progress: false
+
+jobs:
+  v100:
+    # Register this runner only in a PRIVATE PepePow_Lab repository.
+    runs-on: [self-hosted, linux, pepew-v100]
+    timeout-minutes: 15
+    env:
+      PEPEW_TEST_SECONDS: ${{ inputs.test_seconds }}
+      PEPEW_MIN_MHS: ${{ inputs.min_mhs }}
+      PEPEW_LEAVE_RUNNING: ${{ inputs.leave_running }}
+      PEPEW_WARMUP_SECONDS: "30"
+      PEPEW_SAMPLE_SECONDS: "5"
+      PEPEW_MAX_REJECTED: "0"
+      PEPEW_MAX_RECONNECTS: "1"
+      PEPEW_REPORT_DIR: ${{ github.workspace }}/results
+      PEPEW_ASSET_URL: https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-test/PepeW-Miner-HiveOS.tar.gz
+
+    steps:
+      - name: Checkout lab repository
+        uses: actions/checkout@v4
+
+      - name: Run V100 hardware test
+        shell: bash
+        run: |
+          if [ "$(id -u)" -eq 0 ]; then
+            bash ./scripts/pepew-hardware-test.sh
+          else
+            sudo -E bash ./scripts/pepew-hardware-test.sh
+          fi
+
+      - name: Add result to job summary
+        if: always()
+        shell: bash
+        run: |
+          report=$(find results -name report.json -type f 2>/dev/null | sort | tail -n1)
+          if [ -n "$report" ]; then
+            echo '## PepeW V100 hardware result' >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload hardware report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-hardware-${{ github.run_number }}
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
