@@ -2,6 +2,9 @@
 #include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
 #ifdef PEPEPOW_HAS_CUDA
+#include "pepepow/core/header_builder.hpp"
+#include "pepepow/crypto/blake3.hpp"
+#include "pepepow/crypto/hoohash_reference.hpp"
 #include "pepepow/cuda/header80_backend.hpp"
 #endif
 
@@ -52,10 +55,35 @@ std::string format_uptime(std::uint64_t total_seconds) {
 }
 
 #ifdef PEPEPOW_HAS_CUDA
-void run_hoohash_consensus_self_test(pepepow::MiningBackend& backend) {
-    // Real PEPEPOW block KAT, height 0x4734dd. This validates the actual CUDA
-    // mining path (header byte order, matrix seed, FP behavior and final digest)
-    // on the installed GPU before any pool work is accepted.
+std::string hash_hex(const pepepow::Hash256& hash) {
+    std::ostringstream stream;
+    stream << std::hex << std::nouppercase << std::setfill('0');
+    for (const auto byte : hash) {
+        stream << std::setw(2) << static_cast<unsigned int>(byte);
+    }
+    return stream.str();
+}
+
+std::uint32_t load_le32_host(const std::uint8_t* value) noexcept {
+    return static_cast<std::uint32_t>(value[0]) |
+           (static_cast<std::uint32_t>(value[1]) << 8U) |
+           (static_cast<std::uint32_t>(value[2]) << 16U) |
+           (static_cast<std::uint32_t>(value[3]) << 24U);
+}
+
+void print_kat_stage(
+    std::string_view stage,
+    const pepepow::Hash256& cpu,
+    const pepepow::Hash256& gpu) {
+    std::cout << "KAT " << stage << " CPU=" << hash_hex(cpu) << '\n'
+              << "KAT " << stage << " GPU=" << hash_hex(gpu) << '\n'
+              << "KAT " << stage << ' ' << (cpu == gpu ? "MATCH" : "MISMATCH") << '\n';
+}
+
+void run_hoohash_consensus_self_test(pepepow::Header80CudaBackend& backend) {
+    // Real PEPEPOW block KAT, height 0x4734dd. Besides the final consensus
+    // digest, capture the GPU first BLAKE3 and pre-final mixed buffer. That
+    // localizes V100/sm_70 failures without ever allowing an invalid share.
     pepepow::MiningJob job;
     job.job_id = "hoohash-v110-real-block-kat";
     job.version = 0x20004000U;
@@ -78,15 +106,33 @@ void run_hoohash_consensus_self_test(pepepow::MiningBackend& backend) {
         0x1e,0x79,0xfd,0x0e,0x33,0x03,0xc5,0x14,
         0xaf,0x06,0xbc,0x1b,0x9f,0x26,0xd6,0xa9,
         0x94,0xb6,0x5e,0xb6,0x6d,0x17,0x84,0x5d};
-    constexpr pepepow::Hash256 maximum_target = [] {
-        pepepow::Hash256 value{};
-        value.fill(0xffU);
-        return value;
-    }();
 
-    const auto result = backend.search(
-        job, pepepow::SearchRange{job.nonce, 1U}, maximum_target);
-    if (!result.has_value() || result->nonce != job.nonce || result->hash != expected) {
+    const pepepow::Header80 header = pepepow::build_header80(job);
+    pepepow::Header80 masked_header = header;
+    masked_header[76] = 0;
+    masked_header[77] = 0;
+    masked_header[78] = 0;
+    masked_header[79] = 0;
+
+    const auto cpu_first = pepepow::crypto::blake3_hash(header);
+    const auto matrix_seed = pepepow::crypto::blake3_hash(masked_header);
+    const auto cpu_matrix = pepepow::crypto::generate_hoohash_matrix(matrix_seed);
+    const auto cpu_nonce = load_le32_host(header.data() + 76);
+    const auto cpu_mixed = pepepow::crypto::hoohash_matrix_mix(
+        cpu_matrix, cpu_first, cpu_nonce);
+    const auto cpu_final = pepepow::crypto::blake3_hash(cpu_mixed);
+
+    const auto gpu = backend.diagnose(job, job.nonce);
+
+    std::cout << "HooHashV110 CUDA KAT diagnostics (real block 0x4734dd)\n";
+    print_kat_stage("first_pass", cpu_first, gpu.first_pass);
+    print_kat_stage("mixed", cpu_mixed, gpu.mixed);
+    print_kat_stage("final", cpu_final, gpu.final_hash);
+    std::cout << "KAT expected final=" << hash_hex(expected) << '\n';
+    std::cout << "KAT CPU consensus=" << (cpu_final == expected ? "PASS" : "FAIL") << '\n';
+    std::cout << "KAT GPU consensus=" << (gpu.final_hash == expected ? "PASS" : "FAIL") << '\n';
+
+    if (gpu.final_hash != expected) {
         throw std::runtime_error(
             "HooHashV110 CUDA consensus self-test FAILED; refusing to mine");
     }
@@ -106,6 +152,7 @@ void print_help() {
         << "  -p, --pass PASSWORD  Pool password, default x\n"
         << "      --pepepow        Select PEPEPOW/HooHash V110 mode\n"
         << "      --list-gpu       List detected devices and exit\n"
+        << "      --kat-only       Run CUDA consensus diagnostics and exit\n"
         << "  -h, --help           Show this help\n";
 }
 
@@ -265,6 +312,7 @@ int main(int argc, char** argv) {
         std::string username;
         std::string password{"x"};
         bool list_gpu = false;
+        bool kat_only = false;
 
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
@@ -278,6 +326,7 @@ int main(int argc, char** argv) {
             else if (argument == "-u" || argument == "--user") username = take_value("user");
             else if (argument == "-p" || argument == "--pass") password = take_value("pass");
             else if (argument == "--list-gpu") list_gpu = true;
+            else if (argument == "--kat-only") kat_only = true;
             else if (argument == "--pepepow" || argument == "--no-longpoll") {}
             else if (argument == "-h" || argument == "--help") { print_help(); return 0; }
             else throw std::invalid_argument("unknown argument: " + argument);
@@ -304,7 +353,11 @@ int main(int argc, char** argv) {
         if (devices.empty()) throw std::runtime_error("no mining device available");
 
 #ifdef PEPEPOW_HAS_CUDA
-        run_hoohash_consensus_self_test(*backend);
+        run_hoohash_consensus_self_test(
+            static_cast<pepepow::Header80CudaBackend&>(*backend));
+        if (kat_only) return 0;
+#else
+        if (kat_only) throw std::runtime_error("--kat-only requires a CUDA build");
 #endif
 
         if (pool.empty() || username.empty()) {
