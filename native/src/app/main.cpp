@@ -45,6 +45,19 @@ std::string encode_submit_nonce(std::uint32_t value) {
     return stream.str();
 }
 
+std::string encode_extranonce2_counter(std::uint64_t value, std::size_t bytes) {
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string encoded(bytes * 2U, '0');
+    const std::size_t significant_bytes = bytes < 8U ? bytes : 8U;
+    for (std::size_t i = 0; i < significant_bytes; ++i) {
+        const auto byte = static_cast<std::uint8_t>((value >> (8U * i)) & 0xffU);
+        const std::size_t position = (bytes - 1U - i) * 2U;
+        encoded[position] = hex[(byte >> 4U) & 0x0fU];
+        encoded[position + 1U] = hex[byte & 0x0fU];
+    }
+    return encoded;
+}
+
 std::string format_uptime(std::uint64_t total_seconds) {
     const auto hours = total_seconds / 3600U;
     const auto minutes = (total_seconds % 3600U) / 60U;
@@ -142,7 +155,6 @@ void print_help() {
 
 struct WorkItem {
     pepepow::stratum::Job stratum_job;
-    std::string extranonce2;
     std::uint64_t generation{0};
 };
 
@@ -169,8 +181,7 @@ public:
 
     void set_job(const pepepow::stratum::Job& job) {
         std::lock_guard lock(mutex_);
-        const std::string extranonce2(job.extranonce2_size * 2U, '0');
-        latest_ = WorkItem{job, extranonce2, ++generation_};
+        latest_ = WorkItem{job, ++generation_};
         condition_.notify_one();
     }
 
@@ -208,8 +219,6 @@ private:
     }
 
     void run() {
-        // Match the PEPEPOW reference launch throughput. 262,144 nonces amortizes
-        // CUDA allocation/setup/synchronization while keeping job-switch latency low.
         constexpr std::uint64_t chunk_size = 1ULL << 18;
         const std::uint64_t nonce_stride = chunk_size * static_cast<std::uint64_t>(worker_count_);
         bool stats_window_active = false;
@@ -227,49 +236,85 @@ private:
             }
 
             try {
-                auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, item.extranonce2);
-                const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
-                std::uint64_t nonce = static_cast<std::uint64_t>(worker_slot_) * chunk_size;
-                {
-                    std::lock_guard output_lock(output_mutex);
-                    std::cout << "Mining job " << mining_job.job_id << " GPU=" << device_index_
-                              << " difficulty=" << item.stratum_job.difficulty << " backend=" << backend_.name() << '\n';
+                if (item.stratum_job.extranonce2_size == 0U) {
+                    throw std::runtime_error("pool returned extranonce2_size=0; cannot roll nonce space safely");
                 }
+                const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
+                std::uint64_t extranonce2_counter = 0;
 
-                while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
+                while (!stopped_.load() && item.generation == generation_.load()) {
                     if (!client_.connected()) {
                         emit_stats(0.0, "disconnected");
-                        stats_window_active = false; stats_window_hashes = 0; break;
-                    }
-                    if (!stats_window_active) {
-                        stats_window_start = Clock::now(); stats_window_hashes = 0; stats_window_active = true;
-                    }
-
-                    const std::uint64_t remaining = 0x100000000ULL - nonce;
-                    const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
-                    const auto candidate = backend_.search(mining_job, pepepow::SearchRange{nonce, count}, target);
-                    stats_window_hashes += count;
-
-                    const auto now = Clock::now();
-                    const auto elapsed = now - stats_window_start;
-                    if (elapsed >= kStatsInterval) {
-                        const double seconds = std::chrono::duration<double>(elapsed).count();
-                        emit_stats(static_cast<double>(stats_window_hashes) / seconds / 1'000'000.0, "online");
-                        stats_window_start = now; stats_window_hashes = 0;
+                        stats_window_active = false;
+                        stats_window_hashes = 0;
+                        break;
                     }
 
-                    if (candidate.has_value()) {
-                        pepepow::stratum::Share share;
-                        share.job_id = item.stratum_job.job_id;
-                        share.extranonce2 = item.extranonce2;
-                        share.ntime = item.stratum_job.ntime;
-                        share.nonce = encode_submit_nonce(candidate->nonce);
-                        if (!client_.submit(share)) {
+                    const std::string extranonce2 = encode_extranonce2_counter(extranonce2_counter, item.stratum_job.extranonce2_size);
+                    auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, extranonce2);
+                    std::uint64_t nonce = static_cast<std::uint64_t>(worker_slot_) * chunk_size;
+
+                    {
+                        std::lock_guard output_lock(output_mutex);
+                        std::cout << "Mining job " << mining_job.job_id << " GPU=" << device_index_
+                                  << " difficulty=" << item.stratum_job.difficulty
+                                  << " extranonce2=" << extranonce2
+                                  << " backend=" << backend_.name() << '\n';
+                    }
+
+                    while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
+                        if (!client_.connected()) {
                             emit_stats(0.0, "disconnected");
-                            stats_window_active = false; stats_window_hashes = 0; break;
+                            stats_window_active = false;
+                            stats_window_hashes = 0;
+                            break;
                         }
+                        if (!stats_window_active) {
+                            stats_window_start = Clock::now();
+                            stats_window_hashes = 0;
+                            stats_window_active = true;
+                        }
+
+                        const std::uint64_t remaining = 0x100000000ULL - nonce;
+                        const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
+                        const auto candidate = backend_.search(mining_job, pepepow::SearchRange{nonce, count}, target);
+                        stats_window_hashes += count;
+
+                        const auto now = Clock::now();
+                        const auto elapsed = now - stats_window_start;
+                        if (elapsed >= kStatsInterval) {
+                            const double seconds = std::chrono::duration<double>(elapsed).count();
+                            emit_stats(static_cast<double>(stats_window_hashes) / seconds / 1'000'000.0, "online");
+                            stats_window_start = now;
+                            stats_window_hashes = 0;
+                        }
+
+                        if (candidate.has_value()) {
+                            pepepow::stratum::Share share;
+                            share.job_id = item.stratum_job.job_id;
+                            share.extranonce2 = extranonce2;
+                            share.ntime = item.stratum_job.ntime;
+                            share.nonce = encode_submit_nonce(candidate->nonce);
+                            if (!client_.submit(share)) {
+                                emit_stats(0.0, "disconnected");
+                                stats_window_active = false;
+                                stats_window_hashes = 0;
+                                break;
+                            }
+                        }
+                        nonce += nonce_stride;
                     }
-                    nonce += nonce_stride;
+
+                    if (stopped_.load() || item.generation != generation_.load() || !client_.connected()) break;
+
+                    ++extranonce2_counter;
+                    {
+                        std::lock_guard output_lock(output_mutex);
+                        std::cout << "[SPACE] GPU" << device_index_
+                                  << " exhausted assigned 32-bit nonce space; rolling extranonce2 to "
+                                  << encode_extranonce2_counter(extranonce2_counter, item.stratum_job.extranonce2_size)
+                                  << " and continuing without idle time\n";
+                    }
                 }
             } catch (const std::exception& error) {
                 std::lock_guard output_lock(output_mutex);
