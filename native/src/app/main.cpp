@@ -19,15 +19,18 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 pepepow::stratum::Client* active_client = nullptr;
 constexpr auto kStatsInterval = std::chrono::seconds(5);
+std::mutex output_mutex;
 
 void signal_handler(int) {
     if (active_client != nullptr) active_client->stop();
@@ -162,10 +165,38 @@ struct WorkItem {
     std::uint64_t generation{0};
 };
 
+class MiningStatsRegistry {
+public:
+    explicit MiningStatsRegistry(std::size_t gpu_count)
+        : per_gpu_mhs_(gpu_count, 0.0) {}
+
+    double update(std::size_t slot, double mhs) {
+        std::lock_guard lock(mutex_);
+        if (slot < per_gpu_mhs_.size()) per_gpu_mhs_[slot] = mhs;
+        return std::accumulate(per_gpu_mhs_.begin(), per_gpu_mhs_.end(), 0.0);
+    }
+
+private:
+    std::mutex mutex_;
+    std::vector<double> per_gpu_mhs_;
+};
+
 class MiningWorker {
 public:
-    MiningWorker(pepepow::MiningBackend& backend, pepepow::stratum::Client& client)
-        : backend_(backend), client_(client), thread_([this] { run(); }) {}
+    MiningWorker(
+        pepepow::MiningBackend& backend,
+        pepepow::stratum::Client& client,
+        std::size_t worker_slot,
+        int device_index,
+        std::size_t worker_count,
+        MiningStatsRegistry& stats_registry)
+        : backend_(backend),
+          client_(client),
+          worker_slot_(worker_slot),
+          device_index_(device_index),
+          worker_count_(worker_count),
+          stats_registry_(stats_registry),
+          thread_([this] { run(); }) {}
 
     ~MiningWorker() { stop(); }
 
@@ -193,25 +224,38 @@ public:
 private:
     using Clock = std::chrono::steady_clock;
 
-    void emit_stats(double megahashes_per_second, std::string_view state) const {
+    void emit_stats(double megahashes_per_second, std::string_view state) {
         const auto now = Clock::now();
         const auto uptime = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::seconds>(now - started_at_).count());
         const auto pool_stats = client_.stats();
+        const double total_mhs = stats_registry_.update(worker_slot_, megahashes_per_second);
 
-        std::ostringstream line;
-        line << std::fixed << std::setprecision(3)
-             << "[MINING] " << megahashes_per_second << " MH/s"
-             << " | A " << pool_stats.accepted
-             << " | R " << pool_stats.rejected
-             << " | UP " << format_uptime(uptime)
-             << " | REC " << pool_stats.reconnects
-             << " | STATE " << state;
-        std::cout << line.str() << '\n';
+        std::ostringstream gpu_line;
+        gpu_line << std::fixed << std::setprecision(3)
+                 << "[GPU" << device_index_ << "] " << megahashes_per_second << " MH/s"
+                 << " | A " << pool_stats.accepted
+                 << " | R " << pool_stats.rejected
+                 << " | UP " << format_uptime(uptime)
+                 << " | REC " << pool_stats.reconnects
+                 << " | STATE " << state;
+
+        std::ostringstream total_line;
+        total_line << std::fixed << std::setprecision(3)
+                   << "[MINING] " << total_mhs << " MH/s"
+                   << " | A " << pool_stats.accepted
+                   << " | R " << pool_stats.rejected
+                   << " | UP " << format_uptime(uptime)
+                   << " | REC " << pool_stats.reconnects
+                   << " | STATE " << state;
+
+        std::lock_guard output_lock(output_mutex);
+        std::cout << gpu_line.str() << '\n' << total_line.str() << '\n';
     }
 
     void run() {
         constexpr std::uint64_t chunk_size = 65536;
+        const std::uint64_t nonce_stride = chunk_size * static_cast<std::uint64_t>(worker_count_);
         bool stats_window_active = false;
         std::uint64_t stats_window_hashes = 0;
         Clock::time_point stats_window_start{};
@@ -231,11 +275,15 @@ private:
                 // PEPEPOW/HooHashV110 uses the pool's Stratum difficulty directly
                 // with the standard 0xffff diff1 target. No 65,536 scale factor.
                 const auto target = pepepow::mining::target_from_difficulty(item.stratum_job.difficulty);
-                std::uint64_t nonce = 0;
+                std::uint64_t nonce = static_cast<std::uint64_t>(worker_slot_) * chunk_size;
 
-                std::cout << "Mining job " << mining_job.job_id
-                          << " difficulty=" << item.stratum_job.difficulty
-                          << " backend=" << backend_.name() << '\n';
+                {
+                    std::lock_guard output_lock(output_mutex);
+                    std::cout << "Mining job " << mining_job.job_id
+                              << " GPU=" << device_index_
+                              << " difficulty=" << item.stratum_job.difficulty
+                              << " backend=" << backend_.name() << '\n';
+                }
 
                 while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
                     if (!client_.connected()) {
@@ -282,16 +330,21 @@ private:
                             break;
                         }
                     }
-                    nonce += count;
+                    nonce += nonce_stride;
                 }
             } catch (const std::exception& error) {
-                std::cerr << "Worker error: " << error.what() << '\n';
+                std::lock_guard output_lock(output_mutex);
+                std::cerr << "GPU " << device_index_ << " worker error: " << error.what() << '\n';
             }
         }
     }
 
     pepepow::MiningBackend& backend_;
     pepepow::stratum::Client& client_;
+    std::size_t worker_slot_{0};
+    int device_index_{0};
+    std::size_t worker_count_{1};
+    MiningStatsRegistry& stats_registry_;
     std::mutex mutex_;
     std::condition_variable condition_;
     std::optional<WorkItem> latest_;
@@ -332,14 +385,17 @@ int main(int argc, char** argv) {
             else throw std::invalid_argument("unknown argument: " + argument);
         }
 
-        std::unique_ptr<pepepow::MiningBackend> backend;
+        std::vector<std::unique_ptr<pepepow::MiningBackend>> backends;
+        std::vector<pepepow::DeviceInfo> devices;
+
 #ifdef PEPEPOW_HAS_CUDA
-        backend = std::make_unique<pepepow::Header80CudaBackend>(0);
+        pepepow::Header80CudaBackend probe(0);
+        devices = probe.enumerate_devices();
 #else
-        backend = std::make_unique<pepepow::CpuReferenceBackend>();
+        auto cpu_backend = std::make_unique<pepepow::CpuReferenceBackend>();
+        devices = cpu_backend->enumerate_devices();
 #endif
 
-        const auto devices = backend->enumerate_devices();
         if (list_gpu) {
             for (const auto& device : devices) {
                 std::cout << '[' << device.index << "] " << device.name;
@@ -353,10 +409,20 @@ int main(int argc, char** argv) {
         if (devices.empty()) throw std::runtime_error("no mining device available");
 
 #ifdef PEPEPOW_HAS_CUDA
-        run_hoohash_consensus_self_test(
-            static_cast<pepepow::Header80CudaBackend&>(*backend));
+        backends.reserve(devices.size());
+        for (const auto& device : devices) {
+            backends.emplace_back(std::make_unique<pepepow::Header80CudaBackend>(device.index));
+        }
+
+        for (std::size_t i = 0; i < backends.size(); ++i) {
+            std::cout << "Running HooHashV110 consensus KAT on GPU " << devices[i].index
+                      << " (" << devices[i].name << ")\n";
+            run_hoohash_consensus_self_test(
+                static_cast<pepepow::Header80CudaBackend&>(*backends[i]));
+        }
         if (kat_only) return 0;
 #else
+        backends.emplace_back(std::move(cpu_backend));
         if (kat_only) throw std::runtime_error("--kat-only requires a CUDA build");
 #endif
 
@@ -373,17 +439,29 @@ int main(int argc, char** argv) {
         config.agent = "PepePowMiner/0.1.3";
 
         pepepow::stratum::Client client(std::move(config));
-        MiningWorker worker(*backend, client);
+        MiningStatsRegistry stats_registry(backends.size());
+        std::vector<std::unique_ptr<MiningWorker>> workers;
+        workers.reserve(backends.size());
+        for (std::size_t i = 0; i < backends.size(); ++i) {
+            workers.emplace_back(std::make_unique<MiningWorker>(
+                *backends[i],
+                client,
+                i,
+                devices[i].index,
+                backends.size(),
+                stats_registry));
+        }
+
         active_client = &client;
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
 
-        client.set_job_handler([&worker](const pepepow::stratum::Job& job) {
-            worker.set_job(job);
+        client.set_job_handler([&workers](const pepepow::stratum::Job& job) {
+            for (auto& worker : workers) worker->set_job(job);
         });
 
         client.run();
-        worker.stop();
+        for (auto& worker : workers) worker->stop();
         active_client = nullptr;
         return 0;
     } catch (const std::exception& error) {

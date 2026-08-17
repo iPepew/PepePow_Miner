@@ -86,6 +86,7 @@ jobs:
           set -euo pipefail
           bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
 
+          # Generic parser test without a GPU/NVML environment.
           test_log=/tmp/pepew-stats-test
           printf '%s\n' '[MINING] 12.345 MH/s | A 7 | R 1 | UP 00:01:23 | REC 2 | STATE online' > "${test_log}.log"
           stats_result=$(
@@ -98,6 +99,40 @@ jobs:
           grep -F '"uptime":83' <<< "${stats_result}"
           grep -F '"ar":[7,1]' <<< "${stats_result}"
           grep -F '"algo":"hoohash"' <<< "${stats_result}"
+
+          # Deterministic two-GPU Hive mapping test. Tesla SXM devices can report
+          # fan.speed=N/A; the callback must emit numeric zero rather than invent
+          # a fan speed while preserving the other card's real percentage.
+          fakebin=/tmp/pepew-fakebin
+          mkdir -p "${fakebin}"
+          cat > "${fakebin}/nvidia-smi" <<'EOF'
+          #!/usr/bin/env bash
+          if [[ "$*" == *"--query-gpu=index,pci.bus_id,temperature.gpu,fan.speed"* ]]; then
+            printf '%s\n' '0, 00000000:02:00.0, 54, N/A'
+            printf '%s\n' '1, 00000000:85:00.0, 67, 72'
+            exit 0
+          fi
+          exit 1
+          EOF
+          chmod +x "${fakebin}/nvidia-smi"
+
+          printf '%s\n' \
+            '[GPU0] 6.274 MH/s | A 3 | R 0 | UP 00:02:05 | REC 0 | STATE online' \
+            '[GPU1] 5.801 MH/s | A 3 | R 0 | UP 00:02:05 | REC 0 | STATE online' \
+            '[MINING] 12.075 MH/s | A 3 | R 0 | UP 00:02:05 | REC 0 | STATE online' \
+            > "${test_log}.log"
+          multi_stats=$(
+            PATH="${fakebin}:$PATH" \
+            CUSTOM_LOG_BASENAME="${test_log}" \
+            CUSTOM_VERSION="dev-test" \
+            bash -c 'source hiveos/h-stats.sh; printf "%s\n" "$stats"'
+          )
+          printf '%s\n' "${multi_stats}"
+          grep -F '"hs":[6274,5801]' <<< "${multi_stats}"
+          grep -F '"temp":[54,67]' <<< "${multi_stats}"
+          grep -F '"fan":[0,72]' <<< "${multi_stats}"
+          grep -F '"ar":[3,0]' <<< "${multi_stats}"
+          grep -F '"bus_numbers":[2,133]' <<< "${multi_stats}"
 
       - name: Test HiveOS config callback
         run: |
@@ -154,13 +189,15 @@ jobs:
       - name: Validate HiveOS archive layout
         run: |
           set -euo pipefail
-          first_entry="$(tar -tzf "dist/${ASSET_NAME}" | head -n1)"
+          archive_list=/tmp/pepew-hiveos-archive-list.txt
+          tar -tzf "dist/${ASSET_NAME}" > "${archive_list}"
+          first_entry="$(sed -n '1p' "${archive_list}")"
           test "${first_entry}" = "${CUSTOM_MINER_NAME}/"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/h-stats.sh"
-          tar -tzf "dist/${ASSET_NAME}" | grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/h-stats.sh" "${archive_list}"
+          grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer" "${archive_list}"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
