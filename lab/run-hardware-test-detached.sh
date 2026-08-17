@@ -17,7 +17,9 @@ TEST_SECONDS="${PEPEW_TEST_SECONDS:-300}"
 WARMUP_SECONDS="${PEPEW_WARMUP_SECONDS:-30}"
 SAMPLE_SECONDS="${PEPEW_SAMPLE_SECONDS:-5}"
 PROGRESS_SECONDS="${PEPEW_PROGRESS_SECONDS:-5}"
-MIN_MHS="${PEPEW_MIN_MHS:-6.00}"
+# Known-good target-rig baseline is 8.402 MH/s. Keep the automatic regression
+# gate close enough to catch meaningful slowdowns while allowing normal noise.
+MIN_MHS="${PEPEW_MIN_MHS:-8.30}"
 MAX_REJECTED="${PEPEW_MAX_REJECTED:-0}"
 MAX_RECONNECTS="${PEPEW_MAX_RECONNECTS:-1}"
 LEAVE_RUNNING="${PEPEW_LEAVE_RUNNING:-1}"
@@ -89,6 +91,7 @@ Asset: ${ASSET_URL}
 Warmup: ${WARMUP_SECONDS}s
 Measurement: ${TEST_SECONDS}s
 Progress interval: ${PROGRESS_SECONDS}s
+Regression floor: ${MIN_MHS} MH/s (known-good baseline 8.402 MH/s)
 
 The test survives Hive Shell disconnects.
 
