@@ -14,6 +14,7 @@
 namespace pepepow {
 namespace {
 constexpr std::size_t kHeaderSize = 80;
+constexpr std::size_t kHeaderPrefixSize = 76;
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kEpsilon = 1e-9;
 constexpr double kTM = 0.000001;
@@ -200,44 +201,120 @@ __global__ void search_kernel(const std::uint8_t* base,std::uint32_t first,Devic
 __global__ void diag_kernel(const std::uint8_t* base,std::uint32_t nonce,std::uint8_t* first,std::uint8_t* mixed,std::uint8_t* final){if(blockIdx.x||threadIdx.x)return;hash_one<true>(base,nonce,final,first,mixed);}
 
 Header80 make_header(const MiningJob& job,std::uint32_t nonce){MiningJob j=job;j.nonce=nonce;return build_header80(j);}
-void prepare(int device,const Header80& header,std::uint8_t** d_header){
-    cuda_check(cudaSetDevice(device),"cudaSetDevice");
-    cuda_check(cudaMalloc(reinterpret_cast<void**>(d_header),80),"cudaMalloc header");
-    cuda_check(cudaMemcpy(*d_header,header.data(),80,cudaMemcpyHostToDevice),"cudaMemcpy header");
-    matrix_kernel<<<1,1>>>(*d_header);cuda_check(cudaGetLastError(),"matrix_kernel launch");cuda_check(cudaDeviceSynchronize(),"matrix_kernel sync");
+
+bool same_job_prefix(const Header80& left,const Header80& right){
+    return std::equal(left.begin(),left.begin()+static_cast<std::ptrdiff_t>(kHeaderPrefixSize),right.begin());
 }
 } // namespace
 
 Header80CudaBackend::Header80CudaBackend(int device_index):device_index_(device_index){}
-std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-global-matrix-cuda118";}
+
+Header80CudaBackend::~Header80CudaBackend(){
+    release_device_state();
+}
+
+void Header80CudaBackend::release_device_state() noexcept{
+    if(device_header_==nullptr && device_result_==nullptr)return;
+    if(cudaSetDevice(device_index_)==cudaSuccess){
+        if(device_result_!=nullptr)cudaFree(device_result_);
+        if(device_header_!=nullptr)cudaFree(device_header_);
+    }
+    device_result_=nullptr;
+    device_header_=nullptr;
+    header_ready_=false;
+    target_ready_=false;
+}
+
+void Header80CudaBackend::ensure_device_state(){
+    cuda_check(cudaSetDevice(device_index_),"cudaSetDevice");
+    if(device_header_==nullptr){
+        std::uint8_t* header=nullptr;
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&header),kHeaderSize),"cudaMalloc persistent header");
+        device_header_=header;
+    }
+    if(device_result_==nullptr){
+        DeviceSearchResult* result=nullptr;
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&result),sizeof(DeviceSearchResult)),"cudaMalloc persistent search result");
+        device_result_=result;
+    }
+}
+
+void Header80CudaBackend::prepare_job(const Header80& header){
+    ensure_device_state();
+    if(header_ready_ && same_job_prefix(header,cached_header_))return;
+
+    auto* device_header=static_cast<std::uint8_t*>(device_header_);
+    cuda_check(cudaMemcpy(device_header,header.data(),kHeaderSize,cudaMemcpyHostToDevice),"cudaMemcpy persistent header");
+    matrix_kernel<<<1,1>>>(device_header);
+    cuda_check(cudaGetLastError(),"matrix_kernel launch");
+
+    // matrix_kernel and the subsequent search kernel run in the same default
+    // stream, so no host-side device synchronization is needed here.
+    cached_header_=header;
+    header_ready_=true;
+}
+
+void Header80CudaBackend::prepare_target(const Hash256& target){
+    ensure_device_state();
+    if(target_ready_ && target==cached_target_)return;
+    cuda_check(cudaMemcpyToSymbol(d_target,target.data(),target.size()),"copy target");
+    cached_target_=target;
+    target_ready_=true;
+}
+
+std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-persistent-global-cuda118";}
+
 std::vector<DeviceInfo> Header80CudaBackend::enumerate_devices() const{
     int n=0;cuda_check(cudaGetDeviceCount(&n),"cudaGetDeviceCount");std::vector<DeviceInfo> out;out.reserve(static_cast<std::size_t>(n));
     for(int i=0;i<n;++i){cudaDeviceProp p{};cuda_check(cudaGetDeviceProperties(&p,i),"cudaGetDeviceProperties");out.push_back(DeviceInfo{i,p.name,p.major,p.minor,p.totalGlobalMem});}return out;
 }
+
 Header80CudaDiagnostics Header80CudaBackend::diagnose(const MiningJob& job,std::uint32_t nonce){
-    const Header80 header=make_header(job,nonce);std::uint8_t *dh=nullptr,*d1=nullptr,*d2=nullptr,*df=nullptr;prepare(device_index_,header,&dh);
+    const Header80 header=make_header(job,nonce);
+    prepare_job(header);
+    auto* device_header=static_cast<std::uint8_t*>(device_header_);
+    std::uint8_t *d1=nullptr,*d2=nullptr,*df=nullptr;
     try{
-        cuda_check(cudaMalloc(reinterpret_cast<void**>(&d1),32),"cudaMalloc diag first");cuda_check(cudaMalloc(reinterpret_cast<void**>(&d2),32),"cudaMalloc diag mixed");cuda_check(cudaMalloc(reinterpret_cast<void**>(&df),32),"cudaMalloc diag final");
-        diag_kernel<<<1,1>>>(dh,nonce,d1,d2,df);cuda_check(cudaGetLastError(),"diag launch");cuda_check(cudaDeviceSynchronize(),"diag sync");
-        Header80CudaDiagnostics r{};cuda_check(cudaMemcpy(r.first_pass.data(),d1,32,cudaMemcpyDeviceToHost),"copy diag first");cuda_check(cudaMemcpy(r.mixed.data(),d2,32,cudaMemcpyDeviceToHost),"copy diag mixed");cuda_check(cudaMemcpy(r.final_hash.data(),df,32,cudaMemcpyDeviceToHost),"copy diag final");
-        cudaFree(df);cudaFree(d2);cudaFree(d1);cudaFree(dh);return r;
-    }catch(...){if(df)cudaFree(df);if(d2)cudaFree(d2);if(d1)cudaFree(d1);if(dh)cudaFree(dh);throw;}
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&d1),32),"cudaMalloc diag first");
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&d2),32),"cudaMalloc diag mixed");
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&df),32),"cudaMalloc diag final");
+        diag_kernel<<<1,1>>>(device_header,nonce,d1,d2,df);
+        cuda_check(cudaGetLastError(),"diag launch");
+        Header80CudaDiagnostics r{};
+        cuda_check(cudaMemcpy(r.first_pass.data(),d1,32,cudaMemcpyDeviceToHost),"copy diag first");
+        cuda_check(cudaMemcpy(r.mixed.data(),d2,32,cudaMemcpyDeviceToHost),"copy diag mixed");
+        cuda_check(cudaMemcpy(r.final_hash.data(),df,32,cudaMemcpyDeviceToHost),"copy diag final");
+        cudaFree(df);cudaFree(d2);cudaFree(d1);return r;
+    }catch(...){if(df)cudaFree(df);if(d2)cudaFree(d2);if(d1)cudaFree(d1);throw;}
 }
+
 std::optional<ShareCandidate> Header80CudaBackend::search(const MiningJob& job,SearchRange range,const Hash256& target){
     if(range.count==0||range.begin>std::numeric_limits<std::uint32_t>::max())return std::nullopt;
-    const std::uint64_t avail=0x100000000ULL-range.begin;const std::size_t count=static_cast<std::size_t>(std::min(range.count,avail));if(!count)return std::nullopt;
-    const Header80 header=make_header(job,static_cast<std::uint32_t>(range.begin));std::uint8_t* dh=nullptr;DeviceSearchResult* dresult=nullptr;prepare(device_index_,header,&dh);
-    try{
-        cuda_check(cudaMemcpyToSymbol(d_target,target.data(),target.size()),"copy target");
-        cuda_check(cudaMalloc(reinterpret_cast<void**>(&dresult),sizeof(DeviceSearchResult)),"cudaMalloc search result");
-        cuda_check(cudaMemset(dresult,0,sizeof(DeviceSearchResult)),"clear search result");
-        constexpr unsigned threads=64;const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
-        search_kernel<<<blocks,threads>>>(dh,static_cast<std::uint32_t>(range.begin),dresult,count);cuda_check(cudaGetLastError(),"search launch");cuda_check(cudaDeviceSynchronize(),"search sync");
-        DeviceSearchResult result{};cuda_check(cudaMemcpy(&result,dresult,sizeof(result),cudaMemcpyDeviceToHost),"copy search result");
-        cudaFree(dresult);cudaFree(dh);dresult=nullptr;dh=nullptr;
-        if(!result.found)return std::nullopt;
-        Hash256 hash{};std::copy_n(result.hash,32,hash.begin());
-        return ShareCandidate{job.job_id,result.nonce,hash};
-    }catch(...){if(dresult)cudaFree(dresult);if(dh)cudaFree(dh);throw;}
+    const std::uint64_t avail=0x100000000ULL-range.begin;
+    const std::size_t count=static_cast<std::size_t>(std::min(range.count,avail));
+    if(!count)return std::nullopt;
+
+    const Header80 header=make_header(job,static_cast<std::uint32_t>(range.begin));
+    prepare_job(header);
+    prepare_target(target);
+
+    auto* device_header=static_cast<std::uint8_t*>(device_header_);
+    auto* device_result=static_cast<DeviceSearchResult*>(device_result_);
+    cuda_check(cudaMemset(device_result,0,sizeof(DeviceSearchResult)),"clear persistent search result");
+
+    constexpr unsigned threads=64;
+    const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
+    search_kernel<<<blocks,threads>>>(device_header,static_cast<std::uint32_t>(range.begin),device_result,count);
+    cuda_check(cudaGetLastError(),"search launch");
+
+    // A blocking D2H copy on the default stream waits for the search kernel,
+    // making the former explicit cudaDeviceSynchronize() redundant.
+    DeviceSearchResult result{};
+    cuda_check(cudaMemcpy(&result,device_result,sizeof(result),cudaMemcpyDeviceToHost),"copy search result");
+    if(!result.found)return std::nullopt;
+
+    Hash256 hash{};
+    std::copy_n(result.hash,32,hash.begin());
+    return ShareCandidate{job.job_id,result.nonce,hash};
 }
 } // namespace pepepow
