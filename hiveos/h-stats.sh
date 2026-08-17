@@ -2,6 +2,7 @@
 
 # HiveOS sources this callback. It must always define both khs and stats and
 # must never terminate the parent agent shell.
+# This branch is the validated integration baseline used by hiveos-test.
 khs=0
 stats="null"
 
