@@ -18,7 +18,30 @@ This document records measured baselines, architectural changes and merge gates 
 | `dev-63bb3dc` | Tesla V100-SXM2-16GB | ~6.254 MH/s | PASS | 0 | 0 | — | ~98.8% | accepted baseline |
 | `dev-04296fb` | Tesla V100-SXM2-16GB | ~6.27 MH/s live | PASS | 0 | 0 | — | — | HiveOS per-GPU mapping validated |
 | `dev-c684413` | Tesla V100-SXM2-16GB | **5.326 MH/s** | PASS | 0 | 0 | 114.8 W | 98.9% | rejected: −15% performance regression |
-| `v100-c98eafd` | Tesla V100-SXM2-16GB | **8.402 MH/s** | PASS | 0 | 0 | **161.9 W** | **99.9%** | **KNOWN-GOOD BASELINE** |
+| `v100-c98eafd` | Tesla V100-SXM2-16GB | **8.402 MH/s** | PASS | 0 | 0 | **161.9 W** | **99.9%** | accepted baseline; 20-minute soak |
+| `v100-5d96212` | Tesla V100-SXM2-16GB | **8.542 MH/s** | PASS | 0 | 0 | **165.0 W** | **100.0%** | **CURRENT KNOWN-GOOD BASELINE** |
+
+### `v100-5d96212` 5-minute A/B evidence
+
+Target-rig report, 2026-08-18:
+
+- measured interval: **300 s** after **30 s** warmup;
+- average: **8.542 MH/s**;
+- minimum: **8.509 MH/s**;
+- maximum: **8.573 MH/s**;
+- telemetry samples: **59**;
+- accepted/rejected: **0 / 0**;
+- reconnects: **0**;
+- miner state at end: **online**;
+- average GPU power: **165.0 W**;
+- average GPU temperature: **57.3°C**;
+- maximum GPU temperature: **58°C**;
+- average GPU utilization: **100.0%**;
+- HiveOS stats callback: complete, ending at **8.540 MH/s**, 58°C, `A/R 0/0` and PCI bus 2.
+
+This is a clean A/B against `v100-c98eafd`: the HooHash kernel, 64-thread block geometry and 262,144-nonce batch are unchanged. The gain comes from persistent CUDA scan state and removal of redundant host/device setup between batches.
+
+The measured source commit is `5d962124f5c35e68be6b237b8ac03ef1ae7e03d9`. The accepted source state plus current hardware-test tooling is preserved as branch `baseline/v100-8.542mh`.
 
 ### `v100-c98eafd` 20-minute soak evidence
 
@@ -38,15 +61,13 @@ Target-rig report, 2026-08-18:
 - average GPU utilization: **99.9%**;
 - HiveOS stats callback: complete, including per-GPU hashrate, temperature, fan field, A/R and PCI bus mapping.
 
-The exact source state is preserved as branch `baseline/v100-8.402mh` from commit `c98eafdf8692901175af6b6f4e43c4e9adc38e39`.
-
 ## Rejected experiment: `dev-c684413`
 
 The first aggressive hot-loop rewrite removed `double product[64]`, used a BLAKE3 midstate and moved the matrix to CUDA constant memory. It was consensus-correct but slower on real V100 hardware: **5.326 MH/s**, approximately 15% below the then-current 6.27 MH/s baseline. This proves that reduced local state/register pressure alone is not a valid optimization criterion for HooHash on Volta.
 
 Do not reintroduce the constant-memory matrix variant without independent target-rig evidence.
 
-## Current known-good architecture: `v100-c98eafd`
+## Current known-good architecture: `v100-5d96212`
 
 - CUDA toolkit 11.8;
 - strict HooHash floating-point flags;
@@ -54,23 +75,30 @@ Do not reintroduce the constant-memory matrix variant without independent target
 - 262,144 nonce scan batches;
 - 64×64 FP64 HooHash matrix in device global memory;
 - device-side target comparison;
+- persistent device header and result buffers;
+- header/matrix rebuild only when the 76-byte job prefix changes;
+- target upload only when difficulty/target changes;
+- blocking D2H result copy used as the required stream synchronization point;
 - per-GPU worker and HiveOS telemetry;
 - automatic extranonce2 rollover when a worker exhausts its assigned 32-bit nonce space;
 - startup real-block consensus KAT on every CUDA device.
 
-The sm_70 mining kernel compiles without spill loads/stores. The 20-minute soak is the performance/correctness reference for all following changes.
+The sm_70 mining kernel compiles without spill loads/stores. This 8.542 MH/s result is the performance/correctness reference for the next isolated experiments.
 
-## Current experiment: persistent CUDA scan state
+## Current experiment: SM70 register-pressure A/B
 
-The next A/B candidate intentionally leaves the HooHash kernel, block geometry and 262,144 batch size unchanged. Only host/device scan overhead is changed:
+The next candidate changes **only compiler register pressure** on the exact 8.542 MH/s mining core. The first isolated candidate uses `--maxrregcount=128` and publishes to a separate `hiveos-v100-r128-test` channel.
 
-1. allocate the device header once per backend instead of once per scan batch;
-2. allocate the device result buffer once per backend;
-3. copy header and rebuild the HooHash matrix only when the 76-byte job prefix changes;
-4. copy the target only when difficulty/target changes;
-5. remove the redundant explicit `cudaDeviceSynchronize()` before the blocking result D2H copy.
+Why this is isolated:
 
-This experiment is accepted only if the real V100 remains consensus-correct and exceeds the **8.402 MH/s** known-good baseline with `R=0`.
+1. HooHash math is unchanged;
+2. matrix placement is unchanged;
+3. 64 threads/block is unchanged;
+4. 262,144 nonce/batch is unchanged;
+5. persistent CUDA state is unchanged;
+6. only the compiler register cap differs.
+
+CI ptxas diagnostics are inspected before target-rig testing. If limiting registers creates material spill traffic, the candidate is rejected before promotion even if it builds successfully.
 
 ## HiveOS integration gates
 
@@ -86,4 +114,4 @@ Actual accepted shares are pool events. `A=0` during a test is not converted int
 
 ## Performance target
 
-30 MH/s on Tesla V100-SXM2-16GB remains the engineering target, not a guaranteed figure. Each optimization must be isolated, compiled with ptxas diagnostics and validated on the target rig against the 8.402 MH/s baseline before it becomes the new reference.
+30 MH/s on Tesla V100-SXM2-16GB remains the engineering target, not a guaranteed figure. Each optimization must be isolated, compiled with ptxas diagnostics and validated on the target rig against the **8.542 MH/s** baseline before it becomes the new reference.
