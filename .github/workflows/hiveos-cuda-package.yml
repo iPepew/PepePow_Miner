@@ -214,9 +214,10 @@ jobs:
           EOF
           )
 
+          # Ubuntu 22.04 currently ships gh 2.4.0, which has no `gh release edit`.
+          # Existing rolling releases only need their assets atomically replaced.
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
-            gh release edit "${RELEASE_TAG}" --title "PepeW Miner Tesla V100 DEV" --notes "${notes}"
           else
             gh release create "${RELEASE_TAG}" \
               "dist/${ASSET_NAME}" \
