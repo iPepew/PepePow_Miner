@@ -4,7 +4,7 @@ project(PepePowMiner VERSION 0.1.3 LANGUAGES C CXX)
 
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
-option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
+option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" ON)
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_ARCHITECTURES "70;86" CACHE STRING "CUDA architectures for release builds (Tesla V100 sm_70; RTX 3080 sm_86)")
 

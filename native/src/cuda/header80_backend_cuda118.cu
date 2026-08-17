@@ -27,6 +27,9 @@ struct DeviceSearchResult {
     std::uint8_t hash[32];
 };
 
+// Keep the HooHash matrix in device global memory. The reference PEPEPOW CUDA
+// implementation uses the same layout: mat[i][j] is warp-uniform and therefore
+// benefits from broadcast/L2 behavior without constant-memory serialization.
 __device__ double d_matrix[64][64];
 __device__ __constant__ std::uint8_t d_target[32];
 __device__ __constant__ std::uint32_t kIv[8] = {
@@ -161,7 +164,7 @@ __device__ void mix(const std::uint8_t first[32],std::uint8_t out[32],std::uint3
 
 template<bool Capture>
 __device__ void hash_one(const std::uint8_t* base,std::uint32_t nonce,std::uint8_t* final,std::uint8_t* cap1,std::uint8_t* cap2){
-    std::uint8_t header[80];
+    std::uint8_t header[kHeaderSize];
     #pragma unroll
     for(int i=0;i<80;++i)header[i]=base[i];
     put_be32(header+76,nonce);
@@ -206,7 +209,7 @@ void prepare(int device,const Header80& header,std::uint8_t** d_header){
 } // namespace
 
 Header80CudaBackend::Header80CudaBackend(int device_index):device_index_(device_index){}
-std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-target-cuda118";}
+std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-global-matrix-cuda118";}
 std::vector<DeviceInfo> Header80CudaBackend::enumerate_devices() const{
     int n=0;cuda_check(cudaGetDeviceCount(&n),"cudaGetDeviceCount");std::vector<DeviceInfo> out;out.reserve(static_cast<std::size_t>(n));
     for(int i=0;i<n;++i){cudaDeviceProp p{};cuda_check(cudaGetDeviceProperties(&p,i),"cudaGetDeviceProperties");out.push_back(DeviceInfo{i,p.name,p.major,p.minor,p.totalGlobalMem});}return out;

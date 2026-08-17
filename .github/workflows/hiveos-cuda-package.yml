@@ -1,12 +1,10 @@
-name: HiveOS DEV Package
+name: HiveOS V100 Performance Package
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - "dev/**"
-      - "agent/**"
+      - "agent/v100-pro-hotloop"
     paths:
       - "native/**"
       - "hiveos/**"
@@ -28,9 +26,6 @@ jobs:
   build-hiveos-package:
     runs-on: ubuntu-latest
     container:
-      # The known-working PEPEPOW HooHashV110 ccminer reference targets CUDA 11.8.
-      # HooHash is consensus-sensitive to libdevice sin/cos results, so keep the
-      # legacy sm_70/sm_75/sm_86 build on the same toolkit generation.
       image: nvidia/cuda:11.8.0-devel-ubuntu22.04
     env:
       CUDA_TOOLKIT: "11.8"
@@ -38,6 +33,7 @@ jobs:
       CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-test
 
     steps:
       - name: Install build tools
@@ -57,9 +53,9 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="dev-${short_sha}"
+          build_version="v100-${short_sha}"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
-          echo "PepeW HiveOS DEV build: ${build_version}"
+          echo "PepeW V100 performance build: ${build_version}"
 
       - name: Configure CUDA release
         run: |
@@ -86,23 +82,18 @@ jobs:
           set -euo pipefail
           bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
 
-          # Generic parser test without a GPU/NVML environment.
           test_log=/tmp/pepew-stats-test
           printf '%s\n' '[MINING] 12.345 MH/s | A 7 | R 1 | UP 00:01:23 | REC 2 | STATE online' > "${test_log}.log"
           stats_result=$(
             CUSTOM_LOG_BASENAME="${test_log}" \
-            CUSTOM_VERSION="dev-test" \
+            CUSTOM_VERSION="v100-test" \
             bash -c 'source hiveos/h-stats.sh; printf "khs=%s\nstats=%s\n" "$khs" "$stats"'
           )
-          printf '%s\n' "${stats_result}"
           grep -F 'khs=12345' <<< "${stats_result}"
           grep -F '"uptime":83' <<< "${stats_result}"
           grep -F '"ar":[7,1]' <<< "${stats_result}"
           grep -F '"algo":"hoohash"' <<< "${stats_result}"
 
-          # Deterministic two-GPU Hive mapping test. Tesla SXM devices can report
-          # fan.speed=N/A; the callback must emit numeric zero rather than invent
-          # a fan speed while preserving the other card's real percentage.
           fakebin=/tmp/pepew-fakebin
           mkdir -p "${fakebin}"
           cat > "${fakebin}/nvidia-smi" <<'EOF'
@@ -124,10 +115,9 @@ jobs:
           multi_stats=$(
             PATH="${fakebin}:$PATH" \
             CUSTOM_LOG_BASENAME="${test_log}" \
-            CUSTOM_VERSION="dev-test" \
+            CUSTOM_VERSION="v100-test" \
             bash -c 'source hiveos/h-stats.sh; printf "%s\n" "$stats"'
           )
-          printf '%s\n' "${multi_stats}"
           grep -F '"hs":[6274,5801]' <<< "${multi_stats}"
           grep -F '"temp":[54,67]' <<< "${multi_stats}"
           grep -F '"fan":[0,72]' <<< "${multi_stats}"
@@ -148,13 +138,11 @@ jobs:
           grep -F -- '-o stratum+tcp://example.invalid:13232' "${test_config}"
           grep -F -- '-u wallet.worker' "${test_config}"
           grep -F -- '--pepepow' "${test_config}"
-          cat "${test_config}"
 
-      - name: Assemble HiveOS DEV archive
+      - name: Assemble HiveOS V100 archive
         run: |
           set -euo pipefail
           package_dir="dist/${CUSTOM_MINER_NAME}"
-
           rm -rf dist
           mkdir -p "${package_dir}"
 
@@ -163,13 +151,13 @@ jobs:
           install -m 0755 hiveos/h-config.sh "${package_dir}/h-config.sh"
           install -m 0755 hiveos/h-stats.sh "${package_dir}/h-stats.sh"
           install -m 0644 hiveos/h-manifest.conf "${package_dir}/h-manifest.conf"
-
           sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "${package_dir}/h-manifest.conf"
 
           cat > "${package_dir}/BUILD_INFO.txt" <<EOF
           version=${BUILD_VERSION}
           commit=${GITHUB_SHA}
           ref=${GITHUB_REF_NAME}
+          channel=${RELEASE_TAG}
           cuda_toolkit=${CUDA_TOOLKIT}
           cuda_archs=${CUDA_ARCHS}
           custom_miner=${CUSTOM_MINER_NAME}
@@ -177,22 +165,17 @@ jobs:
           EOF
 
           strip "${package_dir}/pepepowminer" || true
-
           tar -C dist -czf "dist/${ASSET_NAME}" "${CUSTOM_MINER_NAME}"
           sha256sum "dist/${ASSET_NAME}" | sed "s#dist/##" > "dist/${SHA_NAME}"
-
-          echo "Archive contents:"
           tar -tzf "dist/${ASSET_NAME}"
-          echo "Checksum:"
           cat "dist/${SHA_NAME}"
 
-      - name: Validate HiveOS archive layout
+      - name: Validate archive layout
         run: |
           set -euo pipefail
           archive_list=/tmp/pepew-hiveos-archive-list.txt
           tar -tzf "dist/${ASSET_NAME}" > "${archive_list}"
-          first_entry="$(sed -n '1p' "${archive_list}")"
-          test "${first_entry}" = "${CUSTOM_MINER_NAME}/"
+          test "$(sed -n '1p' "${archive_list}")" = "${CUSTOM_MINER_NAME}/"
           grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf" "${archive_list}"
           grep -Fx "${CUSTOM_MINER_NAME}/h-config.sh" "${archive_list}"
           grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh" "${archive_list}"
@@ -202,7 +185,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-hiveos-${{ github.sha }}
+          name: pepew-v100-${{ github.sha }}
           path: |
             dist/${{ env.ASSET_NAME }}
             dist/${{ env.SHA_NAME }}
@@ -210,7 +193,7 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      - name: Publish permanent hiveos-test asset
+      - name: Publish isolated V100 rolling asset
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -218,36 +201,31 @@ jobs:
         run: |
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-
           notes=$(cat <<EOF
-          Automated PepeW HiveOS DEV build.
+          Automated PepeW Tesla V100 performance candidate.
 
           Build: ${BUILD_VERSION}
           Commit: ${GITHUB_SHA}
           Ref: ${GITHUB_REF_NAME}
           CUDA toolkit: ${CUDA_TOOLKIT}
           CUDA architectures: ${CUDA_ARCHS}
-          HiveOS custom miner: ${CUSTOM_MINER_NAME}
 
-          This is the rolling test channel. The asset URL stays constant while the file is replaced by each successful DEV build.
+          Experimental performance channel. A build is promoted only after real V100 KAT, hashrate, power, temperature and share validation.
           EOF
           )
 
-          if gh release view hiveos-test >/dev/null 2>&1; then
-            gh release upload hiveos-test \
-              "dist/${ASSET_NAME}" \
-              "dist/${SHA_NAME}" \
-              --clobber
-            echo "Updated hiveos-test assets with ${BUILD_VERSION}"
+          # Ubuntu 22.04 currently ships gh 2.4.0, which has no `gh release edit`.
+          # Existing rolling releases only need their assets atomically replaced.
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
           else
-            gh release create hiveos-test \
+            gh release create "${RELEASE_TAG}" \
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --target "${GITHUB_SHA}" \
-              --title "PepeW Miner HiveOS DEV" \
+              --title "PepeW Miner Tesla V100 DEV" \
               --notes "${notes}" \
               --prerelease
           fi
 
-          echo "Permanent DEV asset:"
-          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/hiveos-test/${ASSET_NAME}"
+          echo "V100 DEV asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
