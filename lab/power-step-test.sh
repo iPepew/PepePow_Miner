@@ -13,13 +13,19 @@ fmt_time() {
 }
 
 latest_mhs() {
-  grep -a '^\[MINING\]' "$LOG_FILE" 2>/dev/null | tail -n1 | awk '{print $2+0}'
+  local value
+  value=$(grep -a '^\[MINING\]' "$LOG_FILE" 2>/dev/null | tail -n1 | awk '{print $2+0}' || true)
+  [[ -n "$value" ]] || value=0
+  printf '%s' "$value"
 }
 
 sample_gpu() {
-  nvidia-smi -i "$GPU_INDEX" \
+  local value
+  value=$(nvidia-smi -i "$GPU_INDEX" \
     --query-gpu=temperature.gpu,power.draw,power.limit,clocks.current.graphics,utilization.gpu \
-    --format=csv,noheader,nounits 2>/dev/null | tr -d ' '
+    --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' || true)
+  [[ -n "$value" ]] || value="0,0,0,0,0"
+  printf '%s' "$value"
 }
 
 if ! command -v nvidia-smi >/dev/null 2>&1; then
@@ -66,7 +72,6 @@ while true; do
   percent=$(( TEST_SECONDS > 0 ? elapsed * 100 / TEST_SECONDS : 100 ))
 
   mhs=$(latest_mhs)
-  [[ -n "$mhs" ]] || mhs=0
   IFS=',' read -r temp power pl clock util <<< "$(sample_gpu)"
 
   if awk -v x="$mhs" 'BEGIN{exit !(x>0)}'; then
