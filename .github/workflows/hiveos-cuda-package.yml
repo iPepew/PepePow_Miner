@@ -1,4 +1,4 @@
-name: HiveOS V100 Kernel-v2 Package
+name: HiveOS V100 Kernel-v2C Package
 
 on:
   workflow_dispatch:
@@ -31,7 +31,8 @@ jobs:
       CUDA_TOOLKIT: "11.8"
       CUDA_ARCHS: "70;75;86"
       CUDA_REG_CAP: "128"
-      CUDA_THREADS: "256"
+      CUDA_THREADS: "64"
+      CUDA_BLOCKS: "800"
       CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
@@ -55,10 +56,10 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="v100-kv2b-t${CUDA_THREADS}-${short_sha}"
+          build_version="v100-kv2c-t${CUDA_THREADS}-b${CUDA_BLOCKS}-${short_sha}"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
-          echo "PepeW V100 Kernel-v2B candidate: ${build_version}"
-          echo "Geometry: ${CUDA_THREADS} threads/block; R${CUDA_REG_CAP}"
+          echo "PepeW V100 Kernel-v2C candidate: ${build_version}"
+          echo "Geometry: fixed ${CUDA_BLOCKS} blocks x ${CUDA_THREADS} threads; grid-stride; R${CUDA_REG_CAP}"
 
       - name: Configure CUDA release
         run: |
@@ -69,8 +70,8 @@ jobs:
             -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
             -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
             -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DPEPEPOW_CUDA_BLOCKS="${CUDA_BLOCKS}" \
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
-          grep -F "PepeW Kernel-v2 launch width: ${CUDA_THREADS} threads/block" build/hiveos-cuda/CMakeFiles/CMakeOutput.log 2>/dev/null || true
 
       - name: Build miner
         run: cmake --build build/hiveos-cuda --target pepepowminer --parallel
@@ -146,7 +147,7 @@ jobs:
           grep -F -- '-u wallet.worker' "${test_config}"
           grep -F -- '--pepepow' "${test_config}"
 
-      - name: Assemble HiveOS V100 Kernel-v2 archive
+      - name: Assemble HiveOS V100 Kernel-v2C archive
         run: |
           set -euo pipefail
           package_dir="dist/${CUSTOM_MINER_NAME}"
@@ -169,7 +170,9 @@ jobs:
           cuda_archs=${CUDA_ARCHS}
           cuda_max_registers=${CUDA_REG_CAP}
           cuda_threads=${CUDA_THREADS}
-          kernel=v2b-streamed-precomputed-cv-t${CUDA_THREADS}
+          cuda_blocks=${CUDA_BLOCKS}
+          launch=fixed-grid-stride
+          kernel=v2c-streamed-precomputed-cv-gridstride-t${CUDA_THREADS}-b${CUDA_BLOCKS}
           custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
@@ -184,7 +187,7 @@ jobs:
         run: |
           set -euo pipefail
           archive_list=/tmp/pepew-hiveos-archive-list.txt
-          unpack=/tmp/pepew-kv2b-identity
+          unpack=/tmp/pepew-kv2c-identity
           rm -rf "${unpack}"
           mkdir -p "${unpack}"
           tar -tzf "dist/${ASSET_NAME}" > "${archive_list}"
@@ -198,7 +201,9 @@ jobs:
           grep -Fx "CUSTOM_VERSION=${BUILD_VERSION}" "${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"
           grep -Fx "version=${BUILD_VERSION}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
           grep -Fx "cuda_threads=${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
-          grep -Fx "kernel=v2b-streamed-precomputed-cv-t${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx "cuda_blocks=${CUDA_BLOCKS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx 'launch=fixed-grid-stride' "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx "kernel=v2c-streamed-precomputed-cv-gridstride-t${CUDA_THREADS}-b${CUDA_BLOCKS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
           if grep -Fx 'CUSTOM_VERSION=dev' "${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"; then
             echo "ERROR: archive contains dev manifest"
             exit 1
@@ -207,7 +212,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-v100-kernel-v2-${{ github.sha }}
+          name: pepew-v100-kernel-v2c-${{ github.sha }}
           path: |
             dist/${{ env.ASSET_NAME }}
             dist/${{ env.SHA_NAME }}
@@ -224,7 +229,7 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           notes=$(cat <<EOF
-          Automated PepeW Tesla V100 Kernel-v2B geometry experiment.
+          Automated PepeW Tesla V100 Kernel-v2C fixed-grid experiment.
 
           Build: ${BUILD_VERSION}
           Commit: ${GITHUB_SHA}
@@ -232,9 +237,10 @@ jobs:
           CUDA toolkit: ${CUDA_TOOLKIT}
           CUDA architectures: ${CUDA_ARCHS}
           Max registers/thread: ${CUDA_REG_CAP}
-          Threads/block: ${CUDA_THREADS}
+          Geometry: ${CUDA_BLOCKS} blocks x ${CUDA_THREADS} threads
+          Search: grid-stride nonce loop
 
-          Strict-consensus KV2-B candidate. Only launch width changes from the validated KV2-A geometry; streamed HooHash products, direct nibble reads and precomputed first BLAKE3 chunk CV remain unchanged.
+          Strict-consensus KV2-C candidate. HooHash/BLAKE3 arithmetic is unchanged from KV2-A; this experiment returns to the faster 64-thread width and changes only the work-dispatch model to a fixed resident grid with per-thread nonce reuse.
           EOF
           )
 
