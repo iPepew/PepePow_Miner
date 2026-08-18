@@ -65,15 +65,18 @@ if(PEPEPOW_ENABLE_CUDA)
         message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be between 32 and 1024")
     endif()
 
-    # Kernel-v2 keeps the strict reference source immutable and generates a
-    # geometry-specific translation unit at configure time. This lets V100 A/B
-    # tests change only launch width while preserving the exact consensus code.
+    # KV3-A starts from the validated KV2-B strict-consensus source and applies
+    # only mechanically verifiable hot-loop transformations at configure time.
+    # The first experiment precomputes the job-constant (matrix * 0.0001)
+    # coefficient once per job. This preserves the exact FP64 operation order
+    # of the cheap branch while removing one repeated FP64 multiply per cell.
     set(_pepepow_cuda_source "${CMAKE_CURRENT_SOURCE_DIR}/src/cuda/header80_backend_cuda118_v2.cu")
     file(READ "${_pepepow_cuda_source}" _pepepow_cuda_text)
+
     set(_pepepow_thread_marker "constexpr unsigned threads=64;")
     string(FIND "${_pepepow_cuda_text}" "${_pepepow_thread_marker}" _pepepow_thread_marker_pos)
     if(_pepepow_thread_marker_pos EQUAL -1)
-        message(FATAL_ERROR "Kernel-v2 launch-width marker not found in ${_pepepow_cuda_source}")
+        message(FATAL_ERROR "KV3-A launch-width marker not found in ${_pepepow_cuda_source}")
     endif()
     string(REPLACE
         "${_pepepow_thread_marker}"
@@ -81,9 +84,47 @@ if(PEPEPOW_ENABLE_CUDA)
         _pepepow_cuda_text
         "${_pepepow_cuda_text}"
     )
-    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_v2_t${PEPEPOW_CUDA_THREADS}.cu")
+
+    set(_pepepow_matrix_decl_marker "__device__ double d_matrix[64][64];")
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_matrix_decl_marker}" _pepepow_matrix_decl_pos)
+    if(_pepepow_matrix_decl_pos EQUAL -1)
+        message(FATAL_ERROR "KV3-A matrix declaration marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_matrix_decl_marker}"
+        "__device__ double d_matrix[64][64];\n__device__ double d_matrix_cheap[64][64];"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_matrix_fill_marker "d_matrix[i][j]=static_cast<double>(low)/static_cast<double>(0xffffffffU)*1000000.0;")
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_matrix_fill_marker}" _pepepow_matrix_fill_pos)
+    if(_pepepow_matrix_fill_pos EQUAL -1)
+        message(FATAL_ERROR "KV3-A matrix fill marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_matrix_fill_marker}"
+        "const double cell=static_cast<double>(low)/static_cast<double>(0xffffffffU)*1000000.0;\n        d_matrix[i][j]=cell;\n        d_matrix_cheap[i][j]=cell*0.0001;"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_cheap_marker "product+=d_matrix[row][j]*0.0001*v;")
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_cheap_marker}" _pepepow_cheap_pos)
+    if(_pepepow_cheap_pos EQUAL -1)
+        message(FATAL_ERROR "KV3-A cheap-path marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_cheap_marker}"
+        "product+=d_matrix_cheap[row][j]*v;"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_kv3a_t${PEPEPOW_CUDA_THREADS}.cu")
     file(WRITE "${_pepepow_cuda_generated}" "${_pepepow_cuda_text}")
-    message(STATUS "PepeW Kernel-v2 launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
+    message(STATUS "PepeW KV3-A strict hot-loop: precomputed cheap matrix coefficient")
+    message(STATUS "PepeW KV3-A launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
 
     add_library(pepepow_cuda
         "${_pepepow_cuda_generated}"
