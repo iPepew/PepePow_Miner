@@ -7,6 +7,7 @@ option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" ON)
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_ARCHITECTURES "70;86" CACHE STRING "CUDA architectures for release builds (Tesla V100 sm_70; RTX 3080 sm_86)")
+set(PEPEPOW_CUDA_THREADS "256" CACHE STRING "CUDA mining threads per block for Kernel-v2 geometry tests")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,10 +58,35 @@ endif()
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
 
-    # Kernel-v2 branch intentionally keeps the previous CUDA backend source in
-    # the tree for easy A/B review while compiling the strict streamed variant.
+    if(NOT PEPEPOW_CUDA_THREADS MATCHES "^[0-9]+$")
+        message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be an integer")
+    endif()
+    if(PEPEPOW_CUDA_THREADS LESS 32 OR PEPEPOW_CUDA_THREADS GREATER 1024)
+        message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be between 32 and 1024")
+    endif()
+
+    # Kernel-v2 keeps the strict reference source immutable and generates a
+    # geometry-specific translation unit at configure time. This lets V100 A/B
+    # tests change only launch width while preserving the exact consensus code.
+    set(_pepepow_cuda_source "${CMAKE_CURRENT_SOURCE_DIR}/src/cuda/header80_backend_cuda118_v2.cu")
+    file(READ "${_pepepow_cuda_source}" _pepepow_cuda_text)
+    set(_pepepow_thread_marker "constexpr unsigned threads=64;")
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_thread_marker}" _pepepow_thread_marker_pos)
+    if(_pepepow_thread_marker_pos EQUAL -1)
+        message(FATAL_ERROR "Kernel-v2 launch-width marker not found in ${_pepepow_cuda_source}")
+    endif()
+    string(REPLACE
+        "${_pepepow_thread_marker}"
+        "constexpr unsigned threads=${PEPEPOW_CUDA_THREADS};"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_v2_t${PEPEPOW_CUDA_THREADS}.cu")
+    file(WRITE "${_pepepow_cuda_generated}" "${_pepepow_cuda_text}")
+    message(STATUS "PepeW Kernel-v2 launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
+
     add_library(pepepow_cuda
-        src/cuda/header80_backend_cuda118_v2.cu
+        "${_pepepow_cuda_generated}"
     )
     target_include_directories(pepepow_cuda PUBLIC include)
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
