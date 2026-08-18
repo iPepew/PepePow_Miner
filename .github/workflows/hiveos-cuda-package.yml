@@ -1,10 +1,10 @@
-name: HiveOS V100 Kernel-v2 Package
+name: HiveOS V100 KV3-A Hotloop Package
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - "agent/v100-kernel-v2"
+      - "agent/v100-kv3-hotloop"
     paths:
       - "native/**"
       - "hiveos/**"
@@ -35,7 +35,8 @@ jobs:
       CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
-      RELEASE_TAG: hiveos-v100-kernel-v2-test
+      RELEASE_TAG: hiveos-v100-kv3-test
+      BASELINE_BUILD: v100-kv2b-t256-c49bf75
 
     steps:
       - name: Install build tools
@@ -55,13 +56,16 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="v100-kv2b-t${CUDA_THREADS}-${short_sha}"
+          build_version="v100-kv3a-precheap-t${CUDA_THREADS}-${short_sha}"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
-          echo "PepeW V100 Kernel-v2B candidate: ${build_version}"
+          echo "PepeW V100 KV3-A strict hot-loop candidate: ${build_version}"
+          echo "Baseline: ${BASELINE_BUILD}"
           echo "Geometry: ${CUDA_THREADS} threads/block; R${CUDA_REG_CAP}"
+          echo "Optimization: precompute matrix*0.0001 once per job"
 
       - name: Configure CUDA release
         run: |
+          set -euo pipefail
           cmake -S native -B build/hiveos-cuda \
             -DCMAKE_BUILD_TYPE=Release \
             -DPEPEPOW_ENABLE_CUDA=ON \
@@ -70,10 +74,25 @@ jobs:
             -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
             -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
-          grep -F "PepeW Kernel-v2 launch width: ${CUDA_THREADS} threads/block" build/hiveos-cuda/CMakeFiles/CMakeOutput.log 2>/dev/null || true
+
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv3a_t${CUDA_THREADS}.cu"
+          test -s "${generated}"
+          grep -F '__device__ double d_matrix_cheap[64][64];' "${generated}"
+          grep -F 'd_matrix_cheap[i][j]=cell*0.0001;' "${generated}"
+          grep -F 'product+=d_matrix_cheap[row][j]*v;' "${generated}"
+          if grep -F 'product+=d_matrix[row][j]*0.0001*v;' "${generated}"; then
+            echo "ERROR: baseline cheap-path multiply survived KV3-A transform"
+            exit 1
+          fi
+          grep -F "constexpr unsigned threads=${CUDA_THREADS};" "${generated}"
+          echo "[SOURCE] KV3-A transform verified"
 
       - name: Build miner
-        run: cmake --build build/hiveos-cuda --target pepepowminer --parallel
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2>&1 | tee /tmp/pepew-build.log
+          echo "--- PTXAS RESOURCE SUMMARY ---"
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-build.log || true
 
       - name: Smoke test binary
         run: |
@@ -92,13 +111,13 @@ jobs:
           printf '%s\n' '[MINING] 12.345 MH/s | A 7 | R 1 | UP 00:01:23 | REC 2 | STATE online' > "${test_log}.log"
           stats_result=$(
             CUSTOM_LOG_BASENAME="${test_log}" \
-            CUSTOM_VERSION="v100-kv2-test" \
+            CUSTOM_VERSION="v100-kv3-test" \
             bash -c 'source hiveos/h-stats.sh; printf "khs=%s\nstats=%s\n" "$khs" "$stats"'
           )
           grep -F 'khs=12345' <<< "${stats_result}"
           grep -F '"uptime":83' <<< "${stats_result}"
           grep -F '"ar":[7,1,0,"0"]' <<< "${stats_result}"
-          grep -F '"ver":"v100-kv2-test"' <<< "${stats_result}"
+          grep -F '"ver":"v100-kv3-test"' <<< "${stats_result}"
           grep -F '"algo":"hoohash"' <<< "${stats_result}"
 
           fakebin=/tmp/pepew-fakebin
@@ -122,7 +141,7 @@ jobs:
           multi_stats=$(
             PATH="${fakebin}:$PATH" \
             CUSTOM_LOG_BASENAME="${test_log}" \
-            CUSTOM_VERSION="v100-kv2-test" \
+            CUSTOM_VERSION="v100-kv3-test" \
             bash -c 'source hiveos/h-stats.sh; printf "%s\n" "$stats"'
           )
           grep -F '"hs":[8542,8101]' <<< "${multi_stats}"
@@ -146,7 +165,7 @@ jobs:
           grep -F -- '-u wallet.worker' "${test_config}"
           grep -F -- '--pepepow' "${test_config}"
 
-      - name: Assemble HiveOS V100 Kernel-v2 archive
+      - name: Assemble HiveOS V100 KV3-A archive
         run: |
           set -euo pipefail
           package_dir="dist/${CUSTOM_MINER_NAME}"
@@ -165,11 +184,15 @@ jobs:
           commit=${GITHUB_SHA}
           ref=${GITHUB_REF_NAME}
           channel=${RELEASE_TAG}
+          baseline=${BASELINE_BUILD}
           cuda_toolkit=${CUDA_TOOLKIT}
           cuda_archs=${CUDA_ARCHS}
           cuda_max_registers=${CUDA_REG_CAP}
           cuda_threads=${CUDA_THREADS}
-          kernel=v2b-streamed-precomputed-cv-t${CUDA_THREADS}
+          launch=dynamic-grid
+          kernel=kv3a-strict-cheap-precompute-t${CUDA_THREADS}
+          optimization=precompute-matrix-times-0.0001
+          consensus=strict-fp64
           custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
@@ -184,7 +207,7 @@ jobs:
         run: |
           set -euo pipefail
           archive_list=/tmp/pepew-hiveos-archive-list.txt
-          unpack=/tmp/pepew-kv2b-identity
+          unpack=/tmp/pepew-kv3a-identity
           rm -rf "${unpack}"
           mkdir -p "${unpack}"
           tar -tzf "dist/${ASSET_NAME}" > "${archive_list}"
@@ -197,8 +220,12 @@ jobs:
           tar -xzf "dist/${ASSET_NAME}" -C "${unpack}"
           grep -Fx "CUSTOM_VERSION=${BUILD_VERSION}" "${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"
           grep -Fx "version=${BUILD_VERSION}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx "baseline=${BASELINE_BUILD}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
           grep -Fx "cuda_threads=${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
-          grep -Fx "kernel=v2b-streamed-precomputed-cv-t${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx 'launch=dynamic-grid' "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx "kernel=kv3a-strict-cheap-precompute-t${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx 'optimization=precompute-matrix-times-0.0001' "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx 'consensus=strict-fp64' "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
           if grep -Fx 'CUSTOM_VERSION=dev' "${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"; then
             echo "ERROR: archive contains dev manifest"
             exit 1
@@ -207,7 +234,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-v100-kernel-v2-${{ github.sha }}
+          name: pepew-v100-kv3a-${{ github.sha }}
           path: |
             dist/${{ env.ASSET_NAME }}
             dist/${{ env.SHA_NAME }}
@@ -215,7 +242,7 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      - name: Publish isolated V100 Kernel-v2 rolling asset
+      - name: Publish isolated V100 KV3 rolling asset
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -224,17 +251,21 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           notes=$(cat <<EOF
-          Automated PepeW Tesla V100 Kernel-v2B geometry experiment.
+          Automated PepeW Tesla V100 KV3-A strict hot-loop experiment.
 
           Build: ${BUILD_VERSION}
           Commit: ${GITHUB_SHA}
           Ref: ${GITHUB_REF_NAME}
+          Baseline: ${BASELINE_BUILD}
           CUDA toolkit: ${CUDA_TOOLKIT}
           CUDA architectures: ${CUDA_ARCHS}
           Max registers/thread: ${CUDA_REG_CAP}
           Threads/block: ${CUDA_THREADS}
+          Launch: dynamic grid (same geometry as KV2-B)
+          Optimization: precompute matrix*0.0001 once per job
+          Consensus mode: strict FP64; fmad disabled; precise div/sqrt; FTZ disabled
 
-          Strict-consensus KV2-B candidate. Only launch width changes from the validated KV2-A geometry; streamed HooHash products, direct nibble reads and precomputed first BLAKE3 chunk CV remain unchanged.
+          KV3-A changes only the dominant cheap HooHash path. The job-constant first FP64 multiplication (matrix cell * 0.0001) is performed once during job preparation and cached. Per-nonce arithmetic order after that intermediate is unchanged. GPU KAT remains mandatory before performance acceptance on the V100 rig.
           EOF
           )
 
@@ -245,9 +276,9 @@ jobs:
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --target "${GITHUB_SHA}" \
-              --title "PepeW Miner Tesla V100 Kernel-v2 DEV" \
+              --title "PepeW Miner Tesla V100 KV3 DEV" \
               --notes "${notes}" \
               --prerelease
           fi
 
-          echo "V100 Kernel-v2 DEV asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          echo "V100 KV3 DEV asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
