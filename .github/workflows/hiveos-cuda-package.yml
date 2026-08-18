@@ -31,6 +31,7 @@ jobs:
       CUDA_TOOLKIT: "11.8"
       CUDA_ARCHS: "70;75;86"
       CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
       CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
@@ -54,9 +55,10 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="v100-kv2-${short_sha}"
+          build_version="v100-kv2b-t${CUDA_THREADS}-${short_sha}"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
-          echo "PepeW V100 Kernel-v2 candidate: ${build_version}"
+          echo "PepeW V100 Kernel-v2B candidate: ${build_version}"
+          echo "Geometry: ${CUDA_THREADS} threads/block; R${CUDA_REG_CAP}"
 
       - name: Configure CUDA release
         run: |
@@ -66,7 +68,9 @@ jobs:
             -DPEPEPOW_BUILD_TESTS=OFF \
             -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
             -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+          grep -F "PepeW Kernel-v2 launch width: ${CUDA_THREADS} threads/block" build/hiveos-cuda/CMakeFiles/CMakeOutput.log 2>/dev/null || true
 
       - name: Build miner
         run: cmake --build build/hiveos-cuda --target pepepowminer --parallel
@@ -164,7 +168,8 @@ jobs:
           cuda_toolkit=${CUDA_TOOLKIT}
           cuda_archs=${CUDA_ARCHS}
           cuda_max_registers=${CUDA_REG_CAP}
-          kernel=v2-streamed-precomputed-cv
+          cuda_threads=${CUDA_THREADS}
+          kernel=v2b-streamed-precomputed-cv-t${CUDA_THREADS}
           custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
@@ -175,10 +180,13 @@ jobs:
           tar -tzf "dist/${ASSET_NAME}"
           cat "dist/${SHA_NAME}"
 
-      - name: Validate archive layout
+      - name: Validate archive layout and identity
         run: |
           set -euo pipefail
           archive_list=/tmp/pepew-hiveos-archive-list.txt
+          unpack=/tmp/pepew-kv2b-identity
+          rm -rf "${unpack}"
+          mkdir -p "${unpack}"
           tar -tzf "dist/${ASSET_NAME}" > "${archive_list}"
           test "$(sed -n '1p' "${archive_list}")" = "${CUSTOM_MINER_NAME}/"
           grep -Fx "${CUSTOM_MINER_NAME}/h-manifest.conf" "${archive_list}"
@@ -186,6 +194,15 @@ jobs:
           grep -Fx "${CUSTOM_MINER_NAME}/h-run.sh" "${archive_list}"
           grep -Fx "${CUSTOM_MINER_NAME}/h-stats.sh" "${archive_list}"
           grep -Fx "${CUSTOM_MINER_NAME}/pepepowminer" "${archive_list}"
+          tar -xzf "dist/${ASSET_NAME}" -C "${unpack}"
+          grep -Fx "CUSTOM_VERSION=${BUILD_VERSION}" "${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"
+          grep -Fx "version=${BUILD_VERSION}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx "cuda_threads=${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          grep -Fx "kernel=v2b-streamed-precomputed-cv-t${CUDA_THREADS}" "${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          if grep -Fx 'CUSTOM_VERSION=dev' "${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"; then
+            echo "ERROR: archive contains dev manifest"
+            exit 1
+          fi
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -207,7 +224,7 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           notes=$(cat <<EOF
-          Automated PepeW Tesla V100 Kernel-v2 experiment.
+          Automated PepeW Tesla V100 Kernel-v2B geometry experiment.
 
           Build: ${BUILD_VERSION}
           Commit: ${GITHUB_SHA}
@@ -215,8 +232,9 @@ jobs:
           CUDA toolkit: ${CUDA_TOOLKIT}
           CUDA architectures: ${CUDA_ARCHS}
           Max registers/thread: ${CUDA_REG_CAP}
+          Threads/block: ${CUDA_THREADS}
 
-          Strict consensus candidate: streamed HooHash products, direct nibble reads and precomputed first BLAKE3 chunk CV. Baseline launch geometry remains 64 threads/block for the first clean A/B test.
+          Strict-consensus KV2-B candidate. Only launch width changes from the validated KV2-A geometry; streamed HooHash products, direct nibble reads and precomputed first BLAKE3 chunk CV remain unchanged.
           EOF
           )
 
