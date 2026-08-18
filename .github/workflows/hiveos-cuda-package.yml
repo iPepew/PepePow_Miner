@@ -62,7 +62,7 @@ jobs:
         run: |
           cmake -S native -B build/hiveos-cuda \
             -DCMAKE_BUILD_TYPE=Release \
-            -DPEPEW_ENABLE_CUDA=ON \
+            -DPEPEPOW_ENABLE_CUDA=ON \
             -DPEPEPOW_BUILD_TESTS=OFF \
             -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
             -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
