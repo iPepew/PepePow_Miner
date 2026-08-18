@@ -1,10 +1,10 @@
-name: HiveOS V100 SM70 R128 Package
+name: HiveOS V100 Kernel-v2 Package
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - "agent/v100-sm70-r128"
+      - "agent/v100-kernel-v2"
     paths:
       - "native/**"
       - "hiveos/**"
@@ -34,7 +34,7 @@ jobs:
       CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
-      RELEASE_TAG: hiveos-v100-r128-test
+      RELEASE_TAG: hiveos-v100-kernel-v2-test
 
     steps:
       - name: Install build tools
@@ -54,9 +54,9 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="v100-r128-${short_sha}"
+          build_version="v100-kv2-${short_sha}"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
-          echo "PepeW V100 sm70 R128 candidate: ${build_version}"
+          echo "PepeW V100 Kernel-v2 candidate: ${build_version}"
 
       - name: Configure CUDA release
         run: |
@@ -88,13 +88,13 @@ jobs:
           printf '%s\n' '[MINING] 12.345 MH/s | A 7 | R 1 | UP 00:01:23 | REC 2 | STATE online' > "${test_log}.log"
           stats_result=$(
             CUSTOM_LOG_BASENAME="${test_log}" \
-            CUSTOM_VERSION="v100-r128-test" \
+            CUSTOM_VERSION="v100-kv2-test" \
             bash -c 'source hiveos/h-stats.sh; printf "khs=%s\nstats=%s\n" "$khs" "$stats"'
           )
           grep -F 'khs=12345' <<< "${stats_result}"
           grep -F '"uptime":83' <<< "${stats_result}"
           grep -F '"ar":[7,1,0,"0"]' <<< "${stats_result}"
-          grep -F '"ver":"v100-r128-test"' <<< "${stats_result}"
+          grep -F '"ver":"v100-kv2-test"' <<< "${stats_result}"
           grep -F '"algo":"hoohash"' <<< "${stats_result}"
 
           fakebin=/tmp/pepew-fakebin
@@ -118,7 +118,7 @@ jobs:
           multi_stats=$(
             PATH="${fakebin}:$PATH" \
             CUSTOM_LOG_BASENAME="${test_log}" \
-            CUSTOM_VERSION="v100-r128-test" \
+            CUSTOM_VERSION="v100-kv2-test" \
             bash -c 'source hiveos/h-stats.sh; printf "%s\n" "$stats"'
           )
           grep -F '"hs":[8542,8101]' <<< "${multi_stats}"
@@ -142,7 +142,7 @@ jobs:
           grep -F -- '-u wallet.worker' "${test_config}"
           grep -F -- '--pepepow' "${test_config}"
 
-      - name: Assemble HiveOS V100 R128 archive
+      - name: Assemble HiveOS V100 Kernel-v2 archive
         run: |
           set -euo pipefail
           package_dir="dist/${CUSTOM_MINER_NAME}"
@@ -164,6 +164,7 @@ jobs:
           cuda_toolkit=${CUDA_TOOLKIT}
           cuda_archs=${CUDA_ARCHS}
           cuda_max_registers=${CUDA_REG_CAP}
+          kernel=v2-streamed-precomputed-cv
           custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
@@ -189,7 +190,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-v100-r128-${{ github.sha }}
+          name: pepew-v100-kernel-v2-${{ github.sha }}
           path: |
             dist/${{ env.ASSET_NAME }}
             dist/${{ env.SHA_NAME }}
@@ -197,7 +198,7 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      - name: Publish isolated V100 R128 rolling asset
+      - name: Publish isolated V100 Kernel-v2 rolling asset
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -206,7 +207,7 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           notes=$(cat <<EOF
-          Automated PepeW Tesla V100 SM70 register-pressure experiment.
+          Automated PepeW Tesla V100 Kernel-v2 experiment.
 
           Build: ${BUILD_VERSION}
           Commit: ${GITHUB_SHA}
@@ -215,7 +216,7 @@ jobs:
           CUDA architectures: ${CUDA_ARCHS}
           Max registers/thread: ${CUDA_REG_CAP}
 
-          Exact mining core from the 8.542 MH/s baseline; only the CUDA register cap is changed for a clean A/B test.
+          Strict consensus candidate: streamed HooHash products, direct nibble reads and precomputed first BLAKE3 chunk CV. Baseline launch geometry remains 64 threads/block for the first clean A/B test.
           EOF
           )
 
@@ -226,9 +227,9 @@ jobs:
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --target "${GITHUB_SHA}" \
-              --title "PepeW Miner Tesla V100 R128 DEV" \
+              --title "PepeW Miner Tesla V100 Kernel-v2 DEV" \
               --notes "${notes}" \
               --prerelease
           fi
 
-          echo "V100 R128 DEV asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          echo "V100 Kernel-v2 DEV asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
