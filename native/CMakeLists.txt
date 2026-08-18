@@ -57,8 +57,10 @@ endif()
 if(PEPEPOW_ENABLE_CUDA)
     enable_language(CUDA)
 
+    # Kernel-v2 branch intentionally keeps the previous CUDA backend source in
+    # the tree for easy A/B review while compiling the strict streamed variant.
     add_library(pepepow_cuda
-        src/cuda/header80_backend_cuda118.cu
+        src/cuda/header80_backend_cuda118_v2.cu
     )
     target_include_directories(pepepow_cuda PUBLIC include)
     target_link_libraries(pepepow_cuda PUBLIC pepepow_core)
