@@ -5,6 +5,7 @@
 khs=0
 stats="null"
 
+miner_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 log_base="${CUSTOM_LOG_BASENAME:-/var/log/miner/custom/PepeW-Miner/pepew}"
 log_file="${log_base}.log"
 
@@ -38,7 +39,18 @@ uptime_text=$(printf '%s\n' "${line}" | awk '{for (i=1;i<=NF;i++) if ($i=="UP") 
 IFS=: read -r uptime_hours uptime_minutes uptime_seconds_part <<< "${uptime_text}"
 uptime_seconds=$((10#${uptime_hours} * 3600 + 10#${uptime_minutes} * 60 + 10#${uptime_seconds_part}))
 khs=$(awk -v mhs="${mhs}" 'BEGIN { printf "%.0f", mhs * 1000.0 }')
-version="${CUSTOM_VERSION:-dev}"
+
+# Hive normally exports CUSTOM_VERSION from h-manifest.conf. Fall back to the
+# immutable BUILD_INFO written by CI so the dashboard never degrades to v.dev.
+version="${CUSTOM_VERSION:-}"
+if [[ -z "${version}" || "${version}" == "dev" ]]; then
+  build_info="${miner_dir}/BUILD_INFO.txt"
+  if [[ -s "${build_info}" ]]; then
+    build_version=$(awk -F= '$1=="version" {print $2; exit}' "${build_info}")
+    [[ -n "${build_version}" ]] && version="${build_version}"
+  fi
+fi
+[[ -n "${version}" ]] || version="dev"
 
 # Read hardware telemetry once. Arrays are keyed by CUDA/NVIDIA index so that
 # hs[], temp[], fan[] and bus_numbers[] describe the same physical card.
@@ -87,6 +99,18 @@ if (( ${#hs_values[@]} == 0 )); then
 fi
 hs_json=$(IFS=,; printf '%s' "${hs_values[*]}")
 
+# HiveOS' native share schema is [accepted, rejected, invalid, per_gpu_errors].
+# PepeW currently has no separate invalid-share class and pool counters are
+# aggregate, so invalid=0 and per-GPU error counters are explicit zeroes.
+gpu_error_values=()
+for ((gpu_id=0; gpu_id<${#hs_values[@]}; ++gpu_id)); do
+  gpu_error_values+=("0")
+done
+if (( ${#gpu_error_values[@]} == 0 )); then
+  gpu_error_values=("0")
+fi
+gpu_errors=$(IFS=';'; printf '%s' "${gpu_error_values[*]}")
+
 # Build optional hardware arrays only when every reported mining GPU has a
 # corresponding system value. This avoids shifting card telemetry in HiveOS.
 temp_json=""
@@ -115,9 +139,9 @@ if (( gpu_count > 0 && ${#hs_values[@]} == gpu_count )); then
 fi
 
 if [[ -n "${bus_json}" ]]; then
-  stats=$(printf '{"hs":[%s],"hs_units":"khs","temp":[%s],"fan":[%s],"uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
-    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}" "${bus_json}")
+  stats=$(printf '{"hs":[%s],"hs_units":"khs","temp":[%s],"fan":[%s],"uptime":%s,"ar":[%s,%s,0,"%s"],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
+    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${gpu_errors}" "${version}" "${bus_json}")
 else
-  stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash"}' \
-    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}")
+  stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s,0,"%s"],"ver":"%s","algo":"hoohash"}' \
+    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${gpu_errors}" "${version}")
 fi
