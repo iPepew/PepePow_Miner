@@ -91,7 +91,8 @@ jobs:
           )
           grep -F 'khs=12345' <<< "${stats_result}"
           grep -F '"uptime":83' <<< "${stats_result}"
-          grep -F '"ar":[7,1]' <<< "${stats_result}"
+          grep -F '"ar":[7,1,0,"0"]' <<< "${stats_result}"
+          grep -F '"ver":"v100-test"' <<< "${stats_result}"
           grep -F '"algo":"hoohash"' <<< "${stats_result}"
 
           fakebin=/tmp/pepew-fakebin
@@ -121,7 +122,7 @@ jobs:
           grep -F '"hs":[6274,5801]' <<< "${multi_stats}"
           grep -F '"temp":[54,67]' <<< "${multi_stats}"
           grep -F '"fan":[0,72]' <<< "${multi_stats}"
-          grep -F '"ar":[3,0]' <<< "${multi_stats}"
+          grep -F '"ar":[3,0,0,"0;0"]' <<< "${multi_stats}"
           grep -F '"bus_numbers":[2,133]' <<< "${multi_stats}"
 
       - name: Test HiveOS config callback
@@ -214,8 +215,6 @@ jobs:
           EOF
           )
 
-          # Ubuntu 22.04 currently ships gh 2.4.0, which has no `gh release edit`.
-          # Existing rolling releases only need their assets atomically replaced.
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release upload "${RELEASE_TAG}" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
           else
