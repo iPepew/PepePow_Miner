@@ -1,0 +1,96 @@
+name: Analyze public hoo_gpu CUDA binaries
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-kernel-v2"
+    paths:
+      - ".github/workflows/hoo-gpu-binary-analysis.yml"
+      - "lab/COMPETITOR_ANALYSIS.md"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  inspect-hoo-gpu:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["1.4.1", "1.4.3", "1.4.12", "1.4.17", "1.4.23"]
+
+    steps:
+      - name: Install analysis tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl tar file binutils grep gawk coreutils
+          rm -rf /var/lib/apt/lists/*
+          echo "=== CUDA tools ==="
+          command -v cuobjdump
+          command -v nvdisasm || true
+          cuobjdump --version || true
+
+      - name: Download official public hoo_gpu release
+        run: |
+          set -euo pipefail
+          url="https://htn.foztor.net/hoo_gpu-${{ matrix.version }}.tar.gz"
+          echo "Downloading: ${url}"
+          curl -fL --retry 4 --retry-delay 2 -o /tmp/hoo_gpu.tar.gz "${url}"
+          sha256sum /tmp/hoo_gpu.tar.gz
+          mkdir -p /tmp/hoo
+          tar -xzf /tmp/hoo_gpu.tar.gz -C /tmp/hoo
+          echo "=== Archive files ==="
+          find /tmp/hoo -maxdepth 4 -type f -printf '%s %p\n' | sort -n
+
+      - name: Inspect host executable and CUDA payloads
+        run: |
+          set -euo pipefail
+          report="/tmp/hoo_gpu-${{ matrix.version }}-analysis.txt"
+          : > "$report"
+          {
+            echo "=== RELEASE ${{ matrix.version }} ==="
+            echo
+            echo "=== FILE INVENTORY ==="
+            find /tmp/hoo -maxdepth 5 -type f -printf '%s %p\n' | sort -n
+            echo
+            echo "=== ELF / FATBIN CANDIDATES ==="
+          } >> "$report"
+
+          while IFS= read -r f; do
+            {
+              echo
+              echo "### $f"
+              file "$f" || true
+              readelf -h "$f" 2>/dev/null | grep -E 'Class:|Machine:|Type:' || true
+              readelf -S "$f" 2>/dev/null | grep -Ei 'cuda|fatbin|nv_fatbin|text' || true
+              echo "-- CUDA images --"
+              cuobjdump --list-elf "$f" 2>&1 || true
+              echo "-- Resource usage --"
+              cuobjdump --dump-resource-usage "$f" 2>&1 || true
+              echo "-- CUDA symbols / strategy strings --"
+              strings -a "$f" | grep -Ei 'sm_70|compute_70|hoohash|kernel|exp.threshold|autotun|fatbin|nonce|cuda|block|thread|occup|register' | head -300 || true
+            } >> "$report"
+          done < <(find /tmp/hoo -maxdepth 5 -type f | sort)
+
+          echo "=== ANALYSIS REPORT ==="
+          cat "$report"
+
+      - name: Summarize sm_70 clues
+        run: |
+          set -euo pipefail
+          echo "=== sm_70 / Volta payload summary for hoo_gpu ${{ matrix.version }} ==="
+          for f in $(find /tmp/hoo -maxdepth 5 -type f | sort); do
+            out=$(cuobjdump --list-elf "$f" 2>&1 || true)
+            if grep -qiE 'sm_70|compute_70' <<< "$out" || strings -a "$f" | grep -qE 'sm_70|compute_70'; then
+              echo "FILE: $f"
+              echo "$out" | grep -Ei 'sm_70|compute_70|elf|fatbin' || true
+              cuobjdump --dump-resource-usage "$f" 2>&1 | grep -Ei 'Function|REG|STACK|SHARED|LOCAL|sm_70|RESOURCE' || true
+            fi
+          done
