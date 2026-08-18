@@ -7,7 +7,7 @@ option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" ON)
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_ARCHITECTURES "70;86" CACHE STRING "CUDA architectures for release builds (Tesla V100 sm_70; RTX 3080 sm_86)")
-set(PEPEPOW_CUDA_THREADS "256" CACHE STRING "CUDA mining threads per block for Kernel-v2 geometry tests")
+set(PEPEPOW_CUDA_THREADS "256" CACHE STRING "CUDA mining threads per block for Kernel-v3 geometry tests")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -65,15 +65,20 @@ if(PEPEPOW_ENABLE_CUDA)
         message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be between 32 and 1024")
     endif()
 
-    # Kernel-v2 keeps the strict reference source immutable and generates a
-    # geometry-specific translation unit at configure time. This lets V100 A/B
-    # tests change only launch width while preserving the exact consensus code.
+    # KV3-B starts from the measured KV2-B t256 baseline. It deliberately does
+    # not carry KV3-A's second matrix. The generated translation unit applies
+    # two strict scalar simplifications in the nonlinear path:
+    # 1) derive transformFactorTwo from transformFactorOne, eliminating one
+    #    redundant floor while preserving the same power-of-two scaling;
+    # 2) remove the unreachable NaN/Inf retry loop. For the mining input domain
+    #    x is finite and all three nonlinear branches return finite doubles.
     set(_pepepow_cuda_source "${CMAKE_CURRENT_SOURCE_DIR}/src/cuda/header80_backend_cuda118_v2.cu")
     file(READ "${_pepepow_cuda_source}" _pepepow_cuda_text)
+
     set(_pepepow_thread_marker "constexpr unsigned threads=64;")
     string(FIND "${_pepepow_cuda_text}" "${_pepepow_thread_marker}" _pepepow_thread_marker_pos)
     if(_pepepow_thread_marker_pos EQUAL -1)
-        message(FATAL_ERROR "Kernel-v2 launch-width marker not found in ${_pepepow_cuda_source}")
+        message(FATAL_ERROR "KV3-B launch-width marker not found in ${_pepepow_cuda_source}")
     endif()
     string(REPLACE
         "${_pepepow_thread_marker}"
@@ -81,9 +86,47 @@ if(PEPEPOW_ENABLE_CUDA)
         _pepepow_cuda_text
         "${_pepepow_cuda_text}"
     )
-    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_v2_t${PEPEPOW_CUDA_THREADS}.cu")
+
+    set(_pepepow_factor_marker [=[    const double one=(x*kTM)/8.0-floor((x*kTM)/8.0);
+    const double two=(x*kTM)/4.0-floor((x*kTM)/4.0);]=])
+    set(_pepepow_factor_replacement [=[    const double scaled=x*kTM;
+    const double q=scaled*0.125;
+    const double one=q-floor(q);
+    double two=one+one;
+    if(two>=1.0)two-=1.0;]=])
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_factor_marker}" _pepepow_factor_pos)
+    if(_pepepow_factor_pos EQUAL -1)
+        message(FATAL_ERROR "KV3-B transform-factor marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_factor_marker}"
+        "${_pepepow_factor_replacement}"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_safe_marker [=[__device__ __forceinline__ double safe_complex(double input){
+    double rounds=1.0;const double value=complex_transform(input);
+    while(isnan(value)||isinf(value)){input*=0.1;if(input<=1e-13)return 0.0;rounds+=1.0;}return value*rounds;
+}]=])
+    set(_pepepow_safe_replacement [=[__device__ __forceinline__ double safe_complex(double input){
+    return complex_transform(input);
+}]=])
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_safe_marker}" _pepepow_safe_pos)
+    if(_pepepow_safe_pos EQUAL -1)
+        message(FATAL_ERROR "KV3-B safe_complex marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_safe_marker}"
+        "${_pepepow_safe_replacement}"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_kv3b_t${PEPEPOW_CUDA_THREADS}.cu")
     file(WRITE "${_pepepow_cuda_generated}" "${_pepepow_cuda_text}")
-    message(STATUS "PepeW Kernel-v2 launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
+    message(STATUS "PepeW KV3-B strict nonlinear scalar cleanup enabled")
+    message(STATUS "PepeW KV3-B launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
 
     add_library(pepepow_cuda
         "${_pepepow_cuda_generated}"
