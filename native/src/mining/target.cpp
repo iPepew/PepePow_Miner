@@ -11,6 +11,13 @@ namespace pepepow::mining {
 namespace {
 
 constexpr std::uint64_t kDifficultyScale = 1'000'000ULL;
+
+// PEPEPOW/Foztor advertises Stratum difficulty in the historical HooHash
+// wire scale. A wire value of 327.68 corresponds to effective difficulty
+// 0.005. Keep this isolated on the KV6-C experimental branch until the live
+// pool test confirms accepted shares with zero rejects.
+constexpr long double kPepepowWireDifficultyScale = 65536.0L;
+
 // Standard 0xffff difficulty-1 target used by PEPEPOW/HooHashV110.
 // Big-endian: 00000000ffff0000... (not 0000ffff0000...).
 constexpr std::array<std::uint8_t, 32> kDiff1Target{
@@ -77,7 +84,10 @@ Target256 target_from_difficulty(double difficulty) {
         throw std::invalid_argument("difficulty must be finite and greater than zero");
     }
 
-    const long double scaled_value = static_cast<long double>(difficulty) * kDifficultyScale;
+    const long double effective_difficulty =
+        static_cast<long double>(difficulty) / kPepepowWireDifficultyScale;
+    const long double scaled_value = effective_difficulty * kDifficultyScale;
+
     if (scaled_value > static_cast<long double>(std::numeric_limits<std::uint64_t>::max())) {
         throw std::overflow_error("difficulty is too large");
     }
