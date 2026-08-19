@@ -69,9 +69,6 @@ if command -v nvidia-smi >/dev/null 2>&1; then
     gpu_id=$((10#${smi_index}))
     (( gpu_id + 1 > gpu_count )) && gpu_count=$((gpu_id + 1))
 
-    # Hive requires numeric temperature/fan values. Tesla SXM modules commonly
-    # report fan.speed as N/A because cooling belongs to the chassis; report 0
-    # rather than inventing a fan speed.
     [[ "${smi_temp}" =~ ^[0-9]+([.][0-9]+)?$ ]] && gpu_temp[gpu_id]="${smi_temp%.*}" || gpu_temp[gpu_id]=0
     [[ "${smi_fan}" =~ ^[0-9]+([.][0-9]+)?$ ]] && gpu_fan[gpu_id]="${smi_fan%.*}" || gpu_fan[gpu_id]=0
 
@@ -99,20 +96,9 @@ if (( ${#hs_values[@]} == 0 )); then
 fi
 hs_json=$(IFS=,; printf '%s' "${hs_values[*]}")
 
-# HiveOS' native share schema is [accepted, rejected, invalid, per_gpu_errors].
-# PepeW currently has no separate invalid-share class and pool counters are
-# aggregate, so invalid=0 and per-GPU error counters are explicit zeroes.
-gpu_error_values=()
-for ((gpu_id=0; gpu_id<${#hs_values[@]}; ++gpu_id)); do
-  gpu_error_values+=("0")
-done
-if (( ${#gpu_error_values[@]} == 0 )); then
-  gpu_error_values=("0")
-fi
-gpu_errors=$(IFS=';'; printf '%s' "${gpu_error_values[*]}")
-
-# Build optional hardware arrays only when every reported mining GPU has a
-# corresponding system value. This avoids shifting card telemetry in HiveOS.
+# HiveOS custom-miner schema defines ar as exactly two aggregate counters:
+# [accepted, rejected]. Keep this shape stable in every PepeW build so the
+# dashboard can render A/R next to the miner version.
 temp_json=""
 fan_json=""
 bus_json=""
@@ -139,9 +125,9 @@ if (( gpu_count > 0 && ${#hs_values[@]} == gpu_count )); then
 fi
 
 if [[ -n "${bus_json}" ]]; then
-  stats=$(printf '{"hs":[%s],"hs_units":"khs","temp":[%s],"fan":[%s],"uptime":%s,"ar":[%s,%s,0,"%s"],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
-    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${gpu_errors}" "${version}" "${bus_json}")
+  stats=$(printf '{"hs":[%s],"hs_units":"khs","temp":[%s],"fan":[%s],"uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
+    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}" "${bus_json}")
 else
-  stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s,0,"%s"],"ver":"%s","algo":"hoohash"}' \
-    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${gpu_errors}" "${version}")
+  stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash"}' \
+    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}")
 fi
