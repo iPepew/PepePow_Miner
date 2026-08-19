@@ -1,10 +1,10 @@
-name: HiveOS V100 KV3-B Strict Scalar Package
+name: HiveOS V100 KV4-A Constant Matrix Package
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - "agent/v100-kv3b-scalar"
+      - "agent/v100-kv4a-const-matrix"
     paths:
       - "native/**"
       - "hiveos/**"
@@ -30,8 +30,8 @@ jobs:
       CUSTOM_MINER_NAME: PepeW-Miner
       ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
       SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
-      RELEASE_TAG: hiveos-v100-kv3b-test
-      BASELINE_BUILD: v100-kv2b-t256-c49bf75
+      RELEASE_TAG: hiveos-v100-kv4a-test
+      BASELINE_BUILD: kv3b-10.086mh
 
     steps:
       - name: Install build tools
@@ -52,12 +52,12 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          build_version="v100-kv3b-scalar-t${CUDA_THREADS}-${short_sha}"
+          build_version="v100-kv4a-cmem-t${CUDA_THREADS}-${short_sha}"
           echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
           echo "Candidate: ${build_version}"
           echo "Baseline: ${BASELINE_BUILD}"
           echo "Geometry: ${CUDA_THREADS} threads/block; R${CUDA_REG_CAP}"
-          echo "Optimization: strict nonlinear scalar cleanup"
+          echo "Optimization: 32 KiB strict job matrix in CUDA constant memory"
 
       - name: Configure CUDA release and verify generated source
         run: |
@@ -71,27 +71,25 @@ jobs:
             -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
             -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
 
-          generated="build/hiveos-cuda/header80_backend_cuda118_kv3b_t${CUDA_THREADS}.cu"
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
           test -s "${generated}"
+          grep -F '#include "pepepow/crypto/blake3.hpp"' "${generated}"
+          grep -F '__device__ __constant__ double d_matrix[64][64];' "${generated}"
+          grep -F 'cudaMemcpyToSymbol(d_matrix,matrix[0].data(),sizeof(double)*64U*64U)' "${generated}"
+          grep -F 'const auto matrix=crypto::generate_hoohash_matrix(matrix_seed);' "${generated}"
           grep -F 'const double scaled=x*kTM;' "${generated}"
-          grep -F 'const double q=scaled*0.125;' "${generated}"
-          grep -F 'if(two>=1.0)two-=1.0;' "${generated}"
           grep -F 'return complex_transform(input);' "${generated}"
           grep -F "constexpr unsigned threads=${CUDA_THREADS};" "${generated}"
 
+          if grep -F 'd_matrix[i][j]=' "${generated}"; then
+            echo "ERROR: device-side matrix writes survived KV4-A transform"
+            exit 1
+          fi
           if grep -F 'while(isnan(value)||isinf(value))' "${generated}"; then
-            echo "ERROR: unreachable safe_complex retry loop survived transform"
+            echo "ERROR: rejected safe_complex retry loop survived transform"
             exit 1
           fi
-          if grep -F 'const double two=(x*kTM)/4.0-floor((x*kTM)/4.0);' "${generated}"; then
-            echo "ERROR: redundant second floor survived transform"
-            exit 1
-          fi
-          if grep -F 'd_matrix_cheap' "${generated}"; then
-            echo "ERROR: rejected KV3-A second matrix leaked into KV3-B"
-            exit 1
-          fi
-          echo "[SOURCE] KV3-B transform verified"
+          echo "[SOURCE] KV4-A constant-matrix transform verified"
 
       - name: Build miner and capture PTXAS resources
         run: |
@@ -108,7 +106,7 @@ jobs:
           build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
           bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
 
-      - name: Assemble HiveOS KV3-B archive
+      - name: Assemble HiveOS KV4-A archive
         run: |
           set -euo pipefail
           package_dir="dist/${CUSTOM_MINER_NAME}"
@@ -133,8 +131,10 @@ jobs:
           cuda_max_registers=${CUDA_REG_CAP}
           cuda_threads=${CUDA_THREADS}
           launch=dynamic-grid
-          kernel=kv3b-strict-nonlinear-scalar-t${CUDA_THREADS}
-          optimization=one-floor-transform-factor+finite-domain-safe-complex
+          kernel=kv4a-constant-matrix-t${CUDA_THREADS}
+          matrix_storage=constant-32k
+          matrix_generation=host-strict-reference
+          scalar_path=kv3b-strict
           consensus=strict-fp64
           custom_miner=${CUSTOM_MINER_NAME}
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -149,7 +149,7 @@ jobs:
       - name: Validate package identity
         run: |
           set -euo pipefail
-          unpack=/tmp/pepew-kv3b-identity
+          unpack=/tmp/pepew-kv4a-identity
           rm -rf "${unpack}"
           mkdir -p "${unpack}"
           tar -xzf "dist/${ASSET_NAME}" -C "${unpack}"
@@ -160,9 +160,9 @@ jobs:
           grep -Fx "version=${BUILD_VERSION}" "${info}"
           grep -Fx "baseline=${BASELINE_BUILD}" "${info}"
           grep -Fx "cuda_threads=${CUDA_THREADS}" "${info}"
-          grep -Fx 'launch=dynamic-grid' "${info}"
-          grep -Fx "kernel=kv3b-strict-nonlinear-scalar-t${CUDA_THREADS}" "${info}"
-          grep -Fx 'optimization=one-floor-transform-factor+finite-domain-safe-complex' "${info}"
+          grep -Fx 'matrix_storage=constant-32k' "${info}"
+          grep -Fx 'matrix_generation=host-strict-reference' "${info}"
+          grep -Fx 'scalar_path=kv3b-strict' "${info}"
           grep -Fx 'consensus=strict-fp64' "${info}"
           if grep -Fx 'CUSTOM_VERSION=dev' "${manifest}"; then
             echo "ERROR: archive contains dev manifest"
@@ -172,7 +172,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-v100-kv3b-${{ github.sha }}
+          name: pepew-v100-kv4a-${{ github.sha }}
           path: |
             dist/${{ env.ASSET_NAME }}
             dist/${{ env.SHA_NAME }}
@@ -180,7 +180,7 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      - name: Publish isolated KV3-B rolling asset
+      - name: Publish isolated KV4-A rolling asset
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -188,7 +188,7 @@ jobs:
           set -euo pipefail
           git config --global --add safe.directory "${GITHUB_WORKSPACE}"
           notes=$(cat <<EOF
-          PepeW Tesla V100 KV3-B strict scalar experiment.
+          PepeW Tesla V100 KV4-A strict constant-memory experiment.
 
           Build: ${BUILD_VERSION}
           Baseline: ${BASELINE_BUILD}
@@ -198,7 +198,7 @@ jobs:
           Registers cap: ${CUDA_REG_CAP}
           Threads/block: ${CUDA_THREADS}
 
-          KV3-A's second matrix is fully reverted. KV3-B keeps the KV2-B memory layout and attacks only the nonlinear scalar instruction path: one redundant floor is removed and the unreachable non-finite retry loop is collapsed. Strict FP64 compiler flags remain enabled.
+          KV4-A keeps KV3-B's exact FP64 nonlinear scalar path and moves the 64x64 per-job HooHash matrix from global memory to CUDA constant memory. The matrix is generated once per job by the existing strict host reference and uploaded as a 32 KiB constant symbol. This is intended to exploit same-address warp broadcasts without changing consensus arithmetic.
           EOF
           )
 
@@ -209,9 +209,9 @@ jobs:
               "dist/${ASSET_NAME}" \
               "dist/${SHA_NAME}" \
               --target "${GITHUB_SHA}" \
-              --title "PepeW Miner Tesla V100 KV3-B DEV" \
+              --title "PepeW Miner Tesla V100 KV4-A DEV" \
               --notes "${notes}" \
               --prerelease
           fi
 
-          echo "KV3-B asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          echo "KV4-A asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
