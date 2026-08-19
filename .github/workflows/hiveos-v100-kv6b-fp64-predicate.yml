@@ -1,0 +1,203 @@
+name: HiveOS V100 KV6-B FP64 Predicate Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-kv6b-fp64-predicate"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv6b_fp64_predicate_transform.py"
+      - ".github/workflows/hiveos-v100-kv6b-fp64-predicate.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      PTXAS_NAME: KV6B-PTXAS.log
+      RELEASE_TAG: hiveos-v100-kv6b-test
+      BASELINE_BUILD: kv4a-10.212mh
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          rm -rf /var/lib/apt/lists/*
+          cmake --version
+          nvcc --version
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply KV6-B transform
+        run: |
+          set -euo pipefail
+          python3 lab/kv6b_fp64_predicate_transform.py
+          src=native/src/cuda/header80_backend_cuda118_v2.cu
+          grep -F 'sw_low_from_product' "$src"
+          grep -F '__double2ull_rd' "$src"
+          grep -F 'if(vi==0U)continue;' "$src"
+          grep -F 'bool sw_low=true;' "$src"
+          if grep -F 'sw=product/1024.0-floor(product/1024.0);' "$src"; then
+            echo 'ERROR: old sw floor chain survived'
+            exit 1
+          fi
+
+      - name: Generate version
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          build_version="v100-kv6b-swfast-t${CUDA_THREADS}-${short_sha}"
+          echo "BUILD_VERSION=${build_version}" >> "$GITHUB_ENV"
+          echo "Candidate: ${build_version}"
+          echo "Baseline: ${BASELINE_BUILD}"
+          echo 'Optimization: exact boolean sw predicate + zero-nibble skip; KV4-A word/byte path retained'
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "$generated"
+          grep -F '__device__ __constant__ double d_matrix[64][64];' "$generated"
+          grep -F 'sw_low_from_product' "$generated"
+          grep -F '__double2ull_rd' "$generated"
+          grep -F 'if(vi==0U)continue;' "$generated"
+          grep -F 'const double scaled=x*kTM;' "$generated"
+          grep -F 'return complex_transform(input);' "$generated"
+          grep -F "constexpr unsigned threads=${CUDA_THREADS};" "$generated"
+          echo '[SOURCE] KV6-B generated source verified'
+
+      - name: Build and capture PTXAS
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2>&1 | tee /tmp/pepew-build.log
+          echo '--- PTXAS RESOURCE SUMMARY ---'
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill|bytes cmem' /tmp/pepew-build.log || true
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+      - name: Assemble HiveOS archive
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "$package_dir"
+
+          install -m 0755 build/hiveos-cuda/pepepowminer "$package_dir/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$package_dir/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$package_dir/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$package_dir/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$package_dir/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "$package_dir/h-manifest.conf"
+
+          cat > "$package_dir/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          channel=${RELEASE_TAG}
+          baseline=${BASELINE_BUILD}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          kernel=kv6b-exact-sw-predicate-t${CUDA_THREADS}
+          matrix_storage=constant-32k
+          matrix_generation=host-strict-reference
+          scalar_path=kv3b-strict
+          sw_state=boolean-exact-positive-fp64
+          sw_floor=double2ull-rounddown
+          zero_nibble=skip-exact
+          word_pipeline=kv4a-baseline
+          consensus=strict-fp64
+          custom_miner=${CUSTOM_MINER_NAME}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+          cp /tmp/pepew-build.log "dist/${PTXAS_NAME}"
+          strip "$package_dir/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "$CUSTOM_MINER_NAME"
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+          tar -tzf "dist/${ASSET_NAME}"
+          cat "dist/${SHA_NAME}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-kv6b-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+            dist/${{ env.PTXAS_NAME }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish KV6-B rolling asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          notes=$(cat <<EOF
+          PepeW Tesla V100 KV6-B strict FP64 predicate experiment.
+
+          Build: ${BUILD_VERSION}
+          Baseline: ${BASELINE_BUILD}
+          CUDA: ${CUDA_TOOLKIT}
+          Threads/block: ${CUDA_THREADS}
+          Register cap: ${CUDA_REG_CAP}
+
+          KV6-B returns to the proven KV4-A byte/word path. It changes only the inner HooHash state update: sw is represented as the exact boolean predicate needed by the next iteration, floor materialization is replaced with round-down conversion after exact 2^-10 scaling, and zero nibbles skip work because they cannot alter product or sw.
+          EOF
+          )
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" "dist/${PTXAS_NAME}" --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/${ASSET_NAME}" \
+              "dist/${SHA_NAME}" \
+              "dist/${PTXAS_NAME}" \
+              --target "$GITHUB_SHA" \
+              --title 'PepeW Miner Tesla V100 KV6-B DEV' \
+              --notes "$notes" \
+              --prerelease
+          fi
+
+          echo "KV6-B asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
