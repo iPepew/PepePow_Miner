@@ -1,0 +1,7 @@
+KV6-A build trigger
+branch=agent/v100-kv6a-word-pipeline
+baseline=KV4-A 10.212 MH/s
+experiment=uint32x8 word pipeline
+threads=256
+register_cap=128
+consensus=strict-fp64
