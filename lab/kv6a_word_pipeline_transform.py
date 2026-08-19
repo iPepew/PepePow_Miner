@@ -38,11 +38,34 @@ __device__ void blake32(const std::uint8_t in[32],std::uint8_t out[32]){
     for(int i=0;i<8;++i)put_le32(out+4*i,c[i]);
 }
 '''
-new = r'''// KV6-A word pipeline: BLAKE3 output stays as eight little-endian words in
-// the hot path. Byte materialization is reserved for diagnostics and a found
-// share. This removes the first[32] -> le32/be32 and mixed[32] -> le32 roundtrips.
+new = r'''// KV6-A word pipeline. The three 32-byte hash stages stay as named 32-bit
+// words in the hot path. A struct is intentional: it prevents a dynamic array
+// index elsewhere from forcing the whole value into CUDA local memory.
+struct HashWords8 {
+    std::uint32_t w0,w1,w2,w3,w4,w5,w6,w7;
+};
+
+__device__ __forceinline__ std::uint32_t word_at(const HashWords8& h,int i){
+    switch(i){
+        case 0:return h.w0; case 1:return h.w1; case 2:return h.w2; case 3:return h.w3;
+        case 4:return h.w4; case 5:return h.w5; case 6:return h.w6; default:return h.w7;
+    }
+}
+__device__ __forceinline__ void set_word(HashWords8& h,int i,std::uint32_t v){
+    switch(i){
+        case 0:h.w0=v;break; case 1:h.w1=v;break; case 2:h.w2=v;break; case 3:h.w3=v;break;
+        case 4:h.w4=v;break; case 5:h.w5=v;break; case 6:h.w6=v;break; default:h.w7=v;break;
+    }
+}
+__device__ __forceinline__ void put_words_bytes(std::uint8_t* out,const HashWords8& h){
+    put_le32(out+0,h.w0); put_le32(out+4,h.w1); put_le32(out+8,h.w2); put_le32(out+12,h.w3);
+    put_le32(out+16,h.w4); put_le32(out+20,h.w5); put_le32(out+24,h.w6); put_le32(out+28,h.w7);
+}
+
+// Compute the 80-byte BLAKE3 tail directly to words. Header bytes 64..75 are
+// job-constant; only bytes 76..79 (nonce) vary.
 __device__ __forceinline__ void blake80_tail_words(
-    const std::uint8_t* base,std::uint32_t nonce,std::uint32_t out[8]){
+    const std::uint8_t* base,std::uint32_t nonce,HashWords8& out){
     std::uint32_t cv[8],b[16],c[16];
     #pragma unroll
     for(int i=0;i<8;++i)cv[i]=d_first_cv[i];
@@ -53,22 +76,19 @@ __device__ __forceinline__ void blake80_tail_words(
     b[2]=le32(base+72);
     b[3]=bswap32(nonce);
     compress(cv,b,16,kChunkEnd|kRoot,c);
-    #pragma unroll
-    for(int i=0;i<8;++i)out[i]=c[i];
+    out=HashWords8{c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]};
 }
 
-__device__ __forceinline__ void blake32_words(
-    const std::uint32_t in[8],std::uint32_t out[8]){
+__device__ __forceinline__ void blake32_words(const HashWords8& in,HashWords8& out){
     std::uint32_t cv[8],b[16],c[16];
     #pragma unroll
     for(int i=0;i<8;++i)cv[i]=kIv[i];
-    #pragma unroll
-    for(int i=0;i<8;++i)b[i]=in[i];
+    b[0]=in.w0; b[1]=in.w1; b[2]=in.w2; b[3]=in.w3;
+    b[4]=in.w4; b[5]=in.w5; b[6]=in.w6; b[7]=in.w7;
     #pragma unroll
     for(int i=8;i<16;++i)b[i]=0U;
     compress(cv,b,32,kChunkStart|kChunkEnd|kRoot,c);
-    #pragma unroll
-    for(int i=0;i<8;++i)out[i]=c[i];
+    out=HashWords8{c[0],c[1],c[2],c[3],c[4],c[5],c[6],c[7]};
 }
 '''
 replacements.append((old, new, "word BLAKE3"))
@@ -154,45 +174,43 @@ __global__ void diag_kernel(const std::uint8_t* base,std::uint32_t nonce,std::ui
 }
 '''
 new = r'''__device__ __forceinline__ void accumulate_row_words(
-    int row,const std::uint32_t first[8],double hm,double nm,double& sw,double& product){
-    // Preserve the exact j=0..63 order while presenting the first hash to the
-    // compiler as eight 32-bit words. The fixed loops are deliberately unrolled
-    // so Volta can scalarize first[] instead of addressing a 32-byte byte array.
+    int row,const HashWords8& first,double hm,double nm,double& sw,double& product){
+    // Full j unroll is safe here: this function appears twice in the pair-loop
+    // body, while the pair loop itself remains explicitly NOT unrolled. Thus
+    // word selection becomes compile-time without exploding 64 row copies.
     #pragma unroll
-    for(int wi=0;wi<8;++wi){
-        const std::uint32_t word=first[wi];
-        #pragma unroll
-        for(int ni=0;ni<8;++ni){
-            const int j=wi*8+ni;
-            const unsigned shift=static_cast<unsigned>((ni>>1)*8+((ni&1)?0:4));
-            const double v=static_cast<double>((word>>shift)&0x0fU);
-            if(sw<=0.02){
-                const double x=d_matrix[row][j]*hm*v+nm;
-                product+=safe_complex(x)*v*1234.0;
-            }else{
-                product+=d_matrix[row][j]*0.0001*v;
-            }
-            sw=product/1024.0-floor(product/1024.0);
+    for(int j=0;j<64;++j){
+        const int wi=j>>3;
+        const int ni=j&7;
+        const std::uint32_t word=word_at(first,wi);
+        const unsigned shift=static_cast<unsigned>((ni>>1)*8+((ni&1)?0:4));
+        const double v=static_cast<double>((word>>shift)&0x0fU);
+        if(sw<=0.02){
+            const double x=d_matrix[row][j]*hm*v+nm;
+            product+=safe_complex(x)*v*1234.0;
+        }else{
+            product+=d_matrix[row][j]*0.0001*v;
         }
+        sw=product/1024.0-floor(product/1024.0);
     }
 }
 
 __device__ __forceinline__ void mix_streamed_words(
-    const std::uint32_t first[8],std::uint32_t out[8],std::uint32_t nonce_wire){
-    std::uint32_t hash_mod=0U;
-    #pragma unroll
-    for(int i=0;i<8;++i)hash_mod^=bswap32(first[i]);
+    const HashWords8& first,HashWords8& out,std::uint32_t nonce_wire){
+    const std::uint32_t hash_mod=
+        bswap32(first.w0)^bswap32(first.w1)^bswap32(first.w2)^bswap32(first.w3)^
+        bswap32(first.w4)^bswap32(first.w5)^bswap32(first.w6)^bswap32(first.w7);
     const double hm=static_cast<double>(hash_mod);
     const double nm=static_cast<double>(nonce_wire&0xffU);
     double sw=0.0;
 
-    // Four adjacent output bytes are packed directly into one register word.
-    // Pair/row order is unchanged: 0,1,...,31 and rows 0,1,...,63.
-    #pragma unroll
+    // Preserve exact pair/row order. Keeping both loops rolled avoids a giant
+    // SASS body; the expensive 64-column row body is only present twice.
+    #pragma unroll 1
     for(int wi=0;wi<8;++wi){
-        const std::uint32_t first_word=first[wi];
+        const std::uint32_t first_word=word_at(first,wi);
         std::uint32_t packed=0U;
-        #pragma unroll
+        #pragma unroll 1
         for(int lane=0;lane<4;++lane){
             const int pair=wi*4+lane;
             double p0=0.0;
@@ -204,33 +222,30 @@ __device__ __forceinline__ void mix_streamed_words(
             const std::uint8_t mixed=src^static_cast<std::uint8_t>(p&0xffU);
             packed|=static_cast<std::uint32_t>(mixed)<<(lane*8);
         }
-        out[wi]=packed;
+        set_word(out,wi,packed);
     }
 }
 
 template<bool Capture>
 __device__ __forceinline__ void hash_one_words(
-    const std::uint8_t* base,std::uint32_t nonce,std::uint32_t final[8],
+    const std::uint8_t* base,std::uint32_t nonce,HashWords8& final,
     std::uint8_t* cap1,std::uint8_t* cap2){
-    std::uint32_t first[8],mixed[8];
+    HashWords8 first{},mixed{};
     blake80_tail_words(base,nonce,first);
     mix_streamed_words(first,mixed,bswap32(nonce));
     blake32_words(mixed,final);
     if(Capture){
-        #pragma unroll
-        for(int i=0;i<8;++i){
-            put_le32(cap1+4*i,first[i]);
-            put_le32(cap2+4*i,mixed[i]);
-        }
+        put_words_bytes(cap1,first);
+        put_words_bytes(cap2,mixed);
     }
 }
 
-__device__ __forceinline__ bool hash_meets_target_be_words(const std::uint32_t hash[8]){
-    // Comparing four bytes at a time is equivalent to the original bytewise
-    // big-endian lexicographic comparison because hash words are little-endian.
+__device__ __forceinline__ bool hash_meets_target_be_words(const HashWords8& hash){
+    // Four-byte groups preserve the original bytewise big-endian lexicographic
+    // order exactly. The loop is fixed and unrolled to keep hash words scalar.
     #pragma unroll
     for(int i=0;i<8;++i){
-        const std::uint32_t h=bswap32(hash[i]);
+        const std::uint32_t h=bswap32(word_at(hash,i));
         const std::uint32_t t=be32(d_target+4*i);
         if(h<t)return true;
         if(h>t)return false;
@@ -242,21 +257,19 @@ __global__ void search_kernel(const std::uint8_t* base,std::uint32_t first,Devic
     const std::size_t idx=std::size_t(blockIdx.x)*blockDim.x+threadIdx.x;
     if(idx>=count)return;
     const std::uint32_t nonce=first+static_cast<std::uint32_t>(idx);
-    std::uint32_t hash[8];
+    HashWords8 hash{};
     hash_one_words<false>(base,nonce,hash,nullptr,nullptr);
     if(!hash_meets_target_be_words(hash))return;
     if(atomicCAS(&result->found,0U,1U)==0U){
         result->nonce=nonce;
-        #pragma unroll
-        for(int i=0;i<8;++i)put_le32(result->hash+4*i,hash[i]);
+        put_words_bytes(result->hash,hash);
     }
 }
 __global__ void diag_kernel(const std::uint8_t* base,std::uint32_t nonce,std::uint8_t* first,std::uint8_t* mixed,std::uint8_t* final){
     if(blockIdx.x||threadIdx.x)return;
-    std::uint32_t hash[8];
+    HashWords8 hash{};
     hash_one_words<true>(base,nonce,hash,first,mixed);
-    #pragma unroll
-    for(int i=0;i<8;++i)put_le32(final+4*i,hash[i]);
+    put_words_bytes(final,hash);
 }
 '''
 replacements.append((old, new, "word mixer/search"))
@@ -268,12 +281,14 @@ for old, new, label in replacements:
     text = text.replace(old, new)
 
 required = [
+    "struct HashWords8",
     "blake80_tail_words",
     "blake32_words",
     "accumulate_row_words",
     "mix_streamed_words",
     "hash_one_words",
     "hash_meets_target_be_words",
+    "#pragma unroll 1\n    for(int wi=0;wi<8;++wi)",
 ]
 for marker in required:
     if marker not in text:
@@ -283,11 +298,13 @@ for rejected in [
     "std::uint8_t first[32],mixed[32]",
     "hash_one<false>(base,nonce,hash,nullptr,nullptr)",
     "hash_meets_target_be_device(hash)",
+    "__device__ void blake32(const std::uint8_t in[32]",
 ]:
     if rejected in text:
         raise SystemExit(f"KV6-A transform failed: legacy hot-path marker survived: {rejected}")
 
 src_path.write_text(text)
-print("[KV6-A] word pipeline transform PASS")
-print("[KV6-A] first/mixed/final hot-path representation: uint32_t[8]")
+print("[KV6-A] scalar word-register pipeline transform PASS")
+print("[KV6-A] first/mixed/final representation: HashWords8 named uint32 words")
+print("[KV6-A] pair loop: rolled; column loop: compile-time unrolled")
 print("[KV6-A] byte materialization: diagnostics/share-hit only")
