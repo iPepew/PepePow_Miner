@@ -22,7 +22,7 @@ if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
   exit 2
 fi
 
-for cmd in curl tar awk grep sed date nvidia-smi; do
+for cmd in curl tar awk grep sed date nvidia-smi nc timeout stdbuf; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: missing $cmd" >&2; exit 2; }
 done
 
@@ -83,6 +83,7 @@ fi
 [[ -n "$FOZTOR_BIN" ]] || { echo "ERROR: hoo_gpu binary not found in archive" >&2; exit 2; }
 chmod +x "$FOZTOR_BIN"
 FOZTOR_DIR="$(dirname "$FOZTOR_BIN")"
+export LD_LIBRARY_PATH="$FOZTOR_DIR:$FOZTOR_DIR/lib:${LD_LIBRARY_PATH:-}"
 
 # Force a fresh Foztor autotune so we can see the real sm_70 choices on this V100.
 find "$FOZTOR_DIR" -maxdepth 1 -type f -name '.hoo_autotune_*' -delete 2>/dev/null || true
@@ -99,7 +100,7 @@ find "$FOZTOR_DIR" -maxdepth 1 -type f -name '.hoo_autotune_*' -delete 2>/dev/nu
   nvidia-smi -i "$GPU_ID" --query-gpu=name,pci.bus_id,compute_cap,driver_version,pstate,clocks.current.graphics,clocks.current.memory,power.limit --format=csv,noheader 2>&1 || true
   echo
   sha256sum "$FOZTOR_BIN" 2>/dev/null || true
-  find "$FOZTOR_DIR" -maxdepth 2 -type f -name '*sm70*' -o -name '*.cubin' 2>/dev/null | sort || true
+  find "$FOZTOR_DIR" -maxdepth 2 -type f \( -name '*sm70*' -o -name '*.cubin' \) -print 2>/dev/null | sort || true
 } > "$INFO"
 
 cd "$FOZTOR_DIR"
@@ -138,7 +139,7 @@ done
 kill -0 "$FOZTOR_PID" 2>/dev/null || { echo "ERROR: Foztor exited during startup" >&2; tail -n 120 "$LOG"; exit 3; }
 
 echo
- echo "=== FOZTOR KEY STARTUP / AUTOTUNE LINES ==="
+echo "=== FOZTOR KEY STARTUP / AUTOTUNE LINES ==="
 grep -Eai 'sm_70|sm70|fatbin|pepew_mining_kernel|autotun|AT cand|tpb=|blocks=|batch=|warp=|LUT|magic|shared|carveout|cache|exp-threshold|torture|CPU validation|miscalc' "$LOG" | tail -n 180 || true
 
 echo "=== WARMUP ${WARMUP_SECONDS}s ==="
@@ -155,14 +156,7 @@ start=$(date +%s)
 end=$((start + TEST_SECONDS))
 
 api_summary() {
-  if command -v nc >/dev/null 2>&1; then
-    (echo summary | timeout 2 nc -w 2 127.0.0.1 4049 2>/dev/null || true) | tr -d '\0\r\n'
-  fi
-}
-
-parse_api() {
-  local raw="$1" key="$2"
-  sed -nE "s/.*(^|;)${key}=([^;|]*).*/\2/p" <<<";$raw" | tail -n1
+  (echo summary | timeout 2 nc -w 2 127.0.0.1 4049 2>/dev/null || true) | tr -d '\0\r\n'
 }
 
 while (( $(date +%s) < end )); do
@@ -210,9 +204,16 @@ avg=$(awk -v s="$sum_mhs" -v n="$samples" 'BEGIN{if(n>0)printf "%.3f",s/n;else p
   grep -Eai 'CPU validation|fails CPU validation|miscalc|invalid GPU|solution' "$LOG" | tail -n 120 || true
 } | tee "$OUT_DIR/summary.txt"
 
-# Redact user/pool credentials from the copied log before packaging.
 cp "$LOG" "$OUT_DIR/foztor.redacted.log"
-sed -i -e "s#${USER//\/\\}#<USER_REDACTED>#g" -e "s#${POOL//\/\\}#<POOL_REDACTED>#g" -e "s#${PASS//\/\\}#<PASS_REDACTED>#g" "$OUT_DIR/foztor.redacted.log" 2>/dev/null || true
+python3 - "$OUT_DIR/foztor.redacted.log" "$USER" "$POOL" "$PASS" <<'PY' 2>/dev/null || true
+import sys
+p, user, pool, password = sys.argv[1:]
+s = open(p, 'r', errors='replace').read()
+for old, new in ((user,'<USER_REDACTED>'),(pool,'<POOL_REDACTED>'),(password,'<PASS_REDACTED>')):
+    if old:
+        s=s.replace(old,new)
+open(p,'w').write(s)
+PY
 rm -f "$LOG" "$ARCHIVE"
 
 REPORT_TGZ="$WORK_ROOT/foztor-v100-report-$RUN_ID.tar.gz"
