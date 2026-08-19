@@ -7,7 +7,7 @@ option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" ON)
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_ARCHITECTURES "70;86" CACHE STRING "CUDA architectures for release builds (Tesla V100 sm_70; RTX 3080 sm_86)")
-set(PEPEPOW_CUDA_THREADS "256" CACHE STRING "CUDA mining threads per block for Kernel-v3 geometry tests")
+set(PEPEPOW_CUDA_THREADS "256" CACHE STRING "CUDA mining threads per block for Kernel-v4 geometry tests")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -65,28 +65,130 @@ if(PEPEPOW_ENABLE_CUDA)
         message(FATAL_ERROR "PEPEPOW_CUDA_THREADS must be between 32 and 1024")
     endif()
 
-    # KV3-B starts from the measured KV2-B t256 baseline. It deliberately does
-    # not carry KV3-A's second matrix. The generated translation unit applies
-    # two strict scalar simplifications in the nonlinear path:
-    # 1) derive transformFactorTwo from transformFactorOne, eliminating one
-    #    redundant floor while preserving the same power-of-two scaling;
-    # 2) remove the unreachable NaN/Inf retry loop. For the mining input domain
-    #    x is finite and all three nonlinear branches return finite doubles.
+    # KV4-A keeps the measured KV3-B strict scalar path and changes only where
+    # the 64x64 job matrix lives. Every lane in a warp reads the same matrix
+    # element for a given row/column, so the matrix is moved from global memory
+    # to CUDA constant memory. The matrix is generated once per job on the host
+    # with the existing strict reference code and copied to the device symbol.
+    # Hash arithmetic, FP64 flags, target comparison and launch width are kept
+    # unchanged so this remains a clean A/B experiment.
     set(_pepepow_cuda_source "${CMAKE_CURRENT_SOURCE_DIR}/src/cuda/header80_backend_cuda118_v2.cu")
     file(READ "${_pepepow_cuda_source}" _pepepow_cuda_text)
 
-    set(_pepepow_thread_marker "constexpr unsigned threads=64;")
-    string(FIND "${_pepepow_cuda_text}" "${_pepepow_thread_marker}" _pepepow_thread_marker_pos)
-    if(_pepepow_thread_marker_pos EQUAL -1)
-        message(FATAL_ERROR "KV3-B launch-width marker not found in ${_pepepow_cuda_source}")
+    set(_pepepow_include_marker [=[#include "pepepow/core/header_builder.hpp"
+]=])
+    set(_pepepow_include_replacement [=[#include "pepepow/core/header_builder.hpp"
+#include "pepepow/crypto/blake3.hpp"
+#include "pepepow/crypto/hoohash_reference.hpp"
+]=])
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_include_marker}" _pepepow_include_pos)
+    if(_pepepow_include_pos EQUAL -1)
+        message(FATAL_ERROR "KV4-A include marker not found")
     endif()
     string(REPLACE
-        "${_pepepow_thread_marker}"
-        "constexpr unsigned threads=${PEPEPOW_CUDA_THREADS};"
+        "${_pepepow_include_marker}"
+        "${_pepepow_include_replacement}"
         _pepepow_cuda_text
         "${_pepepow_cuda_text}"
     )
 
+    set(_pepepow_matrix_decl_marker "__device__ double d_matrix[64][64];")
+    set(_pepepow_matrix_decl_replacement "__device__ __constant__ double d_matrix[64][64];")
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_matrix_decl_marker}" _pepepow_matrix_decl_pos)
+    if(_pepepow_matrix_decl_pos EQUAL -1)
+        message(FATAL_ERROR "KV4-A matrix declaration marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_matrix_decl_marker}"
+        "${_pepepow_matrix_decl_replacement}"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_prepare_marker [=[// One invocation per new job: cache the first BLAKE3 CV and generate the
+// HooHash matrix from the nonce-zero header exactly as the reference does.
+__global__ void prepare_job_kernel(const std::uint8_t* header){
+    if(blockIdx.x||threadIdx.x)return;
+
+    std::uint32_t cv[8];
+    first_block_cv(header,cv);
+    #pragma unroll
+    for(int i=0;i<8;++i)d_first_cv[i]=cv[i];
+
+    std::uint32_t b[16],c[16];
+    #pragma unroll
+    for(int i=0;i<16;++i)b[i]=0;
+    b[0]=le32(header+64);
+    b[1]=le32(header+68);
+    b[2]=le32(header+72);
+    b[3]=0U;
+    compress(cv,b,16,kChunkEnd|kRoot,c);
+
+    std::uint8_t seed[32];
+    #pragma unroll
+    for(int i=0;i<8;++i)put_le32(seed+4*i,c[i]);
+
+    Xoshiro s{le64(seed),le64(seed+8),le64(seed+16),le64(seed+24)};
+    for(int i=0;i<64;++i)for(int j=0;j<64;++j){
+        const std::uint32_t low=static_cast<std::uint32_t>(xnext(s));
+        d_matrix[i][j]=static_cast<double>(low)/static_cast<double>(0xffffffffU)*1000000.0;
+    }
+}
+]=])
+    set(_pepepow_prepare_replacement [=[// One invocation per new job: cache only the first BLAKE3 CV. KV4-A creates
+// the strict HooHash matrix on the host and uploads it to constant memory.
+__global__ void prepare_job_kernel(const std::uint8_t* header){
+    if(blockIdx.x||threadIdx.x)return;
+
+    std::uint32_t cv[8];
+    first_block_cv(header,cv);
+    #pragma unroll
+    for(int i=0;i<8;++i)d_first_cv[i]=cv[i];
+}
+]=])
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_prepare_marker}" _pepepow_prepare_pos)
+    if(_pepepow_prepare_pos EQUAL -1)
+        message(FATAL_ERROR "KV4-A prepare-job marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_prepare_marker}"
+        "${_pepepow_prepare_replacement}"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_host_prepare_marker [=[    auto* device_header=static_cast<std::uint8_t*>(device_header_);
+    cuda_check(cudaMemcpy(device_header,header.data(),kHeaderSize,cudaMemcpyHostToDevice),"cudaMemcpy persistent header");
+    prepare_job_kernel<<<1,1>>>(device_header);
+]=])
+    set(_pepepow_host_prepare_replacement [=[    Header80 matrix_header=header;
+    matrix_header[76]=0U;
+    matrix_header[77]=0U;
+    matrix_header[78]=0U;
+    matrix_header[79]=0U;
+    const auto matrix_seed=crypto::blake3_hash(
+        std::span<const std::uint8_t>(matrix_header.data(),matrix_header.size()));
+    const auto matrix=crypto::generate_hoohash_matrix(matrix_seed);
+    cuda_check(
+        cudaMemcpyToSymbol(d_matrix,matrix[0].data(),sizeof(double)*64U*64U),
+        "copy strict HooHash matrix to constant memory");
+
+    auto* device_header=static_cast<std::uint8_t*>(device_header_);
+    cuda_check(cudaMemcpy(device_header,header.data(),kHeaderSize,cudaMemcpyHostToDevice),"cudaMemcpy persistent header");
+    prepare_job_kernel<<<1,1>>>(device_header);
+]=])
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_host_prepare_marker}" _pepepow_host_prepare_pos)
+    if(_pepepow_host_prepare_pos EQUAL -1)
+        message(FATAL_ERROR "KV4-A host prepare marker not found")
+    endif()
+    string(REPLACE
+        "${_pepepow_host_prepare_marker}"
+        "${_pepepow_host_prepare_replacement}"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    # Retain the successful KV3-B strict scalar cleanup.
     set(_pepepow_factor_marker [=[    const double one=(x*kTM)/8.0-floor((x*kTM)/8.0);
     const double two=(x*kTM)/4.0-floor((x*kTM)/4.0);]=])
     set(_pepepow_factor_replacement [=[    const double scaled=x*kTM;
@@ -96,7 +198,7 @@ if(PEPEPOW_ENABLE_CUDA)
     if(two>=1.0)two-=1.0;]=])
     string(FIND "${_pepepow_cuda_text}" "${_pepepow_factor_marker}" _pepepow_factor_pos)
     if(_pepepow_factor_pos EQUAL -1)
-        message(FATAL_ERROR "KV3-B transform-factor marker not found")
+        message(FATAL_ERROR "KV4-A transform-factor marker not found")
     endif()
     string(REPLACE
         "${_pepepow_factor_marker}"
@@ -114,7 +216,7 @@ if(PEPEPOW_ENABLE_CUDA)
 }]=])
     string(FIND "${_pepepow_cuda_text}" "${_pepepow_safe_marker}" _pepepow_safe_pos)
     if(_pepepow_safe_pos EQUAL -1)
-        message(FATAL_ERROR "KV3-B safe_complex marker not found")
+        message(FATAL_ERROR "KV4-A safe_complex marker not found")
     endif()
     string(REPLACE
         "${_pepepow_safe_marker}"
@@ -123,10 +225,22 @@ if(PEPEPOW_ENABLE_CUDA)
         "${_pepepow_cuda_text}"
     )
 
-    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_kv3b_t${PEPEPOW_CUDA_THREADS}.cu")
+    set(_pepepow_thread_marker "constexpr unsigned threads=64;")
+    string(FIND "${_pepepow_cuda_text}" "${_pepepow_thread_marker}" _pepepow_thread_marker_pos)
+    if(_pepepow_thread_marker_pos EQUAL -1)
+        message(FATAL_ERROR "KV4-A launch-width marker not found in ${_pepepow_cuda_source}")
+    endif()
+    string(REPLACE
+        "${_pepepow_thread_marker}"
+        "constexpr unsigned threads=${PEPEPOW_CUDA_THREADS};"
+        _pepepow_cuda_text
+        "${_pepepow_cuda_text}"
+    )
+
+    set(_pepepow_cuda_generated "${CMAKE_CURRENT_BINARY_DIR}/header80_backend_cuda118_kv4a_cmem_t${PEPEPOW_CUDA_THREADS}.cu")
     file(WRITE "${_pepepow_cuda_generated}" "${_pepepow_cuda_text}")
-    message(STATUS "PepeW KV3-B strict nonlinear scalar cleanup enabled")
-    message(STATUS "PepeW KV3-B launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
+    message(STATUS "PepeW KV4-A strict constant-matrix experiment enabled")
+    message(STATUS "PepeW KV4-A launch width: ${PEPEPOW_CUDA_THREADS} threads/block")
 
     add_library(pepepow_cuda
         "${_pepepow_cuda_generated}"
