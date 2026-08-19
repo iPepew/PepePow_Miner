@@ -1,0 +1,241 @@
+name: HiveOS V100 KV6-A Word Pipeline Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-kv6a-word-pipeline"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv6a_word_pipeline_transform.py"
+      - ".github/workflows/hiveos-v100-kv6a-word-pipeline.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-kv6a-test
+      BASELINE_BUILD: kv4a-10.212mh
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          cmake --version
+          nvcc --version
+          gh --version
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply KV6-A word-pipeline transform
+        run: |
+          set -euo pipefail
+          python3 lab/kv6a_word_pipeline_transform.py
+          src=native/src/cuda/header80_backend_cuda118_v2.cu
+          grep -F 'blake80_tail_words' "$src"
+          grep -F 'mix_streamed_words' "$src"
+          grep -F 'hash_meets_target_be_words' "$src"
+          if grep -F 'std::uint8_t first[32],mixed[32]' "$src"; then
+            echo 'ERROR: legacy byte-array hot path survived KV6-A transform'
+            exit 1
+          fi
+
+      - name: Generate candidate version
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          build_version="v100-kv6a-word-t${CUDA_THREADS}-${short_sha}"
+          echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
+          echo "Candidate: ${build_version}"
+          echo "Baseline: ${BASELINE_BUILD}"
+          echo "Geometry: ${CUDA_THREADS} threads/block; R${CUDA_REG_CAP}"
+          echo 'Optimization: register-oriented uint32 word pipeline for BLAKE3/HooHash boundaries'
+
+      - name: Configure CUDA release and verify generated source
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "$generated"
+          grep -F '__device__ __constant__ double d_matrix[64][64];' "$generated"
+          grep -F 'cudaMemcpyToSymbol(d_matrix,matrix[0].data(),sizeof(double)*64U*64U)' "$generated"
+          grep -F 'blake80_tail_words' "$generated"
+          grep -F 'blake32_words' "$generated"
+          grep -F 'accumulate_row_words' "$generated"
+          grep -F 'mix_streamed_words' "$generated"
+          grep -F 'hash_one_words' "$generated"
+          grep -F 'hash_meets_target_be_words' "$generated"
+          grep -F 'const double scaled=x*kTM;' "$generated"
+          grep -F 'return complex_transform(input);' "$generated"
+          grep -F "constexpr unsigned threads=${CUDA_THREADS};" "$generated"
+          if grep -F 'std::uint8_t first[32],mixed[32]' "$generated"; then
+            echo 'ERROR: byte-array hot path survived generated source'
+            exit 1
+          fi
+          echo '[SOURCE] KV6-A generated source verified'
+
+      - name: Build miner and capture PTXAS resources
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2>&1 | tee /tmp/pepew-build.log
+          echo '--- PTXAS RESOURCE SUMMARY ---'
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill|bytes cmem' /tmp/pepew-build.log || true
+          echo '--- LOCAL/SPILL WARNING GATE ---'
+          if grep -E '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/pepew-build.log; then
+            echo 'WARNING: KV6-A generated register spills; performance test will decide acceptance.'
+          else
+            echo '[PTXAS] no non-zero spill line detected'
+          fi
+
+      - name: Smoke test binary and HiveOS callbacks
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+      - name: Assemble HiveOS KV6-A archive
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "$package_dir"
+
+          install -m 0755 build/hiveos-cuda/pepepowminer "$package_dir/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$package_dir/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$package_dir/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$package_dir/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$package_dir/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "$package_dir/h-manifest.conf"
+
+          cat > "$package_dir/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          channel=${RELEASE_TAG}
+          baseline=${BASELINE_BUILD}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          launch=dynamic-grid
+          kernel=kv6a-word-pipeline-t${CUDA_THREADS}
+          matrix_storage=constant-32k
+          matrix_generation=host-strict-reference
+          scalar_path=kv3b-strict
+          word_pipeline=uint32x8
+          first_hash_storage=word-register-candidate
+          mixed_hash_storage=word-register-candidate
+          final_hash_storage=word-register-candidate
+          target_compare=be-wordwise
+          byte_materialization=diagnostics-or-share-hit-only
+          consensus=strict-fp64
+          custom_miner=${CUSTOM_MINER_NAME}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+          strip "$package_dir/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "$CUSTOM_MINER_NAME"
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+          tar -tzf "dist/${ASSET_NAME}"
+          cat "dist/${SHA_NAME}"
+
+      - name: Validate package identity
+        run: |
+          set -euo pipefail
+          unpack=/tmp/pepew-kv6a-identity
+          rm -rf "$unpack"
+          mkdir -p "$unpack"
+          tar -xzf "dist/${ASSET_NAME}" -C "$unpack"
+          info="$unpack/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          manifest="$unpack/${CUSTOM_MINER_NAME}/h-manifest.conf"
+          grep -Fx "CUSTOM_VERSION=${BUILD_VERSION}" "$manifest"
+          grep -Fx "version=${BUILD_VERSION}" "$info"
+          grep -Fx "baseline=${BASELINE_BUILD}" "$info"
+          grep -Fx "cuda_threads=${CUDA_THREADS}" "$info"
+          grep -Fx 'kernel=kv6a-word-pipeline-t256' "$info"
+          grep -Fx 'word_pipeline=uint32x8' "$info"
+          grep -Fx 'target_compare=be-wordwise' "$info"
+          grep -Fx 'byte_materialization=diagnostics-or-share-hit-only' "$info"
+          grep -Fx 'consensus=strict-fp64' "$info"
+          if grep -Fx 'CUSTOM_VERSION=dev' "$manifest"; then
+            echo 'ERROR: archive contains dev manifest'
+            exit 1
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-kv6a-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish isolated KV6-A rolling asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          notes=$(cat <<EOF
+          PepeW Tesla V100 KV6-A strict word-pipeline experiment.
+
+          Build: ${BUILD_VERSION}
+          Baseline: ${BASELINE_BUILD}
+          Commit: ${GITHUB_SHA}
+          CUDA: ${CUDA_TOOLKIT}
+          Threads/block: ${CUDA_THREADS}
+          Register cap: ${CUDA_REG_CAP}
+
+          KV6-A keeps KV4-A's strict FP64 HooHash arithmetic and constant-memory job matrix. It changes the BLAKE3/HooHash data path from 32-byte temporary arrays to eight uint32 words, packs mixed bytes directly into words, performs the final target comparison four bytes at a time, and materializes bytes only for diagnostics or a found share.
+          EOF
+          )
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/${ASSET_NAME}" \
+              "dist/${SHA_NAME}" \
+              --target "$GITHUB_SHA" \
+              --title 'PepeW Miner Tesla V100 KV6-A DEV' \
+              --notes "$notes" \
+              --prerelease
+          fi
+
+          echo "KV6-A asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
