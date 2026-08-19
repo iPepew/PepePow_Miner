@@ -1,0 +1,221 @@
+name: HiveOS V100 KV5-A Exact Hot Path Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-kv5a-hotpath"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv5a-patch-generated.py"
+      - ".github/workflows/hiveos-kv5a-package.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-kv5a-test
+      BASELINE_BUILD: kv4a-10.212mh
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          cmake --version
+          nvcc --version
+          gh --version
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate candidate version
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          build_version="v100-kv5a-hotpath-t${CUDA_THREADS}-${short_sha}"
+          echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
+          echo "Candidate: ${build_version}"
+          echo "Baseline: ${BASELINE_BUILD}"
+          echo "Geometry: ${CUDA_THREADS} threads/block; R${CUDA_REG_CAP}"
+          echo "Optimization: exact pre-scaled simple matrix path + zero-nibble skip"
+
+      - name: Configure KV4 base generator
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "${generated}"
+          echo "GENERATED_CUDA=${generated}" >> "${GITHUB_ENV}"
+
+      - name: Apply KV5-A exact hot-path transform
+        run: |
+          set -euo pipefail
+          python3 lab/kv5a-patch-generated.py "${GENERATED_CUDA}"
+
+          grep -F '__device__ double d_matrix[64][64];' "${GENERATED_CUDA}"
+          grep -F '__device__ __constant__ double d_matrix_scaled[64][64];' "${GENERATED_CUDA}"
+          grep -F 'copy strict HooHash matrix to global symbol' "${GENERATED_CUDA}"
+          grep -F 'copy pre-scaled HooHash matrix to constant memory' "${GENERATED_CUDA}"
+          grep -F 'if(v==0.0)continue;' "${GENERATED_CUDA}"
+          grep -F 'product+=d_matrix_scaled[row][j]*v;' "${GENERATED_CUDA}"
+          grep -F 'const double scaled=x*kTM;' "${GENERATED_CUDA}"
+          grep -F 'return complex_transform(input);' "${GENERATED_CUDA}"
+
+          if grep -F 'product+=d_matrix[row][j]*0.0001*v;' "${GENERATED_CUDA}"; then
+            echo 'ERROR: old simple matrix path survived KV5-A patch'
+            exit 1
+          fi
+          echo '[SOURCE] KV5-A exact hot-path transform verified'
+
+      - name: Build miner and capture PTXAS resources
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2>&1 | tee /tmp/pepew-build.log
+          echo '--- PTXAS RESOURCE SUMMARY ---'
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-build.log || true
+
+      - name: Smoke test binary and HiveOS callbacks
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+      - name: Assemble HiveOS KV5-A archive
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "${package_dir}"
+
+          install -m 0755 build/hiveos-cuda/pepepowminer "${package_dir}/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "${package_dir}/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "${package_dir}/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "${package_dir}/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "${package_dir}/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "${package_dir}/h-manifest.conf"
+
+          cat > "${package_dir}/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          channel=${RELEASE_TAG}
+          baseline=${BASELINE_BUILD}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          launch=dynamic-grid
+          kernel=kv5a-exact-hotpath-t${CUDA_THREADS}
+          matrix_original=global-32k
+          matrix_scaled=constant-32k
+          matrix_generation=host-strict-reference
+          simple_path=prescaled-fp64
+          zero_nibble=exact-skip
+          nonlinear_path=kv4a-strict-fp64
+          consensus=strict-fp64
+          custom_miner=${CUSTOM_MINER_NAME}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+          strip "${package_dir}/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "${CUSTOM_MINER_NAME}"
+          sha256sum "dist/${ASSET_NAME}" | sed "s#dist/##" > "dist/${SHA_NAME}"
+          tar -tzf "dist/${ASSET_NAME}"
+          cat "dist/${SHA_NAME}"
+
+      - name: Validate package identity
+        run: |
+          set -euo pipefail
+          unpack=/tmp/pepew-kv5a-identity
+          rm -rf "${unpack}"
+          mkdir -p "${unpack}"
+          tar -xzf "dist/${ASSET_NAME}" -C "${unpack}"
+
+          info="${unpack}/${CUSTOM_MINER_NAME}/BUILD_INFO.txt"
+          manifest="${unpack}/${CUSTOM_MINER_NAME}/h-manifest.conf"
+          grep -Fx "CUSTOM_VERSION=${BUILD_VERSION}" "${manifest}"
+          grep -Fx "version=${BUILD_VERSION}" "${info}"
+          grep -Fx "baseline=${BASELINE_BUILD}" "${info}"
+          grep -Fx 'matrix_original=global-32k' "${info}"
+          grep -Fx 'matrix_scaled=constant-32k' "${info}"
+          grep -Fx 'simple_path=prescaled-fp64' "${info}"
+          grep -Fx 'zero_nibble=exact-skip' "${info}"
+          grep -Fx 'consensus=strict-fp64' "${info}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-kv5a-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish isolated KV5-A rolling asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          notes=$(cat <<EOF
+          PepeW Tesla V100 KV5-A strict hot-path experiment.
+
+          Build: ${BUILD_VERSION}
+          Baseline: ${BASELINE_BUILD}
+          Commit: ${GITHUB_SHA}
+          CUDA: ${CUDA_TOOLKIT}
+          Architectures: ${CUDA_ARCHS}
+          Registers cap: ${CUDA_REG_CAP}
+          Threads/block: ${CUDA_THREADS}
+
+          KV5-A keeps the KV4-A strict FP64 nonlinear algorithm, but moves the common simple matrix multiplication onto a pre-scaled 32 KiB constant matrix. The original exact matrix remains available for the rare nonlinear path. Nibble value zero skips work because it cannot change product or sw. No approximate math is enabled.
+          EOF
+          )
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" \
+              "dist/${ASSET_NAME}" \
+              "dist/${SHA_NAME}" \
+              --target "${GITHUB_SHA}" \
+              --title "PepeW Miner Tesla V100 KV5-A DEV" \
+              --notes "${notes}" \
+              --prerelease
+          fi
+
+          echo "KV5-A asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
