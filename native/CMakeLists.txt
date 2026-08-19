@@ -166,8 +166,7 @@ __global__ void prepare_job_kernel(const std::uint8_t* header){
     matrix_header[77]=0U;
     matrix_header[78]=0U;
     matrix_header[79]=0U;
-    const auto matrix_seed=crypto::blake3_hash(
-        std::span<const std::uint8_t>(matrix_header.data(),matrix_header.size()));
+    const auto matrix_seed=crypto::blake3_hash(matrix_header.data(),matrix_header.size());
     const auto matrix=crypto::generate_hoohash_matrix(matrix_seed);
     cuda_check(
         cudaMemcpyToSymbol(d_matrix,matrix[0].data(),sizeof(double)*64U*64U),
