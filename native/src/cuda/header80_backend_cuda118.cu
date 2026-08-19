@@ -44,6 +44,59 @@ __device__ __constant__ std::uint8_t kSchedule[7][16] = {
 void cuda_check(cudaError_t rc, const char* what) {
     if (rc != cudaSuccess) throw std::runtime_error(std::string(what)+": "+cudaGetErrorString(rc));
 }
+
+struct SearchCache {
+    int device_index{-1};
+    std::uint8_t* header{nullptr};
+    DeviceSearchResult* result{nullptr};
+    Header80 header_key{};
+    Hash256 target{};
+    bool header_valid{false};
+    bool target_valid{false};
+
+    SearchCache() = default;
+    SearchCache(const SearchCache&) = delete;
+    SearchCache& operator=(const SearchCache&) = delete;
+
+    ~SearchCache() { release(); }
+
+    void release() noexcept {
+        if (device_index >= 0) {
+            (void)cudaSetDevice(device_index);
+        }
+        if (result != nullptr) {
+            (void)cudaFree(result);
+            result = nullptr;
+        }
+        if (header != nullptr) {
+            (void)cudaFree(header);
+            header = nullptr;
+        }
+        device_index = -1;
+        header_valid = false;
+        target_valid = false;
+    }
+};
+
+void ensure_search_cache(SearchCache& cache, int device_index) {
+    if (cache.device_index == device_index && cache.header != nullptr && cache.result != nullptr) return;
+
+    cache.release();
+    cuda_check(cudaSetDevice(device_index), "cudaSetDevice");
+    cache.device_index = device_index;
+    try {
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&cache.header), kHeaderSize), "cudaMalloc cached header");
+        cuda_check(cudaMalloc(reinterpret_cast<void**>(&cache.result), sizeof(DeviceSearchResult)), "cudaMalloc cached search result");
+    } catch (...) {
+        cache.release();
+        throw;
+    }
+}
+
+bool same_matrix_header(const Header80& left, const Header80& right) noexcept {
+    return std::equal(left.begin(), left.begin() + 76, right.begin());
+}
+
 __device__ __forceinline__ std::uint32_t rotr(std::uint32_t x,int n){return __funnelshift_r(x,x,n);}
 __device__ __forceinline__ void g(std::uint32_t& a,std::uint32_t& b,std::uint32_t& c,std::uint32_t& d,std::uint32_t mx,std::uint32_t my){
     a=a+b+mx; d=rotr(d^a,16); c+=d; b=rotr(b^c,12);
@@ -203,10 +256,29 @@ void prepare(int device,const Header80& header,std::uint8_t** d_header){
     cuda_check(cudaMemcpy(*d_header,header.data(),80,cudaMemcpyHostToDevice),"cudaMemcpy header");
     matrix_kernel<<<1,1>>>(*d_header);cuda_check(cudaGetLastError(),"matrix_kernel launch");cuda_check(cudaDeviceSynchronize(),"matrix_kernel sync");
 }
+
+void prepare_cached_job(SearchCache& cache, int device, const Header80& header) {
+    ensure_search_cache(cache, device);
+    if (cache.header_valid && same_matrix_header(cache.header_key, header)) return;
+
+    cuda_check(cudaMemcpy(cache.header, header.data(), kHeaderSize, cudaMemcpyHostToDevice), "cudaMemcpy cached header");
+    matrix_kernel<<<1,1>>>(cache.header);
+    cuda_check(cudaGetLastError(), "cached matrix_kernel launch");
+    cuda_check(cudaDeviceSynchronize(), "cached matrix_kernel sync");
+    cache.header_key = header;
+    cache.header_valid = true;
+}
+
+void prepare_cached_target(SearchCache& cache, const Hash256& target) {
+    if (cache.target_valid && cache.target == target) return;
+    cuda_check(cudaMemcpyToSymbol(d_target,target.data(),target.size()),"copy target");
+    cache.target = target;
+    cache.target_valid = true;
+}
 } // namespace
 
 Header80CudaBackend::Header80CudaBackend(int device_index):device_index_(device_index){}
-std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-target-cuda118";}
+std::string_view Header80CudaBackend::name() const noexcept{return "cuda-header80-cache-cuda118";}
 std::vector<DeviceInfo> Header80CudaBackend::enumerate_devices() const{
     int n=0;cuda_check(cudaGetDeviceCount(&n),"cudaGetDeviceCount");std::vector<DeviceInfo> out;out.reserve(static_cast<std::size_t>(n));
     for(int i=0;i<n;++i){cudaDeviceProp p{};cuda_check(cudaGetDeviceProperties(&p,i),"cudaGetDeviceProperties");out.push_back(DeviceInfo{i,p.name,p.major,p.minor,p.totalGlobalMem});}return out;
@@ -223,18 +295,18 @@ Header80CudaDiagnostics Header80CudaBackend::diagnose(const MiningJob& job,std::
 std::optional<ShareCandidate> Header80CudaBackend::search(const MiningJob& job,SearchRange range,const Hash256& target){
     if(range.count==0||range.begin>std::numeric_limits<std::uint32_t>::max())return std::nullopt;
     const std::uint64_t avail=0x100000000ULL-range.begin;const std::size_t count=static_cast<std::size_t>(std::min(range.count,avail));if(!count)return std::nullopt;
-    const Header80 header=make_header(job,static_cast<std::uint32_t>(range.begin));std::uint8_t* dh=nullptr;DeviceSearchResult* dresult=nullptr;prepare(device_index_,header,&dh);
-    try{
-        cuda_check(cudaMemcpyToSymbol(d_target,target.data(),target.size()),"copy target");
-        cuda_check(cudaMalloc(reinterpret_cast<void**>(&dresult),sizeof(DeviceSearchResult)),"cudaMalloc search result");
-        cuda_check(cudaMemset(dresult,0,sizeof(DeviceSearchResult)),"clear search result");
-        constexpr unsigned threads=64;const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
-        search_kernel<<<blocks,threads>>>(dh,static_cast<std::uint32_t>(range.begin),dresult,count);cuda_check(cudaGetLastError(),"search launch");cuda_check(cudaDeviceSynchronize(),"search sync");
-        DeviceSearchResult result{};cuda_check(cudaMemcpy(&result,dresult,sizeof(result),cudaMemcpyDeviceToHost),"copy search result");
-        cudaFree(dresult);cudaFree(dh);dresult=nullptr;dh=nullptr;
-        if(!result.found)return std::nullopt;
-        Hash256 hash{};std::copy_n(result.hash,32,hash.begin());
-        return ShareCandidate{job.job_id,result.nonce,hash};
-    }catch(...){if(dresult)cudaFree(dresult);if(dh)cudaFree(dh);throw;}
+
+    thread_local SearchCache cache;
+    const Header80 header=make_header(job,0U);
+    prepare_cached_job(cache,device_index_,header);
+    prepare_cached_target(cache,target);
+    cuda_check(cudaMemset(cache.result,0,sizeof(DeviceSearchResult)),"clear cached search result");
+
+    constexpr unsigned threads=64;const unsigned blocks=static_cast<unsigned>((count+threads-1)/threads);
+    search_kernel<<<blocks,threads>>>(cache.header,static_cast<std::uint32_t>(range.begin),cache.result,count);cuda_check(cudaGetLastError(),"search launch");cuda_check(cudaDeviceSynchronize(),"search sync");
+    DeviceSearchResult result{};cuda_check(cudaMemcpy(&result,cache.result,sizeof(result),cudaMemcpyDeviceToHost),"copy search result");
+    if(!result.found)return std::nullopt;
+    Hash256 hash{};std::copy_n(result.hash,32,hash.begin());
+    return ShareCandidate{job.job_id,result.nonce,hash};
 }
 } // namespace pepepow
