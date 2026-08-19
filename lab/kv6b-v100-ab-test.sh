@@ -21,6 +21,13 @@ latest(){ grep -a '^\[MINING\]' "$LOG" 2>/dev/null | tail -1 || true; }
 hash(){ latest | awk '{for(i=1;i<=NF;i++)if($i=="MH/s"){print $(i-1);exit}}'; }
 gpu(){ nvidia-smi --query-gpu=temperature.gpu,power.draw,power.limit,utilization.gpu,clocks.current.graphics,clocks.current.memory,memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || true; }
 
+on_err(){
+  local rc=$?
+  printf '\n[ERROR] exit=%d | line=%d | command=%s\n' "$rc" "$1" "$2" >&2
+  return "$rc"
+}
+trap 'on_err "$LINENO" "$BASH_COMMAND"' ERR
+
 rollback(){
   if (( KEEP )); then return; fi
   echo
@@ -128,7 +135,7 @@ echo '=== [7/8] MEASURE ==='
 for ((e=0;e<=TEST;e+=STEP)); do
   line="$(latest)"; hv="$(hash)"; hv="${hv:-0}"
   if awk -v x="$hv" 'BEGIN{exit !(x>0)}'; then echo "$hv" >> "$SAMPLES"; fi
-  read -r avg min max n < <(awk 'NF{sum+=$1;if(!n||$1<min)min=$1;if(!n||$1>max)max=$1;n++}END{if(n)printf "%.3f %.3f %.3f %d",sum/n,min,max,n;else print "0 0 0 0"}' "$SAMPLES")
+  read -r avg min max n < <(awk 'NF{sum+=$1;if(!n||$1<min)min=$1;if(!n||$1>max)max=$1;n++}END{if(n)printf "%.3f %.3f %.3f %d\n",sum/n,min,max,n;else print "0 0 0 0"}' "$SAMPLES")
   a="$(sed -n 's/.*| A \([0-9][0-9]*\) |.*/\1/p' <<<"$line")"; a="${a:-0}"
   r="$(sed -n 's/.*| R \([0-9][0-9]*\) |.*/\1/p' <<<"$line")"; r="${r:-0}"
   rec="$(sed -n 's/.*| REC \([0-9][0-9]*\) |.*/\1/p' <<<"$line")"; rec="${rec:-0}"
@@ -138,7 +145,7 @@ for ((e=0;e<=TEST;e+=STEP)); do
   (( e==TEST )) || sleep "$STEP"
 done
 
-read -r AVG MIN MAX N < <(awk 'NF{sum+=$1;if(!n||$1<min)min=$1;if(!n||$1>max)max=$1;n++}END{if(n)printf "%.3f %.3f %.3f %d",sum/n,min,max,n;else print "0 0 0 0"}' "$SAMPLES")
+read -r AVG MIN MAX N < <(awk 'NF{sum+=$1;if(!n||$1<min)min=$1;if(!n||$1>max)max=$1;n++}END{if(n)printf "%.3f %.3f %.3f %d\n",sum/n,min,max,n;else print "0 0 0 0"}' "$SAMPLES")
 REQ="$(awk -v b="$BASELINE" -v g="$MIN_GAIN_PCT" 'BEGIN{printf "%.3f",b*(1+g/100)}')"
 GAIN="$(awk -v a="$AVG" -v b="$BASELINE" 'BEGIN{printf "%.2f",(a/b-1)*100}')"
 line="$(latest)"
