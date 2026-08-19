@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 # PepeW Tesla V100 KV4-A one-command A/B test for HiveOS.
-# It installs the isolated rolling KV4-A asset, verifies identity/KAT, measures
-# live hashrate with a visible heartbeat, and rolls back automatically on a
+# It waits visibly for the rolling asset, installs it, verifies identity/KAT,
+# measures live hashrate with a heartbeat, and rolls back automatically on a
 # correctness failure or performance regression.
 
 URL="${PEPEW_KV4A_URL:-https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv4a-test/PepeW-Miner-HiveOS.tar.gz}"
@@ -11,6 +11,8 @@ MINERDIR="${PEPEW_MINER_DIR:-/hive/miners/custom/PepeW-Miner}"
 LOG="${PEPEW_LOG:-/var/log/miner/custom/PepeW-Miner/pepew.log}"
 BASELINE="${PEPEW_BASELINE_MHS:-10.086}"
 MIN_GAIN_PCT="${PEPEW_MIN_GAIN_PCT:-1.0}"
+WAIT_ASSET="${PEPEW_WAIT_ASSET_SECONDS:-600}"
+ASSET_STEP="${PEPEW_ASSET_PROGRESS_SECONDS:-10}"
 WAIT_ONLINE="${PEPEW_WAIT_ONLINE_SECONDS:-90}"
 WARMUP="${PEPEW_WARMUP_SECONDS:-30}"
 TEST="${PEPEW_TEST_SECONDS:-300}"
@@ -19,7 +21,6 @@ TMP="$(mktemp -d /tmp/pepew-kv4a-ab.XXXXXX)"
 SAMPLES="$TMP/samples.txt"
 BACKUP="${MINERDIR}.backup.kv4a.$(date +%Y%m%d-%H%M%S)"
 NEW_BUILD=""
-ROLLBACK_NEEDED=0
 
 fmt_time() {
   local s="$1"
@@ -96,6 +97,7 @@ echo "Asset:       $URL"
 echo "Miner dir:   $MINERDIR"
 echo "Baseline:    $BASELINE MH/s"
 echo "Min gain:    $MIN_GAIN_PCT %"
+echo "Asset wait:  $(fmt_time "$WAIT_ASSET")"
 echo "Wait online: $(fmt_time "$WAIT_ONLINE")"
 echo "Warmup:      $(fmt_time "$WARMUP")"
 echo "Measure:     $(fmt_time "$TEST")"
@@ -113,7 +115,28 @@ if [[ -e "$BACKUP" ]]; then
   exit 2
 fi
 
-echo '=== [1/8] DOWNLOAD KV4-A ==='
+echo '=== [1/8] WAIT FOR + DOWNLOAD KV4-A ==='
+ASSET_READY=0
+for ((e=0; e<=WAIT_ASSET; e+=ASSET_STEP)); do
+  remain=$((WAIT_ASSET-e)); ((remain<0)) && remain=0
+  if wget -q --spider "$URL"; then
+    ASSET_READY=1
+    printf '[ASSET] elapsed %s / %s | remaining %s | READY\n' \
+      "$(fmt_time "$e")" "$(fmt_time "$WAIT_ASSET")" "$(fmt_time "$remain")"
+    break
+  fi
+  printf '[ASSET] elapsed %s / %s | remaining %s | waiting for GitHub Actions release asset\n' \
+    "$(fmt_time "$e")" "$(fmt_time "$WAIT_ASSET")" "$(fmt_time "$remain")"
+  (( e >= WAIT_ASSET )) && break
+  sleep "$ASSET_STEP"
+done
+
+if (( ! ASSET_READY )); then
+  echo "FAIL: KV4-A asset was not published within $(fmt_time "$WAIT_ASSET")."
+  echo 'No miner files were changed.'
+  exit 2
+fi
+
 wget -O "$TMP/PepeW-Miner-HiveOS.tar.gz" "$URL"
 tar -xzf "$TMP/PepeW-Miner-HiveOS.tar.gz" -C "$TMP"
 if [[ ! -x "$TMP/PepeW-Miner/pepepowminer" ]]; then
