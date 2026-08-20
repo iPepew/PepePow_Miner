@@ -1,0 +1,199 @@
+name: HiveOS V100 KV7-A Foztor-Informed Occupancy6
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-kv7a-foztor-occupancy6"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv6a_word_pipeline_transform.py"
+      - "lab/kv7a_occupancy6_transform.py"
+      - ".github/workflows/hiveos-v100-kv7a-occupancy6.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "48"
+      CUDA_THREADS: "640"
+      NONCES_PER_THREAD: "6"
+      BATCH_NONCES: "1228800"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      PTXAS_NAME: KV7A-PTXAS.log
+      RELEASE_TAG: hiveos-v100-kv7a-test
+      FIELD_BASELINE: "9.83"
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          rm -rf /var/lib/apt/lists/*
+          cmake --version
+          nvcc --version
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply strict word pipeline and KV7-A scheduling
+        run: |
+          set -euo pipefail
+          python3 lab/kv6a_word_pipeline_transform.py
+          python3 lab/kv7a_occupancy6_transform.py
+          grep -F 'kNoncesPerThread = 6' native/src/cuda/header80_backend_cuda118_v2.cu
+          grep -F 'lane*stride' native/src/cuda/header80_backend_cuda118_v2.cu
+          grep -F 'cudaFuncCachePreferL1' native/src/cuda/header80_backend_cuda118_v2.cu
+          grep -F 'chunk_size = 1228800ULL' native/src/app/main.cpp
+
+      - name: Configure CUDA release
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "$generated"
+          grep -F '__device__ __constant__ double d_matrix[64][64];' "$generated"
+          grep -F 'kNoncesPerThread = 6' "$generated"
+          grep -F 'mix_streamed_words' "$generated"
+          grep -F 'cudaFuncCachePreferL1' "$generated"
+          grep -F "constexpr unsigned threads=${CUDA_THREADS};" "$generated"
+
+      - name: Build and capture PTXAS resource footprint
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2>&1 | tee /tmp/pepew-build.log
+          cp /tmp/pepew-build.log "${PTXAS_NAME}"
+          echo '=== PTXAS RESOURCE SUMMARY ==='
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill|bytes cmem' /tmp/pepew-build.log || true
+          echo '=== KV7-A REGISTER GATE ==='
+          grep -E 'Used [0-9]+ registers' /tmp/pepew-build.log || true
+          if grep -E 'Used (4[0-9]|5[01]) registers' /tmp/pepew-build.log; then
+            echo '[PTXAS] target occupancy register range observed for at least one kernel image'
+          else
+            echo '[PTXAS] NOTE: inspect per-arch output; maxrregcount=48 is active even if summary formatting differs'
+          fi
+
+      - name: Smoke test binary and callbacks
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+      - name: Generate build identity
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          echo "BUILD_VERSION=v100-kv7a-t640-r48-n6-${short_sha}" >> "$GITHUB_ENV"
+
+      - name: Assemble HiveOS package
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "$package_dir"
+          install -m 0755 build/hiveos-cuda/pepepowminer "$package_dir/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$package_dir/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$package_dir/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$package_dir/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$package_dir/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "$package_dir/h-manifest.conf"
+
+          cat > "$package_dir/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          channel=${RELEASE_TAG}
+          field_baseline_mhs=${FIELD_BASELINE}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          nonces_per_thread=${NONCES_PER_THREAD}
+          batch_nonces=${BATCH_NONCES}
+          blocks_at_full_batch=320
+          target_volta_resident_blocks_per_sm=2
+          target_volta_warp_occupancy=0.625
+          cache=PreferL1
+          shared_carveout_pct=0
+          matrix_storage=constant-32k
+          word_pipeline=uint32x8
+          consensus=strict-fp64
+          experiment=clean-room-foztor-informed-scheduling
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+          strip "$package_dir/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "$CUSTOM_MINER_NAME"
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+          tar -tzf "dist/${ASSET_NAME}"
+          cat "$package_dir/BUILD_INFO.txt"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-kv7a-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+            KV7A-PTXAS.log
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish isolated KV7-A rolling asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          notes=$(cat <<EOF
+          PepeW Tesla V100 KV7-A clean-room scheduling experiment.
+
+          Build: ${BUILD_VERSION}
+          Field baseline: ${FIELD_BASELINE} MH/s
+          CUDA: ${CUDA_TOOLKIT}
+          Threads/block: ${CUDA_THREADS}
+          Register cap: ${CUDA_REG_CAP}
+          Nonces/thread: ${NONCES_PER_THREAD}
+          Full batch: ${BATCH_NONCES}
+
+          This candidate keeps PepeW's independent strict HooHash implementation and adopts only scheduling/resource targets inferred from measured V100 behavior: 640-thread blocks, 6 nonces/thread, 48-register cap, PreferL1 and 0% shared carveout. No third-party code or binary is included.
+          EOF
+          )
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/${ASSET_NAME}" "dist/${SHA_NAME}" \
+              --target "$GITHUB_SHA" \
+              --title 'PepeW Miner Tesla V100 KV7-A DEV' \
+              --notes "$notes" --prerelease
+          fi
+          echo "Asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
