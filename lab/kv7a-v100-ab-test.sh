@@ -15,6 +15,7 @@ TMP="$(mktemp -d /tmp/pepew-kv7a.XXXXXX)"
 SAMPLES="$TMP/samples.txt"
 BACKUP="${MINERDIR}.backup.kv7a.$(date +%Y%m%d-%H%M%S)"
 KEEP=0
+INSTALLED=0
 
 fmt(){ printf '%02d:%02d' "$(( $1/60 ))" "$(( $1%60 ))"; }
 latest(){ grep -a '^\[MINING\]' "$LOG" 2>/dev/null | tail -1 || true; }
@@ -34,6 +35,7 @@ ar(){
 
 rollback(){
   (( KEEP )) && return 0
+  (( INSTALLED )) || return 0
   echo
   echo '=== ROLLBACK TO PREVIOUS PEPEW ==='
   miner stop || true
@@ -48,8 +50,12 @@ rollback(){
     echo "WARNING: backup not found: $BACKUP"
   fi
 }
-trap rollback EXIT INT TERM
-trap 'rm -rf "$TMP"' EXIT
+
+cleanup(){
+  rollback || true
+  rm -rf "$TMP" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
 
 cat <<EOF
 ============================================================
@@ -82,13 +88,13 @@ for ((e=0;e<=WAIT_ASSET;e+=10)); do
   echo "[ASSET] elapsed $(fmt "$e") / $(fmt "$WAIT_ASSET") | remaining $(fmt "$left") | waiting"
   ((e>=WAIT_ASSET)) || sleep 10
 done
-(( ready )) || { echo 'FAIL: KV7-A asset not published. Existing miner was not touched.'; KEEP=1; exit 2; }
+(( ready )) || { echo 'FAIL: KV7-A asset not published. Existing miner was not touched.'; exit 2; }
 
 mkdir -p "$TMP/unpack"
 tar -xzf "$asset" -C "$TMP/unpack"
 NEW="$TMP/unpack/PepeW-Miner"
 INFO="$NEW/BUILD_INFO.txt"
-[[ -x "$NEW/pepepowminer" && -s "$INFO" ]] || { echo 'FAIL: invalid package'; KEEP=1; exit 2; }
+[[ -x "$NEW/pepepowminer" && -s "$INFO" ]] || { echo 'FAIL: invalid package'; exit 2; }
 cat "$INFO"
 grep -E '^version=v100-kv7a-t640-r48-n6-' "$INFO"
 grep -Fx 'cuda_threads=640' "$INFO"
@@ -108,6 +114,7 @@ echo
 echo '=== [3/8] BACKUP + INSTALL KV7-A ==='
 mv "$MINERDIR" "$BACKUP"
 mv "$NEW" "$MINERDIR"
+INSTALLED=1
 chmod +x "$MINERDIR/pepepowminer" "$MINERDIR/h-run.sh" "$MINERDIR/h-config.sh" "$MINERDIR/h-stats.sh"
 [[ -f "$BACKUP/config.txt" ]] && cp -f "$BACKUP/config.txt" "$MINERDIR/config.txt"
 echo "Backup: $BACKUP"
@@ -160,7 +167,6 @@ for ((e=0;e<=TEST;e+=STEP)); do
   if awk -v x="$hv" 'BEGIN{exit !(x>0)}'; then echo "$hv" >> "$SAMPLES"; fi
   read -r avg min max n <<<"$(stats)"
   read -r a r rec state <<<"$(ar)"
-  left=$((TEST-e)); ((left<0)) && left=0
   pct=$((TEST>0?e*100/TEST:100)); ((pct>100)) && pct=100
   printf '[MEASURE] %s/%s | %3d%% | last %s | avg %s | min %s | max %s | n %s | A/R %s/%s | REC %s | GPU %s\n' \
     "$(fmt "$e")" "$(fmt "$TEST")" "$pct" "$hv" "$avg" "$min" "$max" "$n" "$a" "$r" "$rec" "$(gpu)"
