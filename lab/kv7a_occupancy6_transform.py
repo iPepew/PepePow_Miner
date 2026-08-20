@@ -94,4 +94,15 @@ for marker in required:
         raise SystemExit(f"KV7-A missing marker: {marker}")
 
 src.write_text(text)
+
+# Match the measured Foztor V100 batch: 640 * 320 * 6 = 1,228,800 nonces.
+app = Path("native/src/app/main.cpp")
+app_text = app.read_text()
+old_chunk = "        constexpr std::uint64_t chunk_size = 1ULL << 18;\n"
+new_chunk = "        constexpr std::uint64_t chunk_size = 1228800ULL; // KV7-A: 640 x 320 x 6\n"
+if app_text.count(old_chunk) != 1:
+    raise SystemExit(f"KV7-A chunk marker count={app_text.count(old_chunk)}")
+app_text = app_text.replace(old_chunk, new_chunk)
+app.write_text(app_text)
+
 print("KV7-A occupancy6 transform applied")
