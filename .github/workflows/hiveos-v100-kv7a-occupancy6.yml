@@ -11,6 +11,15 @@ on:
       - "lab/kv6a_word_pipeline_transform.py"
       - "lab/kv7a_occupancy6_transform.py"
       - ".github/workflows/hiveos-v100-kv7a-occupancy6.yml"
+  pull_request:
+    branches:
+      - "agent/v100-kv6a-word-pipeline"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv6a_word_pipeline_transform.py"
+      - "lab/kv7a_occupancy6_transform.py"
+      - ".github/workflows/hiveos-v100-kv7a-occupancy6.yml"
 
 permissions:
   contents: write
@@ -167,6 +176,7 @@ jobs:
           retention-days: 30
 
       - name: Publish isolated KV7-A rolling asset
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
