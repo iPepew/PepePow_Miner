@@ -79,3 +79,5 @@ if "sw=product/1024.0-floor(product/1024.0);" in text:
 
 src.write_text(text)
 print("[KV8-A] exact sw predicate + zero-nibble fast path applied")
+
+# CI publish trigger: source transform intentionally unchanged after spill-gate qualification.
