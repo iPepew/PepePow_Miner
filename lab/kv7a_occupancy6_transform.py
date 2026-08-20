@@ -32,7 +32,10 @@ new_kernel = r'''__global__ void search_kernel(const std::uint8_t* base,std::uin
     const std::size_t tid=std::size_t(blockIdx.x)*blockDim.x+threadIdx.x;
     const std::size_t stride=std::size_t(gridDim.x)*blockDim.x;
 
-    #pragma unroll
+    // Keep the nonce loop rolled. Reusing one hash state six times is the point:
+    // fully unrolling this loop would duplicate the large HooHash body and fight
+    // the 48-register occupancy target.
+    #pragma unroll 1
     for(std::size_t lane=0;lane<kNoncesPerThread;++lane){
         const std::size_t idx=tid+lane*stride;
         if(idx>=count)continue;
@@ -84,6 +87,7 @@ text = text.replace(old_state, new_state)
 
 required = [
     "kNoncesPerThread = 6",
+    "#pragma unroll 1\n    for(std::size_t lane=0;lane<kNoncesPerThread;++lane)",
     "lane*stride",
     "logical_threads=(count+kNoncesPerThread-1U)/kNoncesPerThread",
     "cudaFuncCachePreferL1",
