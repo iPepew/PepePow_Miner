@@ -10,6 +10,14 @@ on:
       - "hiveos/**"
       - "lab/kv8a_exact_sw_transform.py"
       - ".github/workflows/hiveos-v100-kv8a-exact-sw.yml"
+  pull_request:
+    branches:
+      - "agent/v100-kv4a-const-matrix"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv8a_exact_sw_transform.py"
+      - ".github/workflows/hiveos-v100-kv8a-exact-sw.yml"
 
 permissions:
   contents: write
