@@ -100,3 +100,5 @@ __global__ void build_simple_lut_kernel(){
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Publication trigger after PR-side CI qualification; transform semantics unchanged.
