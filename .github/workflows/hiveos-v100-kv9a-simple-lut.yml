@@ -1,0 +1,219 @@
+name: HiveOS V100 KV9-A Exact Simple LUT Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-kv9a-simple-lut"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv9a_simple_lut_transform.py"
+      - ".github/workflows/hiveos-v100-kv9a-simple-lut.yml"
+  pull_request:
+    branches:
+      - "agent/v100-kv4a-const-matrix"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/kv9a_simple_lut_transform.py"
+      - ".github/workflows/hiveos-v100-kv9a-simple-lut.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      PTXAS_NAME: KV9A-PTXAS.log
+      RELEASE_TAG: hiveos-v100-kv9a-test
+      BASELINE_BUILD: kv4a-10.212mh
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          rm -rf /var/lib/apt/lists/*
+          cmake --version
+          nvcc --version
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate build identity
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          echo "BUILD_VERSION=v100-kv9a-lut16-t${CUDA_THREADS}-r${CUDA_REG_CAP}-${short_sha}" >> "$GITHUB_ENV"
+
+      - name: Configure KV4-A baseline and apply KV9-A lookup
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "$generated"
+          python3 lab/kv9a_simple_lut_transform.py "$generated"
+
+          grep -F '__device__ __constant__ double d_matrix[64][64];' "$generated"
+          grep -F '__device__ double d_simple_lut[64][64][16];' "$generated"
+          grep -F 'build_simple_lut_kernel<<<256,256>>>' "$generated"
+          grep -F '__ldg(&d_simple_lut[row][j][static_cast<unsigned>(v)])' "$generated"
+          grep -F 'product+=safe_complex(x)*v*1234.0;' "$generated"
+          grep -F 'sw=product/1024.0-floor(product/1024.0);' "$generated"
+          grep -F 'const double scaled=x*kTM;' "$generated"
+          grep -F 'return complex_transform(input);' "$generated"
+          grep -F "constexpr unsigned threads=${CUDA_THREADS};" "$generated"
+
+          if grep -F 'product+=d_matrix[row][j]*0.0001*v;' "$generated"; then
+            echo 'ERROR: original simple-path multiply survived KV9-A transform'
+            exit 1
+          fi
+          if grep -F 'sw_low_from_product' "$generated"; then
+            echo 'ERROR: rejected KV8-A sw path leaked into KV9-A'
+            exit 1
+          fi
+          echo '[SOURCE] KV9-A exact simple-path LUT verified'
+
+      - name: Build and enforce sm70 spill gate
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2>&1 | tee /tmp/pepew-build.log
+          cp /tmp/pepew-build.log "${PTXAS_NAME}"
+          echo '=== PTXAS RESOURCE SUMMARY ==='
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill|bytes cmem' /tmp/pepew-build.log || true
+
+          python3 - <<'PY'
+          import re, sys
+          lines=open('/tmp/pepew-build.log', errors='replace').read().splitlines()
+          found=False
+          for i,line in enumerate(lines):
+              if "search_kernel" in line and "for 'sm_70'" in line:
+                  block='\n'.join(lines[i:i+8])
+                  m=re.search(r'(\d+) bytes stack frame, (\d+) bytes spill stores, (\d+) bytes spill loads', block)
+                  r=re.search(r'Used (\d+) registers', block)
+                  if not m or not r:
+                      continue
+                  found=True
+                  stack,stores,loads=map(int,m.groups())
+                  regs=int(r.group(1))
+                  print(f'[SM70] search_kernel regs={regs} stack={stack} spill_stores={stores} spill_loads={loads}')
+                  if stores != 0 or loads != 0:
+                      print('[SM70] REJECT: KV9-A introduced search-kernel spilling')
+                      sys.exit(2)
+                  if regs > 128:
+                      print('[SM70] REJECT: register cap not respected')
+                      sys.exit(2)
+                  break
+          if not found:
+              print('[SM70] REJECT: could not parse search_kernel PTXAS footprint')
+              sys.exit(2)
+          print('[SM70] PTXAS spill gate PASS')
+          PY
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+      - name: Assemble HiveOS package
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "$package_dir"
+          install -m 0755 build/hiveos-cuda/pepepowminer "$package_dir/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$package_dir/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$package_dir/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$package_dir/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$package_dir/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "$package_dir/h-manifest.conf"
+
+          cat > "$package_dir/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          channel=${RELEASE_TAG}
+          baseline=${BASELINE_BUILD}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          kernel=kv9a-exact-simple-lut
+          matrix_storage=constant-32k
+          matrix_generation=host-strict-reference
+          simple_path=cell-nibble-lut16
+          simple_lut_bytes=524288
+          simple_lut_generation=gpu-job-setup
+          simple_lut_load=read-only-cache
+          sw_state=kv4a-double-fraction
+          nonlinear_path=strict-fp64
+          consensus=strict-fp64
+          experiment=kv9a-common-branch-memory-for-fp64
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+
+          strip "$package_dir/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "$CUSTOM_MINER_NAME"
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+          tar -tzf "dist/${ASSET_NAME}"
+          cat "$package_dir/BUILD_INFO.txt"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-kv9a-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+            KV9A-PTXAS.log
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish isolated KV9-A rolling asset
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          notes="PepeW V100 KV9-A exact simple-path LUT candidate. Baseline ${BASELINE_BUILD}. Keeps KV4-A strict nonlinear FP64 and sw recurrence; replaces only the common matrix*0.0001*nibble branch with a GPU-generated exact 512 KiB cell×nibble lookup. sm70 search kernel is rejected in CI if it spills."
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "dist/${ASSET_NAME}" "dist/${SHA_NAME}" \
+              --target "$GITHUB_SHA" \
+              --title "PepeW Miner Tesla V100 KV9-A DEV" \
+              --notes "$notes" --prerelease
+          fi
