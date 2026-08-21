@@ -52,6 +52,17 @@ if [[ -z "${version}" || "${version}" == "dev" ]]; then
 fi
 [[ -n "${version}" ]] || version="dev"
 
+# Hive's native ar=[accepted,rejected] is retained below. Some Hive dashboard
+# layouts suppress the A/R widget while both counters are zero, which made it
+# impossible to distinguish "no share yet" from missing telemetry. Therefore
+# expose the same live counters in the visible version string as well.
+# Keep the FastSolver V2 label compact enough to fit on the worker overview.
+if [[ "${version}" =~ ^v100-fsv2-lutreduce-t[0-9]+-([0-9A-Fa-f]{7,})$ ]]; then
+  display_version="v100-fsv2-${BASH_REMATCH[1]} A${accepted}/R${rejected}"
+else
+  display_version="${version} A${accepted}/R${rejected}"
+fi
+
 # Read hardware telemetry once. Arrays are keyed by CUDA/NVIDIA index so that
 # hs[], temp[], fan[] and bus_numbers[] describe the same physical card.
 gpu_count=0
@@ -97,8 +108,7 @@ fi
 hs_json=$(IFS=,; printf '%s' "${hs_values[*]}")
 
 # HiveOS custom-miner schema defines ar as exactly two aggregate counters:
-# [accepted, rejected]. Keep this shape stable in every PepeW build so the
-# dashboard can render A/R next to the miner version.
+# [accepted, rejected]. Keep this shape stable in every PepeW build.
 temp_json=""
 fan_json=""
 bus_json=""
@@ -126,8 +136,8 @@ fi
 
 if [[ -n "${bus_json}" ]]; then
   stats=$(printf '{"hs":[%s],"hs_units":"khs","temp":[%s],"fan":[%s],"uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash","bus_numbers":[%s]}' \
-    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}" "${bus_json}")
+    "${hs_json}" "${temp_json}" "${fan_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${display_version}" "${bus_json}")
 else
   stats=$(printf '{"hs":[%s],"hs_units":"khs","uptime":%s,"ar":[%s,%s],"ver":"%s","algo":"hoohash"}' \
-    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${version}")
+    "${hs_json}" "${uptime_seconds}" "${accepted}" "${rejected}" "${display_version}")
 fi
