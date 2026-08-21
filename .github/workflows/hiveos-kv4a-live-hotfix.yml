@@ -1,0 +1,123 @@
+name: HiveOS KV4-A Live Shares Hotfix
+
+on:
+  push:
+    branches:
+      - "hotfix/v100-kv4a-live-shares"
+    paths:
+      - ".github/workflows/hiveos-kv4a-live-hotfix.yml"
+      - "native/**"
+      - "hiveos/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+      SHA_ASSET: PepeW-Miner-HiveOS.tar.gz.sha256
+      LIVE_TAG: hiveos-v100-kernel-v2-test
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure strict KV4-A
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+      - name: Build strict miner
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2 2>&1 | tee /tmp/pepew-build.log
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-build.log || true
+
+      - name: Validate Hive share telemetry
+        run: |
+          set -euo pipefail
+          test -x build/hiveos-cuda/pepepowminer
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+          grep -F '"ar":[%s,%s]' hiveos/h-stats.sh
+          grep -F 'accepted=$(printf' hiveos/h-stats.sh
+          grep -F 'rejected=$(printf' hiveos/h-stats.sh
+
+      - name: Assemble live package
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          version="v100-kv4a-live-${short_sha}"
+          pkg="dist/PepeW-Miner"
+          rm -rf dist
+          mkdir -p "$pkg"
+          install -m 0755 build/hiveos-cuda/pepepowminer "$pkg/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$pkg/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$pkg/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$pkg/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$pkg/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${version}/" "$pkg/h-manifest.conf"
+          cat > "$pkg/BUILD_INFO.txt" <<EOF
+          version=${version}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          kernel=kv4a-constant-matrix-strict
+          consensus=strict-fp64
+          share_path=strict-gpu-hash-to-pool
+          hive_shares=ar-accepted-rejected
+          live_channel=${LIVE_TAG}
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          strip "$pkg/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET}" PepeW-Miner
+          sha256sum "dist/${ASSET}" | sed 's#dist/##' > "dist/${SHA_ASSET}"
+          echo "BUILD_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Publish same live URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="Strict KV4-A live hotfix. Replaces FastSolver V2 approximate search because its displayed 12.2 MH/s produced no accepted pool shares. This build restores consensus-exact mining and native Hive ar=[accepted,rejected] counters. Build ${BUILD_VERSION}."
+          if gh release view "$LIVE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$LIVE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$LIVE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --title "PepeW V100 live test channel" --notes "$notes" --prerelease
+          fi
+          echo "live=https://github.com/${GITHUB_REPOSITORY}/releases/download/${LIVE_TAG}/${ASSET}"
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: kv4a-live-hotfix-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET }}
+            dist/${{ env.SHA_ASSET }}
+            /tmp/pepew-build.log
+          retention-days: 30
