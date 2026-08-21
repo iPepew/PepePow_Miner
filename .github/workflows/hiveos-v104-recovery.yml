@@ -8,6 +8,13 @@ on:
       - "native/**"
       - "hiveos/**"
       - ".github/workflows/hiveos-v104-recovery.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - ".github/workflows/hiveos-v104-recovery.yml"
   workflow_dispatch:
 
 permissions:
@@ -133,6 +140,7 @@ jobs:
           retention-days: 30
 
       - name: Publish isolated recovery candidate
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
