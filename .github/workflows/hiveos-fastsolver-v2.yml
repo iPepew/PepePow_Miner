@@ -9,6 +9,7 @@ on:
       - "native/**"
       - "hiveos/**"
       - "lab/fastsolver_v2_patch.py"
+      - "lab/fastsolver_v2_strict_gpu_validate.py"
       - "lab/pepew_stratum_share_fix.py"
       - ".github/workflows/hiveos-fastsolver-v2.yml"
   pull_request:
@@ -18,6 +19,7 @@ on:
       - "native/**"
       - "hiveos/**"
       - "lab/fastsolver_v2_patch.py"
+      - "lab/fastsolver_v2_strict_gpu_validate.py"
       - "lab/pepew_stratum_share_fix.py"
       - ".github/workflows/hiveos-fastsolver-v2.yml"
 
@@ -91,12 +93,17 @@ jobs:
           generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
           test -s "$generated"
           python3 lab/fastsolver_v2_patch.py "$generated"
+          python3 lab/fastsolver_v2_strict_gpu_validate.py "$generated"
           grep -F 'kFastPhaseLutIntervals = 98304U' "$generated"
           grep -F 'fast_phase_frac64' "$generated"
           grep -F 'fast_exp_sincossum' "$generated"
           grep -F 'fast_sin2' "$generated"
           grep -F 'hash_one_fast(base,nonce,hash);' "$generated"
-          grep -F 'calculate_header80_pow(strict_header)' "$generated"
+          grep -F 'Header80CudaDiagnostics strict_diag=diagnose(job,result.nonce);' "$generated"
+          if grep -Fq 'calculate_header80_pow(strict_header)' "$generated"; then
+            echo 'ERROR: stale CPU candidate validation remains' >&2
+            exit 1
+          fi
 
       - name: Build miner and capture PTXAS
         run: |
@@ -155,7 +162,7 @@ jobs:
           exp_sincossum_lut=98305-fp64-linear
           sin2=phase-reduced-fp64
           matrix_storage=constant-32k
-          candidate_validation=strict-cpu
+          candidate_validation=strict-gpu-consensus
           consensus=strict-submit
           stratum_wire_difficulty_scale=65536
           stratum_submit_nonce=numeric-8hex
@@ -186,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          notes="FastSolver V2 with PEPEW pool share fix: Stratum wire difficulty /65536 before share-target construction and numeric 8-hex nonce submission. 192-bit phase reducer + 98,305 FP64 exp(sin+cos) LUT + reduced sin2 path. Strict CPU validation before share submission. Hive stats expose native ar=[accepted,rejected] and visible A/R. Baseline KV4-A ~${BASELINE_MHS} MH/s. Build ${BUILD_VERSION}."
+          notes="FastSolver V2 with PEPEW share fix: pool wire difficulty /65536, numeric 8-hex nonce, and strict GPU-consensus validation of every approximate candidate before submit. Hive stats expose native ar=[accepted,rejected] and visible A/R. Baseline KV4-A ~${BASELINE_MHS} MH/s. Build ${BUILD_VERSION}."
 
           publish_tag() {
             local tag="$1"
