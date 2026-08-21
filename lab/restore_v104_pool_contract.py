@@ -10,8 +10,11 @@ target_path = Path(sys.argv[2])
 main = main_path.read_text()
 target = target_path.read_text()
 
-# v1.0.4 was tested as a share-producing release. Restore its pool-facing
-# contract exactly before doing any further V100 performance work.
+# Restore only the v1.0.4 pool-facing semantics that are independently
+# supported by the historical accepted-share fix: numeric nonce word and
+# wire difficulty / 65536. Keep the later standard 0xffff diff1 target.
+# The combination old diff1 target + /65536 was proven by recovery testing to
+# be far too permissive on the current pool (thousands of low-difficulty rejects).
 old_nonce = '''std::string encode_submit_nonce(std::uint32_t value) {
     std::ostringstream stream;
     stream << std::hex << std::nouppercase << std::setfill('0');
@@ -22,9 +25,8 @@ old_nonce = '''std::string encode_submit_nonce(std::uint32_t value) {
 }
 '''
 new_nonce = '''std::string encode_submit_nonce(std::uint32_t value) {
-    // Proven v1.0.4 wire contract: submit the nonce as an eight-digit numeric
-    // hex word. The PEPEW pool interprets this word according to its Stratum
-    // header serialization rules.
+    // v1.0.4 accepted-share contract: submit nonce as an eight-digit numeric
+    // hex word. Do not byte-swap the numeric scan nonce before mining.submit.
     std::ostringstream stream;
     stream << std::hex << std::nouppercase << std::setfill('0')
            << std::setw(8) << value;
@@ -41,9 +43,8 @@ if stats_marker not in main:
 main = main.replace(
     stats_marker,
     stats_marker +
-    '// Proven v1.0.4 PEPEW Stratum contract: the pool advertises difficulty\n'
-    '// multiplied by 65,536. Mining target generation must use the effective\n'
-    '// difficulty, not the raw wire value.\n'
+    '// PEPEW pool wire difficulty is scaled by 65,536. This behavior was\n'
+    '// introduced by the known accepted-share fix fe0f92c and is retained.\n'
     'constexpr double kPepepowWireDifficultyScale = 65536.0;\n',
     1,
 )
@@ -68,25 +69,14 @@ if old_log not in main:
     raise SystemExit("difficulty log marker missing")
 main = main.replace(old_log, new_log, 1)
 
-# Restore the exact v1.0.4 difficulty-1 target. A later optimization branch
-# shifted the 0xffff word by 16 bits and silently changed share difficulty.
-old_diff1 = '''constexpr std::array<std::uint8_t, 32> kDiff1Target{
+# Keep the later standard diff1 target. Foztor's observed accepted-share cadence
+# at pool difficulty 327.68 is consistent with this target combined with /65536.
+standard_diff1 = '''constexpr std::array<std::uint8_t, 32> kDiff1Target{
     0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00,
 '''
-new_diff1 = '''constexpr std::array<std::uint8_t, 32> kDiff1Target{
-    0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
-'''
-if old_diff1 not in target:
-    raise SystemExit("diff1 target marker missing")
-target = target.replace(old_diff1, new_diff1, 1)
-target = target.replace(
-    '// Standard 0xffff difficulty-1 target used by PEPEPOW/HooHashV110.\n'
-    '// Big-endian: 00000000ffff0000... (not 0000ffff0000...).\n',
-    '// Restored from verified v1.0.4 pool contract.\n'
-    '// Big-endian: 0000ffff00000000...\n',
-    1,
-)
+if standard_diff1 not in target:
+    raise SystemExit("expected standard diff1 target missing")
 
 main_path.write_text(main)
 target_path.write_text(target)
-print("restored v1.0.4 pool contract: nonce word, wire difficulty /65536, diff1 target")
+print("restored hybrid pool contract: numeric nonce + wire difficulty /65536; kept standard diff1 target")
