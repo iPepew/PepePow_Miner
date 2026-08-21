@@ -1,4 +1,4 @@
-name: HiveOS V100 v1.0.4 Pool Contract Restore
+name: HiveOS V100 Pool Contract Hybrid Restore
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
       CUDA_THREADS: "256"
       ASSET: PepeW-Miner-HiveOS.tar.gz
       SHA_ASSET: PepeW-Miner-HiveOS.tar.gz.sha256
-      RELEASE_TAG: hiveos-v100-v104-contract-restore-test
+      RELEASE_TAG: hiveos-v100-pool-contract-hybrid-test
     steps:
       - name: Install build tools
         run: |
@@ -42,14 +42,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore proven v1.0.4 pool contract
+      - name: Restore proven pool wire semantics
         run: |
           set -euo pipefail
           python3 lab/restore_v104_pool_contract.py native/src/app/main.cpp native/src/mining/target.cpp
           grep -F 'kPepepowWireDifficultyScale = 65536.0' native/src/app/main.cpp
           grep -F 'item.stratum_job.difficulty / kPepepowWireDifficultyScale' native/src/app/main.cpp
           grep -F 'std::setw(8) << value' native/src/app/main.cpp
-          grep -F '0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00' native/src/mining/target.cpp
+          # Keep the corrected standard diff1 target from the current consensus path.
+          grep -F '0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00' native/src/mining/target.cpp
 
       - name: Configure strict V100 backend
         run: |
@@ -76,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           short_sha="${GITHUB_SHA::7}"
-          version="v100-v104contract-${short_sha}"
+          version="v100-poolhybrid-${short_sha}"
           pkg="dist/PepeW-Miner"
           rm -rf dist
           mkdir -p "$pkg"
@@ -91,11 +92,11 @@ jobs:
           commit=${GITHUB_SHA}
           ref=${GITHUB_REF_NAME}
           kernel=strict-v100-current-backend
-          pool_contract=v1.0.4-restored
+          pool_contract=hybrid-correctness-recovery
           stratum_nonce=eight-digit-numeric-hex
           wire_difficulty_scale=65536
-          diff1_target=0000ffff00000000
-          consensus=strict
+          diff1_target=00000000ffff0000
+          consensus=current-strict
           promotion=forbidden-until-accepted-share
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
@@ -110,18 +111,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          notes="Restores the proven v1.0.4 pool-facing contract on the current V100 strict backend: numeric nonce hex, wire difficulty /65536, and the original diff1 target. This candidate must produce accepted pool shares before live promotion. Build ${BUILD_VERSION}."
+          notes="Correctness recovery candidate. Uses current strict HooHash/diff1 target, restores the proven PEPEW wire difficulty /65536 and numeric 8-hex nonce submit semantics. Must produce real accepted shares before live promotion. Build ${BUILD_VERSION}."
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --clobber
           else
-            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --title "PepeW V100 v1.0.4 pool contract restore" --notes "$notes" --prerelease
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --title "PepeW V100 pool-contract hybrid restore" --notes "$notes" --prerelease
           fi
           echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
 
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: v104-contract-restore-${{ github.sha }}
+          name: pool-contract-hybrid-${{ github.sha }}
           path: |
             dist/${{ env.ASSET }}
             dist/${{ env.SHA_ASSET }}
