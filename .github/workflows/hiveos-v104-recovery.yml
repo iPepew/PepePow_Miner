@@ -1,0 +1,148 @@
+name: HiveOS v1.0.4 Recovery V100
+
+on:
+  push:
+    branches:
+      - "recovery/v1.0.4-v100-working"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - ".github/workflows/hiveos-v104-recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:12.6.3-devel-ubuntu22.04
+    env:
+      CUDA_ARCHS: "70;86"
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-v104-recovery-test
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          cmake --version
+          nvcc --version
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Recovery identity and source-of-truth gates
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          echo "BUILD_VERSION=v100-v104-recovery-${short_sha}" >> "$GITHUB_ENV"
+
+          # These are the pool-facing semantics that existed in the known
+          # share-producing v1.0.4 line. Fail the build if they drift again.
+          grep -F 'kPepepowWireDifficultyScale = 65536.0' native/src/app/main.cpp
+          grep -F 'item.stratum_job.difficulty / kPepepowWireDifficultyScale' native/src/app/main.cpp
+          grep -F 'share.nonce = encode_submit_word(candidate->nonce)' native/src/app/main.cpp
+          grep -F 'write_le32(header, 76, job.nonce);' native/src/core/header_builder.cpp
+          grep -F '0x00, 0x00, 0xff, 0xff' native/src/mining/target.cpp
+          grep -F 'generate_hoohash_matrix(job.previous_hash)' native/src/cuda/header80_backend.cu
+          grep -F 'const crypto::HoohashMatrix matrix = crypto::generate_hoohash_matrix(job.previous_hash);' native/src/cuda/header80_backend.cu
+          echo '[RECOVERY] v1.0.4 pool/HooHash invariants present'
+
+      - name: Configure CUDA release and tests
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/recovery \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+      - name: Build recovery miner and CPU regression tests
+        run: |
+          set -o pipefail
+          cmake --build build/recovery --target pepepowminer pepepow_core_tests --parallel 2 2>&1 | tee /tmp/pepew-v104-recovery-build.log
+          echo '--- PTXAS RESOURCE SUMMARY ---'
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-v104-recovery-build.log || true
+
+      - name: Run v1.0.4 correctness regressions
+        run: |
+          set -euo pipefail
+          ./build/recovery/pepepow_core_tests
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+          grep -F '"ar":[%s,%s]' hiveos/h-stats.sh
+          echo '[RECOVERY] core tests and Hive callbacks PASS'
+
+      - name: Assemble HiveOS recovery package
+        run: |
+          set -euo pipefail
+          pkg="dist/PepeW-Miner"
+          rm -rf dist
+          mkdir -p "$pkg"
+          install -m 0755 build/recovery/pepepowminer "$pkg/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$pkg/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$pkg/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$pkg/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$pkg/h-manifest.conf"
+          sed -i "s/^CUSTOM_NAME=.*/CUSTOM_NAME=PepeW-Miner/" "$pkg/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "$pkg/h-manifest.conf"
+          cat > "$pkg/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          source_of_truth=v1.0.4
+          recovery_reason=restore-known-share-producing-pool-semantics
+          stratum_difficulty_scale=65536
+          submit_nonce=numeric-8hex
+          header_nonce=little-endian
+          matrix_seed=previous-hash
+          diff1_target=0000ffff0000
+          hive_shares=ar-accepted-rejected
+          cuda_archs=${CUDA_ARCHS}
+          consensus_gate=real-pool-accepted-shares-required
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          strip "$pkg/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" PepeW-Miner
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+          tar -tzf "dist/${ASSET_NAME}"
+          cat "dist/${SHA_NAME}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v104-recovery-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+            /tmp/pepew-v104-recovery-build.log
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish isolated recovery candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="Recovery candidate based on the known working v1.0.4 mining core. Restores v1.0.4 pool difficulty scaling, numeric nonce submit format, little-endian header nonce, previous-hash matrix seed and original HooHash path. Adds only HiveOS hashrate/A/R telemetry. Promotion requires real accepted pool shares on V100. Build ${BUILD_VERSION}."
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --repo "$GH_REPO" \
+              --target "$GITHUB_SHA" --title "PepeW v1.0.4 V100 recovery candidate" --notes "$notes" --prerelease
+          fi
+          echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
