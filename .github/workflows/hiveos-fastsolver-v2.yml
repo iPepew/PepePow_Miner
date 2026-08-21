@@ -1,0 +1,212 @@
+name: HiveOS V100 FastSolver V2 LUT Reducer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-fastsolver-v2-lut-reducer"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/fastsolver_v2_patch.py"
+      - "lab/fastsolver_v2_strict_gpu_validate.py"
+      - "lab/pepew_stratum_share_fix.py"
+      - ".github/workflows/hiveos-fastsolver-v2.yml"
+  pull_request:
+    branches:
+      - "agent/v100-kv4a-const-matrix"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/fastsolver_v2_patch.py"
+      - "lab/fastsolver_v2_strict_gpu_validate.py"
+      - "lab/pepew_stratum_share_fix.py"
+      - ".github/workflows/hiveos-fastsolver-v2.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-fastsolver-v2-test
+      LIVE_TAG: hiveos-v100-kernel-v2-test
+      BASELINE_MHS: "10.240"
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          cmake --version
+          nvcc --version
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Candidate identity
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          echo "BUILD_VERSION=v100-fsv2-sharefix-t${CUDA_THREADS}-${short_sha}" >> "$GITHUB_ENV"
+
+      - name: Apply PEPEW Stratum share fix
+        run: |
+          set -euo pipefail
+          python3 lab/pepew_stratum_share_fix.py native/src/app/main.cpp
+          grep -F 'kPepepowWireDifficultyScale = 65536.0' native/src/app/main.cpp
+          grep -F 'item.stratum_job.difficulty / kPepepowWireDifficultyScale' native/src/app/main.cpp
+          grep -F 'std::setw(8) << value' native/src/app/main.cpp
+          grep -F 'effective_difficulty=' native/src/app/main.cpp
+
+      - name: Configure strict KV4-A base
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+      - name: Apply FastSolver V2 transform
+        run: |
+          set -euo pipefail
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "$generated"
+          python3 lab/fastsolver_v2_patch.py "$generated"
+          python3 lab/fastsolver_v2_strict_gpu_validate.py "$generated"
+          grep -F 'kFastPhaseLutIntervals = 98304U' "$generated"
+          grep -F 'fast_phase_frac64' "$generated"
+          grep -F 'fast_exp_sincossum' "$generated"
+          grep -F 'fast_sin2' "$generated"
+          grep -F 'hash_one_fast(base,nonce,hash);' "$generated"
+          grep -F 'Header80CudaDiagnostics strict_diag=diagnose(job,result.nonce);' "$generated"
+          if grep -Fq 'calculate_header80_pow(strict_header)' "$generated"; then
+            echo 'ERROR: stale CPU candidate validation remains' >&2
+            exit 1
+          fi
+
+      - name: Build miner and capture PTXAS
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2 2>&1 | tee /tmp/pepew-build.log
+          echo '--- PTXAS RESOURCE SUMMARY ---'
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-build.log || true
+          cp /tmp/pepew-build.log /tmp/ptxas-fastsolver-v2.log
+
+      - name: PTXAS catastrophic spill gate
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          s=open('/tmp/pepew-build.log',errors='replace').read()
+          vals=[int(x) for x in re.findall(r'(\d+) bytes spill (?:stores|loads)',s)]
+          worst=max(vals,default=0)
+          print('worst spill bytes:',worst)
+          if worst>256:
+              raise SystemExit('catastrophic PTXAS spill regression')
+          PY
+
+      - name: Smoke test binary
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+          grep -F 'display_version=' hiveos/h-stats.sh
+          grep -F '"ar":[%s,%s]' hiveos/h-stats.sh
+
+      - name: Assemble HiveOS package
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "$package_dir"
+          install -m 0755 build/hiveos-cuda/pepepowminer "$package_dir/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$package_dir/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$package_dir/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$package_dir/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$package_dir/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "$package_dir/h-manifest.conf"
+          cat > "$package_dir/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          baseline_mhs=${BASELINE_MHS}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          kernel=fastsolver-v2-lut-reducer
+          phase_reducer=fixed192-payne-hanek-style
+          exp_sincossum_lut=98305-fp64-linear
+          sin2=phase-reduced-fp64
+          matrix_storage=constant-32k
+          candidate_validation=strict-gpu-consensus
+          consensus=strict-submit
+          stratum_wire_difficulty_scale=65536
+          stratum_submit_nonce=numeric-8hex
+          hive_shares=native-ar-plus-visible-version
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          strip "$package_dir/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "$CUSTOM_MINER_NAME"
+          sha256sum "dist/${ASSET_NAME}" | sed 's#dist/##' > "dist/${SHA_NAME}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-fastsolver-v2-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+            /tmp/ptxas-fastsolver-v2.log
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish source and live HiveOS assets
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          notes="FastSolver V2 with PEPEW share fix: pool wire difficulty /65536, numeric 8-hex nonce, and strict GPU-consensus validation of every approximate candidate before submit. Hive stats expose native ar=[accepted,rejected] and visible A/R. Baseline KV4-A ~${BASELINE_MHS} MH/s. Build ${BUILD_VERSION}."
+
+          publish_tag() {
+            local tag="$1"
+            local title="$2"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
+            else
+              gh release create "$tag" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --target "$GITHUB_SHA" --title "$title" --notes "$notes" --prerelease
+            fi
+          }
+
+          publish_tag "$RELEASE_TAG" "PepeW V100 FastSolver V2 DEV"
+          publish_tag "$LIVE_TAG" "PepeW V100 live test channel"
+
+          echo "source=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
+          echo "live=https://github.com/${GITHUB_REPOSITORY}/releases/download/${LIVE_TAG}/${ASSET_NAME}"

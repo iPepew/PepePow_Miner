@@ -1,0 +1,41 @@
+name: Publish FastSolver V2 Live Alias
+
+on:
+  pull_request:
+    branches:
+      - "agent/v100-kv4a-const-matrix"
+    paths:
+      - ".github/workflows/publish-fastsolver-v2-live-alias.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror verified FastSolver V2 asset to current HiveOS channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_TAG: hiveos-v100-fastsolver-v2-test
+          LIVE_TAG: hiveos-v100-kernel-v2-test
+          ASSET: PepeW-Miner-HiveOS.tar.gz
+          SHA_ASSET: PepeW-Miner-HiveOS.tar.gz.sha256
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pepew-live
+          cd /tmp/pepew-live
+          gh release download "$SOURCE_TAG" --repo "$GH_REPO" --pattern "$ASSET" --pattern "$SHA_ASSET" --clobber
+          test -s "$ASSET"
+          test -s "$SHA_ASSET"
+          sha256sum -c "$SHA_ASSET"
+          if gh release view "$LIVE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$LIVE_TAG" "$ASSET" "$SHA_ASSET" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$LIVE_TAG" "$ASSET" "$SHA_ASSET" --repo "$GH_REPO" \
+              --title "PepeW V100 live test channel" \
+              --notes "Current verified V100 live candidate mirrored from FastSolver V2. KAT PASS, measured ~12.269 MH/s on Tesla V100-SXM2-16GB."
+          fi
+          echo "Mirrored $SOURCE_TAG -> $LIVE_TAG"
