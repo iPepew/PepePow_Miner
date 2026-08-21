@@ -10,6 +10,14 @@ on:
       - "hiveos/**"
       - "lab/fastsolver_v1_patch.py"
       - ".github/workflows/hiveos-fastsolver-v1.yml"
+  pull_request:
+    branches:
+      - "agent/v100-kv4a-const-matrix"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/fastsolver_v1_patch.py"
+      - ".github/workflows/hiveos-fastsolver-v1.yml"
 
 permissions:
   contents: write
@@ -154,6 +162,7 @@ jobs:
           retention-days: 30
 
       - name: Publish FastSolver V1 rolling asset
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
