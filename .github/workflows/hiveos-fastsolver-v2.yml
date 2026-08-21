@@ -9,6 +9,7 @@ on:
       - "native/**"
       - "hiveos/**"
       - "lab/fastsolver_v2_patch.py"
+      - "lab/pepew_stratum_share_fix.py"
       - ".github/workflows/hiveos-fastsolver-v2.yml"
   pull_request:
     branches:
@@ -17,6 +18,7 @@ on:
       - "native/**"
       - "hiveos/**"
       - "lab/fastsolver_v2_patch.py"
+      - "lab/pepew_stratum_share_fix.py"
       - ".github/workflows/hiveos-fastsolver-v2.yml"
 
 permissions:
@@ -60,7 +62,16 @@ jobs:
       - name: Candidate identity
         run: |
           short_sha="${GITHUB_SHA::7}"
-          echo "BUILD_VERSION=v100-fsv2-lutreduce-t${CUDA_THREADS}-${short_sha}" >> "$GITHUB_ENV"
+          echo "BUILD_VERSION=v100-fsv2-sharefix-t${CUDA_THREADS}-${short_sha}" >> "$GITHUB_ENV"
+
+      - name: Apply PEPEW Stratum share fix
+        run: |
+          set -euo pipefail
+          python3 lab/pepew_stratum_share_fix.py native/src/app/main.cpp
+          grep -F 'kPepepowWireDifficultyScale = 65536.0' native/src/app/main.cpp
+          grep -F 'item.stratum_job.difficulty / kPepepowWireDifficultyScale' native/src/app/main.cpp
+          grep -F 'std::setw(8) << value' native/src/app/main.cpp
+          grep -F 'effective_difficulty=' native/src/app/main.cpp
 
       - name: Configure strict KV4-A base
         run: |
@@ -146,6 +157,8 @@ jobs:
           matrix_storage=constant-32k
           candidate_validation=strict-cpu
           consensus=strict-submit
+          stratum_wire_difficulty_scale=65536
+          stratum_submit_nonce=numeric-8hex
           hive_shares=native-ar-plus-visible-version
           built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           EOF
@@ -173,7 +186,7 @@ jobs:
         run: |
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          notes="FastSolver V2: 192-bit phase reducer + 98,305 FP64 exp(sin+cos) LUT + reduced sin2 path. Strict CPU validation before share submission. Hive stats expose native ar=[accepted,rejected] and a visible A/R fallback in the version string. Baseline KV4-A ~${BASELINE_MHS} MH/s. Build ${BUILD_VERSION}."
+          notes="FastSolver V2 with PEPEW pool share fix: Stratum wire difficulty /65536 before share-target construction and numeric 8-hex nonce submission. 192-bit phase reducer + 98,305 FP64 exp(sin+cos) LUT + reduced sin2 path. Strict CPU validation before share submission. Hive stats expose native ar=[accepted,rejected] and visible A/R. Baseline KV4-A ~${BASELINE_MHS} MH/s. Build ${BUILD_VERSION}."
 
           publish_tag() {
             local tag="$1"
@@ -181,8 +194,7 @@ jobs:
             if gh release view "$tag" >/dev/null 2>&1; then
               gh release upload "$tag" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
             else
-              gh release create "$tag" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" \
-                --target "$GITHUB_SHA" --title "$title" --notes "$notes" --prerelease
+              gh release create "$tag" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --target "$GITHUB_SHA" --title "$title" --notes "$notes" --prerelease
             fi
           }
 
