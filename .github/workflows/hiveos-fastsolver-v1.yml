@@ -1,0 +1,174 @@
+name: HiveOS V100 FastSolver V1 Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/v100-fastsolver-v1-liveness"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/fastsolver_v1_patch.py"
+      - ".github/workflows/hiveos-fastsolver-v1.yml"
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_TOOLKIT: "11.8"
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "128"
+      CUSTOM_MINER_NAME: PepeW-Miner
+      ASSET_NAME: PepeW-Miner-HiveOS.tar.gz
+      SHA_NAME: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-fastsolver-v1-test
+      BASELINE_MHS: "10.219"
+      FSV1_BATCH: "1126400"
+
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          cmake --version
+          nvcc --version
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate candidate version
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          build_version="v100-fsv1-t128-b1126400-${short_sha}"
+          echo "BUILD_VERSION=${build_version}" >> "${GITHUB_ENV}"
+          echo "Candidate: ${build_version}"
+          echo "Baseline: ${BASELINE_MHS} MH/s"
+
+      - name: Configure strict KV4-A base
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+      - name: Apply FastSolver V1 structural transform
+        run: |
+          set -euo pipefail
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          test -s "${generated}"
+          python3 lab/fastsolver_v1_patch.py "${generated}"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/app/main.cpp')
+          s=p.read_text()
+          old='constexpr std::uint64_t chunk_size = 1ULL << 18;'
+          new='constexpr std::uint64_t chunk_size = 1126400ULL;'
+          if old not in s: raise SystemExit('chunk-size marker missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -F '__device__ __noinline__ void accumulate_row' "${generated}"
+          grep -F 'constexpr unsigned blocks=2400;' "${generated}"
+          grep -F 'cudaFuncCachePreferL1' "${generated}"
+          grep -F 'cudaFuncAttributePreferredSharedMemoryCarveout,0' "${generated}"
+          grep -F 'constexpr std::uint64_t chunk_size = 1126400ULL;' native/src/app/main.cpp
+
+      - name: Build miner and capture PTXAS resources
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2 2>&1 | tee /tmp/pepew-build.log
+          echo "--- PTXAS RESOURCE SUMMARY ---"
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-build.log || true
+          cp /tmp/pepew-build.log /tmp/ptxas-fastsolver-v1.log
+
+      - name: Smoke test binary
+        run: |
+          set -euo pipefail
+          file build/hiveos-cuda/pepepowminer
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-config.sh hiveos/h-run.sh hiveos/h-stats.sh
+
+      - name: Assemble HiveOS FastSolver V1 archive
+        run: |
+          set -euo pipefail
+          package_dir="dist/${CUSTOM_MINER_NAME}"
+          rm -rf dist
+          mkdir -p "${package_dir}"
+          install -m 0755 build/hiveos-cuda/pepepowminer "${package_dir}/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "${package_dir}/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "${package_dir}/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "${package_dir}/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "${package_dir}/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${BUILD_VERSION}/" "${package_dir}/h-manifest.conf"
+          cat > "${package_dir}/BUILD_INFO.txt" <<EOF
+          version=${BUILD_VERSION}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          baseline_mhs=${BASELINE_MHS}
+          cuda_toolkit=${CUDA_TOOLKIT}
+          cuda_archs=${CUDA_ARCHS}
+          cuda_max_registers=${CUDA_REG_CAP}
+          cuda_threads=${CUDA_THREADS}
+          batch=${FSV1_BATCH}
+          blocks=2400
+          kernel=fastsolver-v1-persistent-liveness
+          matrix_storage=constant-32k
+          cache=PreferL1
+          carveout=0
+          consensus=strict-fp64
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          strip "${package_dir}/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET_NAME}" "${CUSTOM_MINER_NAME}"
+          sha256sum "dist/${ASSET_NAME}" | sed "s#dist/##" > "dist/${SHA_NAME}"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v100-fastsolver-v1-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET_NAME }}
+            dist/${{ env.SHA_NAME }}
+            /tmp/ptxas-fastsolver-v1.log
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish FastSolver V1 rolling asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="PepeW Tesla V100 FastSolver V1. Strict KV4-A consensus path with 128 threads/block, 2400-block persistent-stride grid, 1,126,400-nonce batches, phase liveness boundaries, PreferL1 and 0% shared carveout."
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "dist/${ASSET_NAME}" "dist/${SHA_NAME}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" \
+              "dist/${ASSET_NAME}" \
+              "dist/${SHA_NAME}" \
+              --target "${GITHUB_SHA}" \
+              --title "PepeW Miner Tesla V100 FastSolver V1 DEV" \
+              --notes "${notes}" \
+              --prerelease
+          fi
+          echo "Asset: https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
