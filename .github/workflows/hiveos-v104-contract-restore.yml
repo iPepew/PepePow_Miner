@@ -1,0 +1,129 @@
+name: HiveOS V100 v1.0.4 Pool Contract Restore
+
+on:
+  push:
+    branches:
+      - "fix/restore-v104-pool-contract"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/restore_v104_pool_contract.py"
+      - ".github/workflows/hiveos-v104-contract-restore.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+      SHA_ASSET: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-v104-contract-restore-test
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore proven v1.0.4 pool contract
+        run: |
+          set -euo pipefail
+          python3 lab/restore_v104_pool_contract.py native/src/app/main.cpp native/src/mining/target.cpp
+          grep -F 'kPepepowWireDifficultyScale = 65536.0' native/src/app/main.cpp
+          grep -F 'item.stratum_job.difficulty / kPepepowWireDifficultyScale' native/src/app/main.cpp
+          grep -F 'std::setw(8) << value' native/src/app/main.cpp
+          grep -F '0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00' native/src/mining/target.cpp
+
+      - name: Configure strict V100 backend
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+
+      - name: Build and smoke test
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2 2>&1 | tee /tmp/pepew-build.log
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-run.sh hiveos/h-config.sh hiveos/h-stats.sh
+          grep -E 'ptxas info.*(Used|Function properties)|bytes stack frame|bytes spill' /tmp/pepew-build.log || true
+
+      - name: Assemble package
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          version="v100-v104contract-${short_sha}"
+          pkg="dist/PepeW-Miner"
+          rm -rf dist
+          mkdir -p "$pkg"
+          install -m 0755 build/hiveos-cuda/pepepowminer "$pkg/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$pkg/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$pkg/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$pkg/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$pkg/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${version}/" "$pkg/h-manifest.conf"
+          cat > "$pkg/BUILD_INFO.txt" <<EOF
+          version=${version}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          kernel=strict-v100-current-backend
+          pool_contract=v1.0.4-restored
+          stratum_nonce=eight-digit-numeric-hex
+          wire_difficulty_scale=65536
+          diff1_target=0000ffff00000000
+          consensus=strict
+          promotion=forbidden-until-accepted-share
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          strip "$pkg/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET}" PepeW-Miner
+          sha256sum "dist/${ASSET}" | sed 's#dist/##' > "dist/${SHA_ASSET}"
+          echo "BUILD_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Publish isolated candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="Restores the proven v1.0.4 pool-facing contract on the current V100 strict backend: numeric nonce hex, wire difficulty /65536, and the original diff1 target. This candidate must produce accepted pool shares before live promotion. Build ${BUILD_VERSION}."
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --title "PepeW V100 v1.0.4 pool contract restore" --notes "$notes" --prerelease
+          fi
+          echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: v104-contract-restore-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET }}
+            dist/${{ env.SHA_ASSET }}
+            /tmp/pepew-build.log
+          retention-days: 30
