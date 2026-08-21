@@ -1,0 +1,2 @@
+FastSolver V2 build trigger.
+Architecture: KV4-A constant matrix + 192-bit phase reducer + 98,305 FP64 exp(sin+cos) LUT + strict CPU candidate validation.
