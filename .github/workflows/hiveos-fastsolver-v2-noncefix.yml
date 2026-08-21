@@ -1,0 +1,121 @@
+name: HiveOS V100 FastSolver V2 Nonce Wire Fix
+
+on:
+  push:
+    branches:
+      - "fix/stratum-nonce-wire-order"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/fastsolver_v2_patch.py"
+      - "lab/stratum_nonce_wire_patch.py"
+      - ".github/workflows/hiveos-fastsolver-v2-noncefix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-hiveos-package:
+    runs-on: ubuntu-latest
+    container:
+      image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+    env:
+      CUDA_ARCHS: "70;75;86"
+      CUDA_REG_CAP: "128"
+      CUDA_THREADS: "256"
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+      SHA_ASSET: PepeW-Miner-HiveOS.tar.gz.sha256
+      RELEASE_TAG: hiveos-v100-fastsolver-v2-noncefix-test
+    steps:
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git build-essential ca-certificates file python3-pip gh
+          python3 -m pip install --no-cache-dir cmake==3.30.5
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          cmake -S native -B build/hiveos-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
+            -DPEPEPOW_CUDA_MAX_REGISTERS="${CUDA_REG_CAP}" \
+            -DPEPEPOW_CUDA_THREADS="${CUDA_THREADS}" \
+            -DCMAKE_CUDA_RUNTIME_LIBRARY=Static
+          python3 lab/stratum_nonce_wire_patch.py native/src/app/main.cpp
+          generated="build/hiveos-cuda/header80_backend_cuda118_kv4a_cmem_t${CUDA_THREADS}.cu"
+          python3 lab/fastsolver_v2_patch.py "$generated"
+          grep -F 'std::setw(8) << value' native/src/app/main.cpp
+          grep -F 'hash_one_fast(base,nonce,hash);' "$generated"
+
+      - name: Build and smoke test
+        run: |
+          set -o pipefail
+          cmake --build build/hiveos-cuda --target pepepowminer --parallel 2 2>&1 | tee /tmp/pepew-build.log
+          test -x build/hiveos-cuda/pepepowminer
+          build/hiveos-cuda/pepepowminer --help | grep -F 'PepePowMiner'
+          bash -n hiveos/h-run.sh hiveos/h-config.sh hiveos/h-stats.sh
+
+      - name: Assemble package
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          version="v100-fsv2-noncefix-${short_sha}"
+          pkg="dist/PepeW-Miner"
+          rm -rf dist
+          mkdir -p "$pkg"
+          install -m 0755 build/hiveos-cuda/pepepowminer "$pkg/pepepowminer"
+          install -m 0755 hiveos/h-run.sh "$pkg/h-run.sh"
+          install -m 0755 hiveos/h-config.sh "$pkg/h-config.sh"
+          install -m 0755 hiveos/h-stats.sh "$pkg/h-stats.sh"
+          install -m 0644 hiveos/h-manifest.conf "$pkg/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=${version}/" "$pkg/h-manifest.conf"
+          cat > "$pkg/BUILD_INFO.txt" <<EOF
+          version=${version}
+          commit=${GITHUB_SHA}
+          ref=${GITHUB_REF_NAME}
+          kernel=fastsolver-v2-lut-reducer
+          stratum_nonce=canonical-header-byte-order
+          consensus=strict-submit-validation
+          promotion=forbidden-until-accepted-share
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          EOF
+          strip "$pkg/pepepowminer" || true
+          tar -C dist -czf "dist/${ASSET}" PepeW-Miner
+          sha256sum "dist/${ASSET}" | sed 's#dist/##' > "dist/${SHA_ASSET}"
+          echo "BUILD_VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Publish isolated candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="Correctness candidate only. Fixes mining.submit nonce byte order to match header[76..79] and Foztor wire trace. Must produce accepted pool shares before any live promotion. Build ${BUILD_VERSION}."
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --clobber
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${SHA_ASSET}" --repo "$GH_REPO" --title "PepeW V100 nonce-wire correctness candidate" --notes "$notes" --prerelease
+          fi
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: nonce-wire-fix-${{ github.sha }}
+          path: |
+            dist/${{ env.ASSET }}
+            dist/${{ env.SHA_ASSET }}
+            /tmp/pepew-build.log
+          retention-days: 30
