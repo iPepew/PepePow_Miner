@@ -6,6 +6,7 @@
 #endif
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <csignal>
 #include <cstdint>
@@ -22,9 +23,10 @@
 
 namespace {
 pepepow::stratum::Client* active_client = nullptr;
+constexpr auto kStatsInterval = std::chrono::seconds(5);
 
-// The PEPEPOW pool advertises Stratum difficulty as effective pool difficulty
-// multiplied by 65,536. Share targets must be built from the effective value.
+// Proven pool-facing behavior from the share-producing v1.0.4 line.
+// PEPEPOW's pool wire difficulty is scaled by 65,536 before transmission.
 constexpr double kPepepowWireDifficultyScale = 65536.0;
 
 void signal_handler(int) {
@@ -32,16 +34,26 @@ void signal_handler(int) {
 }
 
 std::string encode_submit_word(std::uint32_t value) {
-    // Stratum submit fields are eight-digit numeric hex words. The pool parses
-    // this number and serializes it little-endian into the block header.
+    // Keep the exact v1.0.4 submit representation: an eight-digit numeric
+    // hexadecimal word. The pool handles the header-byte serialization.
     std::ostringstream stream;
     stream << std::hex << std::nouppercase << std::setfill('0') << std::setw(8) << value;
     return stream.str();
 }
 
+std::string format_uptime(std::uint64_t total_seconds) {
+    const auto hours = total_seconds / 3600U;
+    const auto minutes = (total_seconds % 3600U) / 60U;
+    const auto seconds = total_seconds % 60U;
+    std::ostringstream stream;
+    stream << std::setfill('0') << std::setw(2) << hours << ':'
+           << std::setw(2) << minutes << ':' << std::setw(2) << seconds;
+    return stream.str();
+}
+
 void print_help() {
     std::cout
-        << "PepePowMiner v0.1.3\n"
+        << "PepePowMiner v1.0.4-recovery\n"
         << "Usage:\n"
         << "  pepepowminer -o stratum+tcp://host:port -u wallet.worker [-p x]\n\n"
         << "Options:\n"
@@ -89,10 +101,35 @@ public:
     }
 
 private:
+    using Clock = std::chrono::steady_clock;
+
+    void emit_stats(double mhs, std::string_view state) {
+        const auto now = Clock::now();
+        const auto uptime = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::seconds>(now - started_at_).count());
+        const auto pool_stats = client_.stats();
+
+        std::cout << std::fixed << std::setprecision(3)
+                  << "[GPU0] " << mhs << " MH/s"
+                  << " | A " << pool_stats.accepted
+                  << " | R " << pool_stats.rejected
+                  << " | UP " << format_uptime(uptime)
+                  << " | REC " << pool_stats.reconnects
+                  << " | STATE " << state << '\n'
+                  << "[MINING] " << mhs << " MH/s"
+                  << " | A " << pool_stats.accepted
+                  << " | R " << pool_stats.rejected
+                  << " | UP " << format_uptime(uptime)
+                  << " | REC " << pool_stats.reconnects
+                  << " | STATE " << state << '\n';
+    }
+
     void run() {
-        // Larger batches reduce CUDA allocation, launch and copy overhead while
-        // keeping job-switch latency low enough for Stratum clean-job updates.
         constexpr std::uint64_t chunk_size = 65536;
+        bool stats_window_active = false;
+        std::uint64_t stats_window_hashes = 0;
+        Clock::time_point stats_window_start{};
+
         while (!stopped_.load()) {
             WorkItem item;
             {
@@ -113,15 +150,35 @@ private:
                 std::cout << "Mining job " << mining_job.job_id
                           << " wire_difficulty=" << item.stratum_job.difficulty
                           << " effective_difficulty=" << effective_difficulty
+                          << " extranonce2=" << item.extranonce2
                           << " backend=" << backend_.name() << '\n';
 
+                stats_window_active = false;
+                stats_window_hashes = 0;
+
                 while (!stopped_.load() && item.generation == generation_.load() && nonce <= 0xffffffffULL) {
+                    if (!stats_window_active) {
+                        stats_window_start = Clock::now();
+                        stats_window_hashes = 0;
+                        stats_window_active = true;
+                    }
+
                     const std::uint64_t remaining = 0x100000000ULL - nonce;
                     const std::uint64_t count = remaining < chunk_size ? remaining : chunk_size;
                     const auto candidate = backend_.search(
                         mining_job,
                         pepepow::SearchRange{nonce, count},
                         target);
+                    stats_window_hashes += count;
+
+                    const auto now = Clock::now();
+                    const auto elapsed = now - stats_window_start;
+                    if (elapsed >= kStatsInterval) {
+                        const double seconds = std::chrono::duration<double>(elapsed).count();
+                        emit_stats(static_cast<double>(stats_window_hashes) / seconds / 1'000'000.0, "online");
+                        stats_window_start = now;
+                        stats_window_hashes = 0;
+                    }
 
                     if (candidate.has_value()) {
                         pepepow::stratum::Share share;
@@ -137,6 +194,7 @@ private:
                 }
             } catch (const std::exception& error) {
                 std::cerr << "Worker error: " << error.what() << '\n';
+                emit_stats(0.0, "error");
             }
         }
     }
@@ -148,12 +206,16 @@ private:
     std::optional<WorkItem> latest_;
     std::atomic_uint64_t generation_{0};
     std::atomic_bool stopped_{false};
+    Clock::time_point started_at_{Clock::now()};
     std::thread thread_;
 };
 } // namespace
 
 int main(int argc, char** argv) {
     try {
+        std::cout.setf(std::ios::unitbuf);
+        std::cerr.setf(std::ios::unitbuf);
+
         std::string pool;
         std::optional<std::string> fallback;
         std::string username;
@@ -207,7 +269,7 @@ int main(int argc, char** argv) {
         if (fallback.has_value()) config.fallback = pepepow::stratum::parse_endpoint(*fallback);
         config.username = username;
         config.password = password;
-        config.agent = "PepePowMiner/0.1.3";
+        config.agent = "PepePowMiner/1.0.4-recovery";
 
         pepepow::stratum::Client client(std::move(config));
         MiningWorker worker(*backend, client);
