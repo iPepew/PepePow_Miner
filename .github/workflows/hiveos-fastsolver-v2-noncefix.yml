@@ -119,3 +119,5 @@ jobs:
             dist/${{ env.SHA_ASSET }}
             /tmp/pepew-build.log
           retention-days: 30
+
+# automation rebuild trigger: 2026-08-21 15:21 MSK
