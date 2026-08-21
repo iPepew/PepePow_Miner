@@ -10,6 +10,14 @@ on:
       - "hiveos/**"
       - "lab/fastsolver_v2_patch.py"
       - ".github/workflows/hiveos-fastsolver-v2.yml"
+  pull_request:
+    branches:
+      - "agent/v100-kv4a-const-matrix"
+    paths:
+      - "native/**"
+      - "hiveos/**"
+      - "lab/fastsolver_v2_patch.py"
+      - ".github/workflows/hiveos-fastsolver-v2.yml"
 
 permissions:
   contents: write
@@ -92,7 +100,6 @@ jobs:
           python3 - <<'PY'
           import re
           s=open('/tmp/pepew-build.log',errors='replace').read()
-          # Fail only on large local-memory spill regressions like KV7-A.
           vals=[int(x) for x in re.findall(r'(\d+) bytes spill (?:stores|loads)',s)]
           worst=max(vals,default=0)
           print('worst spill bytes:',worst)
