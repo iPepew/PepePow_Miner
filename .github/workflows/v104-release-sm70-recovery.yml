@@ -1,9 +1,9 @@
-name: v1.0.4 exact release-source V100 sm70 recovery
+name: v1.0.4 exact behavior V100 sm70 geometry640
 
 on:
   push:
     branches:
-      - recovery/v104-release-sm70
+      - agent/v100-v104-geometry640
     paths:
       - "native/**"
       - "hiveos/**"
@@ -25,12 +25,12 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      RELEASE_TAG: hiveos-v100-v104-release-sm70-test
+      RELEASE_TAG: hiveos-v100-v104-geometry640-test
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-HiveOS.tar.gz
 
     steps:
-      - name: Checkout exact release source
+      - name: Checkout exact release behavior source
         uses: actions/checkout@v4
 
       - name: Install build tools
@@ -45,7 +45,7 @@ jobs:
           /usr/local/cuda/bin/nvcc --version
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
 
-      - name: Configure exact v1.0.4 behavior for sm70
+      - name: Configure exact behavior for sm70 geometry640
         run: |
           set -Eeuo pipefail
           test "$(tr -d '\r\n' < VERSION)" = "1.0.4"
@@ -57,7 +57,7 @@ jobs:
             -DPEPEPOW_BUILD_TESTS=ON \
             -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
             -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
-            -DPEPEPOW_CUDA_THREADS=768 \
+            -DPEPEPOW_CUDA_THREADS=640 \
             -DPEPEPOW_CUDA_MIN_BLOCKS=1
 
       - name: Build
@@ -95,16 +95,18 @@ jobs:
           install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
           install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
           sed -i "s/^CUSTOM_NAME=.*/CUSTOM_NAME=PepeW-Miner/" "stage/${ROOT}/h-manifest.conf"
-          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=1.0.4-sm70-recovery/" "stage/${ROOT}/h-manifest.conf"
+          sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=1.0.4-sm70-g640/" "stage/${ROOT}/h-manifest.conf"
           cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
-          version=1.0.4-sm70-recovery
-          source_branch=release/v1.0.4 behavioral source
-          recovery_branch=${GITHUB_REF_NAME}
+          version=1.0.4-sm70-g640
+          source_behavior=release/v1.0.4
+          candidate_branch=${GITHUB_REF_NAME}
           source_commit=${GITHUB_SHA}
           cuda_toolkit=12.8.1
           cuda_architectures=70-real
           cuda_native=sm_70
-          cuda_profile=service768
+          cuda_profile=service640
+          threads=640
+          min_blocks=1
           semantics=exact-release-v1.0.4-source
           pool_reference=NBITS_DIV_DIFFICULTY
           header_nonce=BE32
@@ -123,18 +125,18 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          notes='Exact release/v1.0.4 behavioral source rebuilt only for Tesla V100 sm_70. No pool/consensus semantics changed. Must produce real accepted shares before any promotion.'
+          notes='Exact release/v1.0.4 behavior rebuilt for Tesla V100 sm_70 with only CUDA service geometry changed from 768 to 640 threads. Pool/consensus semantics unchanged. Promotion forbidden until real accepted shares.'
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
           else
-            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --title "PepeW v1.0.4 exact behavior V100 sm70 recovery" --notes "$notes" --prerelease
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --title "PepeW v1.0.4 V100 sm70 geometry640" --notes "$notes" --prerelease
           fi
           echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
 
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: v104-release-sm70-${{ github.sha }}
+          name: v104-sm70-g640-${{ github.sha }}
           path: |
             dist/${{ env.ASSET }}
             dist/${{ env.ASSET }}.sha256
