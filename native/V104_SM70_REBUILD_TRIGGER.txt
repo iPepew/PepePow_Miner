@@ -1,2 +1,3 @@
 Force rebuild of the exact release/v1.0.4 behavioral source for Tesla V100 sm_70.
-Triggered: 2026-08-22 12:20 MSK
+Triggered: 2026-08-22 22:41 MSK
+Reason: urgent V100 recovery; rebuild exact working release/v1.0.4 behavior with native sm_70 only and publish isolated candidate for real-pool accepted-share smoke.
