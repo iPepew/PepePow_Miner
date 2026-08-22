@@ -11,8 +11,6 @@ on:
       - ".github/workflows/v104-release-sm70-recovery.yml"
   workflow_dispatch:
 
-# Trigger note: exact-release sm70 recovery rebuild; no pool/consensus semantics changed.
-
 permissions:
   contents: write
 
@@ -28,8 +26,8 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
       RELEASE_TAG: hiveos-v100-v104-release-sm70-test
-      ROOT: PepeW-Miner-v1.0.4-V100-sm70
-      ASSET: PepeW-Miner-v1.0.4-V100-sm70.tar.gz
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-HiveOS.tar.gz
 
     steps:
       - name: Checkout exact release source
@@ -96,13 +94,13 @@ jobs:
           install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
           install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
           install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
-          sed -i "s/^CUSTOM_NAME=.*/CUSTOM_NAME=${ROOT}/" "stage/${ROOT}/h-manifest.conf"
+          sed -i "s/^CUSTOM_NAME=.*/CUSTOM_NAME=PepeW-Miner/" "stage/${ROOT}/h-manifest.conf"
           sed -i "s/^CUSTOM_VERSION=.*/CUSTOM_VERSION=1.0.4-sm70-recovery/" "stage/${ROOT}/h-manifest.conf"
-          cat > "stage/${ROOT}/BUILD_PROFILE" <<EOF
+          cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
+          version=1.0.4-sm70-recovery
           source_branch=release/v1.0.4 behavioral source
           recovery_branch=${GITHUB_REF_NAME}
           source_commit=${GITHUB_SHA}
-          version=1.0.4-sm70-recovery
           cuda_toolkit=12.8.1
           cuda_architectures=70-real
           cuda_native=sm_70
