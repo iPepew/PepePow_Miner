@@ -11,6 +11,8 @@ on:
       - ".github/workflows/v104-release-sm70-recovery.yml"
   workflow_dispatch:
 
+# Trigger note: exact-release sm70 recovery rebuild; no pool/consensus semantics changed.
+
 permissions:
   contents: write
 
