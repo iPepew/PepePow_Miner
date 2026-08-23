@@ -1,3 +1,4 @@
+# Hosted rebuild trigger 2026-08-23: geometry752 only; miner source and consensus semantics unchanged.
 name: v1.0.4 V100 geometry752 hosted build
 
 on:
