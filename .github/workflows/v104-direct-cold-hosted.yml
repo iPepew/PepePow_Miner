@@ -118,4 +118,4 @@ jobs:
           fi
           echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
 
-# retrigger: 2026-08-23T12:21:37+03:00
+# retrigger: 2026-08-23T13:20:52+03:00
