@@ -107,3 +107,4 @@ jobs:
           else
             gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --title "PepeW v1.0.4 V100 geometry752" --notes "$notes" --prerelease
           fi
+          echo "build_trigger=geometry752-retry-after-missing-asset"
