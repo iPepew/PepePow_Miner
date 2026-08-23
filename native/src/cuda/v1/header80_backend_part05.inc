@@ -11,56 +11,18 @@
 #endif
     }
 
-    double task_x = 0.0;
+    double task_result = 0.0;
     if (task) {
         const double cell = matrix[cell_index];
-        task_x = cell * hash_mod * value + nonce_mod;
+        const double task_x = cell * hash_mod * value + nonce_mod;
+        const double nonlinear_value = safe_nonlinear(task_x);
+        task_result = nonlinear_value * value * 1234.0;
     }
-
-    const unsigned int lane = static_cast<unsigned int>(threadIdx.x) & 31U;
-    const unsigned int warp_mask = __activemask();
-    const unsigned int task_mask = __ballot_sync(warp_mask, task);
-    unsigned int slot = 0U;
-    if (task_mask != 0U) {
-        const int leader = __ffs(static_cast<int>(task_mask)) - 1;
-        unsigned int base = 0U;
-        if (static_cast<int>(lane) == leader) {
-            base = atomicAdd(&scratch.task_count,
-                             static_cast<unsigned int>(__popc(task_mask)));
-        }
-        base = __shfl_sync(warp_mask, base, leader);
-        const unsigned int lower_mask =
-            lane == 0U ? 0U : ((1U << lane) - 1U);
-        slot = base + static_cast<unsigned int>(
-            __popc(task_mask & lower_mask));
-        if (task) {
-            scratch.task_x[slot] = task_x;
-            scratch.task_value[slot] = value;
-            scratch.task_owner[slot] =
-                static_cast<unsigned int>(threadIdx.x);
-        }
-    }
-
-    __syncthreads();
-    const unsigned int task_count = scratch.task_count;
-    if (threadIdx.x < 32U) {
-        for (unsigned int task_index = lane;
-             task_index < task_count; task_index += 32U) {
-            const double nonlinear_value =
-                safe_nonlinear(scratch.task_x[task_index]);
-            const unsigned int owner = scratch.task_owner[task_index];
-            scratch.task_result[owner] =
-                nonlinear_value * scratch.task_value[task_index] * 1234.0;
-        }
-        __syncwarp();
-        if (lane == 0U) scratch.task_count = 0U;
-    }
-    __syncthreads();
 
     if (active) {
         if (cold) {
             if (nibble != 0U) {
-                sum += scratch.task_result[threadIdx.x];
+                sum += task_result;
             }
         } else {
             sum += warm_contribution;
