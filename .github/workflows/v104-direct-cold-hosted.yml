@@ -117,3 +117,5 @@ jobs:
             gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --title "PepeW v1.0.4 V100 direct-cold" --notes "$notes" --prerelease
           fi
           echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
+
+# retrigger: 2026-08-23T12:21:37+03:00
