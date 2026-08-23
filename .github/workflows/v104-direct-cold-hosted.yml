@@ -56,7 +56,7 @@ jobs:
             -DPEPEPOW_CUDA_THREADS=736 \
             -DPEPEPOW_CUDA_MIN_BLOCKS=1
 
-      - name: Build and validate
+      - name: Build and static validate
         run: |
           set -Eeuo pipefail
           cmake --build build --parallel 4 --target \
@@ -67,7 +67,8 @@ jobs:
           ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
           strings -a build/pepepowminer | grep -F 'POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY'
           strings -a build/pepepowminer | grep -F 'cuda-header80-monolithic-pipeline'
-          ctest --test-dir build --output-on-failure
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          echo 'CUDA runtime tests intentionally deferred to the self-hosted Tesla V100 runner.'
 
       - name: Package
         run: |
@@ -99,6 +100,7 @@ jobs:
           submit_nonce=LE_HEX
           matrix_seed=BLAKE3_MASKED_HEADER
           optimization=remove_per_nibble_block_barrier_and_shared_queue
+          hosted_validation=cpu_and_static_only_cuda_runtime_on_v100
           promotion=forbidden-until-real-accepted-shares
           EOF
           tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
@@ -110,7 +112,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          notes='Exact v1.0.4 behavior on sm_70 with direct per-thread cold-path evaluation. Pool/consensus semantics unchanged. Hardware promotion requires accepted_delta > 0.'
+          notes='Exact v1.0.4 behavior on sm_70 with direct per-thread cold-path evaluation. Pool/consensus semantics unchanged. Hosted CI performs CPU/static validation only; CUDA runtime and pool correctness are validated on the self-hosted Tesla V100. Hardware promotion requires accepted_delta > 0.'
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
           else
@@ -118,4 +120,4 @@ jobs:
           fi
           echo "candidate=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
 
-# retrigger: 2026-08-23T13:20:52+03:00
+# retrigger: 2026-08-23T22:24:00+03:00
