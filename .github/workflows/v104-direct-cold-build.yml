@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - agent/v100-v104-direct-cold
-    paths:
-      - "native/**"
-      - ".github/workflows/v104-direct-cold-build.yml"
   workflow_dispatch:
 
 permissions:
