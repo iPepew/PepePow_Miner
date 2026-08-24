@@ -100,7 +100,9 @@ pattern = re.compile(r'class ConsoleUi \{.*?\n\};\n\nclass DiagnosticLog', re.S)
 match = pattern.search(text)
 if not match:
     raise SystemExit("ConsoleUi block not found")
-text = pattern.sub(console_ui + "\n\nclass DiagnosticLog", text, count=1)
+# Use a callable replacement so re.sub does not reinterpret C++ backslash escapes
+# such as \n in the generated ConsoleUi source.
+text = pattern.sub(lambda _match: console_ui + "\n\nclass DiagnosticLog", text, count=1)
 main_cpp.write_text(text, encoding="utf-8")
 
 run_text = h_run.read_text(encoding="utf-8")
