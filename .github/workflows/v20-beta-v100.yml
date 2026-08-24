@@ -42,6 +42,7 @@ jobs:
           set -Eeuo pipefail
           test "$(tr -d '\r\n' < VERSION)" = "2.0-beta.1"
           grep -F 'CUSTOM_VERSION="v2.0 BETA"' hiveos/h-manifest.conf
+          grep -F 'PepeW — твоя монета. Твои правила.' native/src/app/main.cpp
           bash -n hiveos/h-config.sh
           bash -n hiveos/h-run.sh
           bash -n hiveos/h-stats.sh
@@ -76,7 +77,7 @@ jobs:
           ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
           strings -a build/pepepowminer | grep -F 'POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY'
           strings -a build/pepepowminer | grep -F 'cuda-header80-monolithic-pipeline'
-          strings -a build/pepepowminer | grep -F 'PepeW — твоя монета. Твои правила.'
+          grep -aF 'PepeW — твоя монета. Твои правила.' build/pepepowminer
           ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
 
       - name: Assemble HiveOS beta package
