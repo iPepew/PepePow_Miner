@@ -1,0 +1,3 @@
+Hosted build trigger for agent/v100-v104-direct-cold.
+Timestamp: 2026-08-24 20:18 MSK
+Purpose: force a fresh push after workflow trigger repair; no CUDA or pool/consensus code changes.
