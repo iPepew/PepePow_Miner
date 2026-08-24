@@ -130,6 +130,6 @@ temp_json="$(array_json "${gpu_temp[@]}")"
 fan_json="$(array_json "${gpu_fan[@]}")"
 bus_json="$(array_json "${gpu_bus[@]}")"
 
-stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.4","algo":"hoohash"}' \
+stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s],"bus_numbers":%s,"ver":"1.0.6","algo":"hoohash"}' \
   "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
   "${total_accepted}" "${total_rejected}" "${bus_json}")
