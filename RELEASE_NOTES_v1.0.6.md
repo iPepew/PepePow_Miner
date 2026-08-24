@@ -9,7 +9,7 @@ PepeW Miner v1.0.6 adds native NVIDIA Tesla V100 / Volta (`sm_70`) support to th
 - Preserves the proven HooHash V110 pool/consensus behavior from v1.0.4.
 - Uses the verified V100 `service736` geometry.
 - HiveOS package included.
-- HiveOS telemetry reports Accepted / Rejected as `A/R`.
+- HiveOS telemetry reports `ar=[accepted,rejected]` and version `1.0.6`.
 - Professional PepeW console UI retained, including `PepeW — твоя монета. Твои правила.`
 
 ## Verified Tesla V100 result
