@@ -1,0 +1,182 @@
+name: PepeW Miner v1.0.6 V100 release
+
+on:
+  push:
+    branches:
+      - release/v1.0.6-v100
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      RELEASE_TAG: v1.0.6
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip \
+            tar gzip file binutils gh
+          python3 -m pip install --no-cache-dir "cmake==3.31.6"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Validate release identity and HiveOS telemetry
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = "1.0.6"
+          bash -n hiveos/h-config.sh
+          bash -n hiveos/h-run.sh
+          bash -n hiveos/h-stats.sh
+
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/status/gpu0"
+          cat > "$tmp/status/gpu0/miner-status.env" <<'EOF'
+          HPS=4072000
+          ACCEPTED=75
+          REJECTED=0
+          UPTIME=240
+          UPDATED_EPOCH=1
+          PID=1
+          STATE=online
+          EOF
+          printf '0, 00000000:04:00.0, 55, 0\n' > "$tmp/nvidia.csv"
+          PEPEW_STATS_SELFTEST=1 \
+          PEPEW_STATUS_ROOT="$tmp/status" \
+          PEPEW_NVIDIA_SMI_FILE="$tmp/nvidia.csv" \
+          bash -c 'source hiveos/h-stats.sh; printf "%s\n" "$stats"' | tee /tmp/hive-stats.json
+          grep -F '"ar":[75,0]' /tmp/hive-stats.json
+          grep -F '"ver":"1.0.6"' /tmp/hive-stats.json
+
+      - name: Configure Tesla V100 sm70 build
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=736 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+
+      - name: Build and verify
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark 2>&1 | tee /tmp/build.log
+          ./build/pepepowminer --version | tee /tmp/version.txt
+          grep -F '1.0.6' /tmp/version.txt
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.txt
+          grep -F sm_70 /tmp/elf.txt
+          ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
+          strings -a build/pepepowminer | grep -F 'POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY'
+          strings -a build/pepepowminer | grep -F 'cuda-header80-monolithic-pipeline'
+          strings -a build/pepepowminer | grep -F 'PepeW — твоя монета. Твои правила.'
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+
+      - name: Assemble HiveOS package
+        run: |
+          set -Eeuo pipefail
+          rm -rf stage dist
+          mkdir -p "stage/${ROOT}" dist
+          install -m 0755 build/pepepowminer "stage/${ROOT}/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "stage/${ROOT}/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "stage/${ROOT}/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('stage/PepeW-Miner/h-run.sh')
+          s=p.read_text()
+          s=s.replace('PepeW Miner v1.0.4 multi-GPU workers started:', 'PepeW Miner v1.0.6 multi-GPU workers started:')
+          p.write_text(s)
+          PY
+          cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
+          product=PepeW Miner v1.0.6
+          version=1.0.6
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          source_behavior=release/v1.0.4
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          cuda_native=sm_70
+          gpu_target=Tesla V100 / Volta
+          cuda_profile=service736
+          threads=736
+          min_blocks=1
+          algorithm=HooHash V110
+          hive_ar=accepted,rejected
+          verified_v100_avg_mhs=4.072
+          verified_v100_min_mhs=4.051
+          verified_v100_max_mhs=4.114
+          verified_accepted=75
+          verified_rejected=0
+          pool_reference=NBITS_DIV_DIFFICULTY
+          header_nonce=BE32
+          mix_nonce=LE32
+          submit_nonce=LE_HEX
+          matrix_seed=BLAKE3_MASKED_HEADER
+          EOF
+          sha256sum "stage/${ROOT}/pepepowminer" > "stage/${ROOT}/pepepowminer.sha256"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
+          sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
+
+      - name: Publish GitHub Release v1.0.6
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          notes="$(cat RELEASE_NOTES_v1.0.6.md)"
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" \
+              --title "PepeW Miner v1.0.6 — Tesla V100 / Volta support" \
+              --notes "$notes" \
+              --latest
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" \
+              --repo "$GH_REPO" \
+              --target "$GITHUB_SHA" \
+              --title "PepeW Miner v1.0.6 — Tesla V100 / Volta support" \
+              --notes "$notes" \
+              --latest
+          fi
+          echo "release=https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          echo "download=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
+
+      - name: Upload build diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v106-v100-${{ github.sha }}
+          path: |
+            dist/PepeW-Miner-HiveOS.tar.gz
+            dist/PepeW-Miner-HiveOS.tar.gz.sha256
+            /tmp/build.log
+            /tmp/version.txt
+            /tmp/elf.txt
+            /tmp/hive-stats.json
+          retention-days: 30
