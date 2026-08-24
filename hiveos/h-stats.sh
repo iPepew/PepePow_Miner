@@ -80,10 +80,17 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
     fresh=0
   fi
 
+  # Fallback for console-only telemetry. Supports both the current machine-readable
+  # line and the professional v1.0.x console line.
   if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
-    latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\|[[:space:]]*([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
+    latest_line="$(grep -aE '\[MINING\]|Mining.*MH/s' "${console_log}" 2>/dev/null | tail -n1)"
+    latest_mhs="$(printf '%s\n' "${latest_line}" | sed -nE 's/.*[^0-9]([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
+    latest_a="$(printf '%s\n' "${latest_line}" | sed -nE 's/.*(^|[ |•])A[[:space:]]+([0-9]+).*/\2/p')"
+    latest_r="$(printf '%s\n' "${latest_line}" | sed -nE 's/.*(^|[ |•])R[[:space:]]+([0-9]+).*/\2/p')"
     if [[ "${latest_mhs}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
       hps="$(awk -v value="${latest_mhs}" 'BEGIN { printf "%.0f", value*1000000 }')"
+      [[ "${latest_a}" =~ ^[0-9]+$ ]] && accepted="${latest_a}"
+      [[ "${latest_r}" =~ ^[0-9]+$ ]] && rejected="${latest_r}"
       fresh=1
     fi
   fi
@@ -122,14 +129,13 @@ if (( ${#gpu_indices[@]} == 0 )); then
   gpu_bus=(0)
 fi
 
-khs=0
-for value in "${gpu_hs[@]}"; do khs=$((khs + value)); done
-
 hs_json="$(array_json "${gpu_hs[@]}")"
 temp_json="$(array_json "${gpu_temp[@]}")"
 fan_json="$(array_json "${gpu_fan[@]}")"
 bus_json="$(array_json "${gpu_bus[@]}")"
 
-stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.4","algo":"hoohash"}' \
+# HiveOS expects ar=[accepted,rejected]. Keep the version human-readable so the
+# worker page clearly identifies this package as the V100 beta build.
+stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s],"bus_numbers":%s,"ver":"v1.0.5 V100 Beta","algo":"hoohash"}' \
   "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
   "${total_accepted}" "${total_rejected}" "${bus_json}")
