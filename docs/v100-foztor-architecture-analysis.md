@@ -2,59 +2,81 @@
 
 ## Цель
 
-Цель анализа — найти изменения уровня solver, способные дать кратный прирост HooHash на Tesla V100. Микротюнинг `threads`, `min_blocks` и `byte_unroll` не рассматривается как основной путь, поскольку подтверждённые тесты изменяют производительность лишь на единицы процентов вокруг 4.1 MH/s.
+Цель — найти solver-level изменение, способное дать кратный прирост HooHash на Tesla V100. Микротюнинг `threads`, `min_blocks` и `byte_unroll` больше не считается основным путём: подтверждённые real-pool тесты изменяют скорость лишь на единицы процентов вокруг 4.1 MH/s.
 
-## Подтверждённая рабочая база PepeW
+## Подтверждённая база PepeW
 
-Лучший real-pool результат share-producing ветки: `threads=704`, `min_blocks=1`, средний хешрейт 4.101 MH/s, Accepted +68, Rejected +0. Кандидат `byte_unroll=2` дал 4.085 MH/s, Accepted +115, Rejected +1 и не улучшил базу.
+Лучший real-pool результат: `threads=704`, `min_blocks=1`, **4.101 MH/s, Accepted +68, Rejected +0**. `byte_unroll=2` дал 4.085 MH/s, A+115/R+1 и отклонён.
 
-## Главный выявленный bottleneck
+## Коррекция гипотезы `sw/floor`
 
-В `header80_pow_kernel` для каждого nonce выполняется 64 строки матрицы по 64 элемента, то есть 4096 вызовов `accumulate()`. После каждого элемента вычисляется:
+Первоначально подозревался 4096-кратный FP64 `floor()` при обновлении `sw`. Для фактически собираемого v2.1 это уже не главный bottleneck: production использует `PEPEPOW_CUDA_SW_STATE_MODE=3`, где fractional-state проверяется exact bitwise predicate вместо общего `floor()` path. Поэтому отдельный `sw-fastpath` отменён.
 
-`sw = sum / 1024.0 - floor(sum / 1024.0)`
+## Главный выявленный bottleneck: block-wide cold-service serialization
 
-Следовательно, текущий solver выполняет до 4096 FP64 `floor()`-зависимых обновлений состояния на один nonce ещё до финального BLAKE3.
+Share-producing `header80_pow_kernel` использует `hoohash_mix_words_service()`. Для каждого matrix cell функция `service_accumulate()` делает следующее:
 
-Матрица генерируется из `uint32_t` и нормализуется в диапазон `[0, 1_000_000]`. Вектор состоит из nibble-значений `[0,15]`. Все три ветки `nonlinear()` возвращают неотрицательные значения (`exp(sin+cos)`, `sin^2`, `1/sqrt(abs(y)+1)`), поэтому `sum` в матричном проходе неотрицателен. Это важное свойство: для положительного `q = sum / 1024.0` операция `floor(q)` семантически эквивалентна целочисленному truncation toward zero при условии отсутствия переполнения диапазона преобразования.
+1. Определяет cold nonlinear-задачи внутри каждого warp через ballot.
+2. Резервирует слоты общей shared-очереди через `atomicAdd()`.
+3. Записывает `task_x`, `task_value`, `task_owner` в shared memory.
+4. Выполняет первый `__syncthreads()`.
+5. Все nonlinear-задачи блока выполняет только первый warp (`threadIdx.x < 32`).
+6. Выполняет второй `__syncthreads()`.
+7. Только после этого остальные warp продолжают свой nonce.
 
-Это даёт первый consensus-safe кандидат уровня critical path: заменить общий libdevice/floor path на специализированный неотрицательный fast-path с явным FP64-to-integer truncation и доказанным fallback для границ диапазона. До hardware test такой кандидат обязан пройти побитовое сравнение с CPU/reference на большом наборе nonce и матриц.
+На один HooHash приходится 64 строки × 64 cells = **4096 вызовов `service_accumulate()`**. Следовательно, блок проходит до **8192 block-wide barriers** за один HooHash плюс тысячи ballot/atomic/shared-memory операций.
 
-## Второй выявленный источник FP64 overhead
+При `threads=704` блок содержит 22 warp. Все они обязаны останавливаться на каждом matrix cell, даже если конкретный warp не имеет cold nonlinear-задачи. При этом дорогую nonlinear FP64 работу обслуживает только первый warp. Это создаёт две формы потерь одновременно:
 
-В `nonlinear(x)` сейчас отдельно вычисляются:
+- глобальная синхронизация 22 warp с частотой до 8192 barriers/HooHash;
+- принудительная сериализация cold FP64 задач через один warp вместо независимой работы warp/thread.
 
-- `one = frac(x * 1e-6 / 8)`;
-- `two = frac(x * 1e-6 / 4)`.
+Это архитектурная проблема с потенциально кратным эффектом и намного более сильная гипотеза, чем изменение launch geometry.
 
-Поскольку делители 8 и 4 являются степенями двойки, `two` математически равен `frac(2 * one_base)`, где `one_base = x * 1e-6 / 8`. Это открывает возможность убрать второй независимый FP64 `floor()` в каждой активации nonlinear path. Однако это оптимизация второго приоритета: сначала нужно убрать 4096-кратный `sw` floor path.
+## Почему direct path — правильный первый эксперимент
 
-## Почему это лучше прежнего микротюнинга
+В коде уже существует `hoohash_mix_words()`, где каждый CUDA thread независимо выполняет тот же HooHash без shared task queue, `atomicAdd()` и per-cell `__syncthreads()`. Этот путь используется split-pipeline кодом и реализует те же consensus-операции.
 
-`sw` обновляется для каждого из 4096 matrix cells на nonce. Даже если сложная nonlinear-ветка срабатывает сравнительно редко, вычисление fractional-state выполняется всегда. Поэтому оптимизация именно этого участка потенциально меняет число дорогих FP64 операций на nonce на порядок больше, чем изменение размера CUDA-блока.
+Кандидат `nobarrier-direct` меняет только планирование вычислений:
 
-## Связь с подсказками Foztor
+- HooHash/Stratum semantics сохраняются;
+- `threads=704`, `min_blocks=1`, `SW_STATE_MODE=3`, scaled matrix/nibble table и native `sm_70` сохраняются;
+- shared `ColdServiceScratch` перестаёт использоваться в основном fused kernel;
+- каждый nonce выполняет `hoohash_mix_words()` независимо.
 
-История Foztor указывает, что заметные приросты HooHash были получены сокращением FP64 calculations и отдельными оптимизациями DataCentre GPU. Это согласуется с наблюдаемым bottleneck PepeW: V100 имеет сильный FP64, но текущий solver всё равно тратит огромное число FP64 операций на bookkeeping состояния `sw`, а не только на consensus-нелинейность.
+Эксперимент специально не совмещает это изменение с другими оптимизациями, чтобы измерить вклад именно block-wide service serialization.
 
-## Следующий кандидат
+## Связь с Foztor
 
-Рабочее имя: `v21-v100-sw-fastpath`.
+Foztor сообщал о крупных ускорениях после сокращения FP64 work и отдельных оптимизаций DataCentre GPU. Из предоставленных Foztor-архивов также видны специализированные `sm_70` образы, LUT для `exp()` и собственный autotuning. Это указывает на solver, рассчитанный на эффективную загрузку Volta, а не на глобальную синхронизацию большого CUDA-блока вокруг редких transcendental задач.
 
-Требования к реализации:
+Текущий differential вывод: PepeW может проигрывать Foztor не только из-за числа FP64 инструкций, но и из-за того, **как** эти операции планируются. Даже редкая nonlinear-ветка становится дорогой, если каждый её возможный вызов заставляет синхронизироваться весь блок.
 
-1. Не менять HooHash/Stratum semantics.
-2. Сохранить `threads=704`, `min_blocks=1` и текущую share-producing геометрию.
-3. Менять только вычисление `sw` и связанные с ним строго доказуемые algebraic simplifications.
-4. Перед публикацией выполнить CPU-vs-CUDA differential validation на большом наборе nonce, включая граничные значения `sw` около 0.02 и целочисленных границ `sum/1024`.
-5. Запретить hardware promotion при любом mismatch.
-6. После успешной hosted validation поставить ровно один V100 real-pool test.
-7. Кандидат считается рабочим только при `accepted_delta > 0`, низких Rejects и реальном приросте относительно 4.101 MH/s.
+## Текущий архитектурный кандидат
 
-## Более агрессивный следующий этап
+Рабочее имя: `v21-v100-nobarrier-direct`.
 
-Если consensus-safe `sw` fast-path не даёт кратного роста, следующий уровень — guarded mixed precision для простой матричной ветки. Идея: FP32/FP64 hybrid с консервативным error bound и обязательным FP64 fallback, когда приближение может изменить `sw <= 0.02` или итоговый low byte пары строк. Такой путь требует формального guard-а; приближённый HooHash без доказанной эквивалентности запрещён.
+Hosted workflow упрощён после первого zero-job failure. Новый commit workflow: `7c0928f6d90c05d19512b84f6639905e13dd19f6`.
+
+Перед hardware promotion обязательны:
+
+1. успешная native `sm_70` сборка;
+2. отсутствие недопустимых ptxas spills;
+3. прохождение имеющихся correctness tests;
+4. isolated package только после build gate;
+5. ровно один real-pool V100 test;
+6. `accepted_delta > 0`, низкие Rejects и заметный прирост относительно 4.101 MH/s.
+
+Номинальный kernel MH/s без Accepted shares не считается успехом.
+
+## Если direct path даст крупный прирост
+
+Следующий шаг будет не новый перебор geometry, а дальнейшее уменьшение стоимости nonlinear path по мотивам Foztor: LUT/precompute для `exp()` и сокращение независимых FP64/transcendental вычислений с differential correctness gate.
+
+## Если direct path не даст крупного прироста
+
+Тогда bottleneck переносится внутрь самого per-thread HooHash. Следующие измерения: instruction/resource profile `hoohash_mix_words`, доля FP64/transcendentals, register pressure/local memory и возможность вынести invariant terms или использовать guarded LUT/precompute. Перебирать `threads/min_blocks/byte_unroll` снова не планируется.
 
 ## Что не делать
 
-До завершения этих архитектурных экспериментов не запускать новые переборы `threads`, `min_blocks`, `byte_unroll` и другие варианты, ожидаемый эффект которых составляет лишь несколько процентов.
+До завершения архитектурного differential loop не запускать новые варианты, ожидаемый эффект которых составляет несколько процентов. Каждый аппаратный тест должен проверять отдельную гипотезу с потенциально крупным эффектом.
