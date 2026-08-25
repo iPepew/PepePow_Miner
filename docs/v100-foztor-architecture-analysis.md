@@ -2,59 +2,104 @@
 
 ## Цель
 
-Цель анализа — найти изменения уровня solver, способные дать кратный прирост HooHash на Tesla V100. Микротюнинг `threads`, `min_blocks` и `byte_unroll` не рассматривается как основной путь, поскольку подтверждённые тесты изменяют производительность лишь на единицы процентов вокруг 4.1 MH/s.
+Найти изменения уровня solver, способные дать кратный прирост HooHash на Tesla V100. Микротюнинг `threads`, `min_blocks`, `byte_unroll` и механический перебор числа service-warps больше не рассматриваются как основной путь.
 
 ## Подтверждённая рабочая база PepeW
 
-Лучший real-pool результат share-producing ветки: `threads=704`, `min_blocks=1`, средний хешрейт 4.101 MH/s, Accepted +68, Rejected +0. Кандидат `byte_unroll=2` дал 4.085 MH/s, Accepted +115, Rejected +1 и не улучшил базу.
+Текущий лучший real-pool результат: `service4warp`, **4.335 MH/s, Accepted +109, Rejected +0**, диапазон 4.317–4.345 MH/s. Расширение nonlinear service pool с 32 до 128 потоков дало около +5.7% к прежним 4.101 MH/s. Это подтверждает, что cold nonlinear FP64/transcendental stage является реальным bottleneck, но одно лишь расширение worker pool не объясняет разрыв до Foztor (~26 MH/s).
 
-## Главный выявленный bottleneck
+## Что уже оптимизировано в PepeW
 
-В `header80_pow_kernel` для каждого nonce выполняется 64 строки матрицы по 64 элемента, то есть 4096 вызовов `accumulate()`. После каждого элемента вычисляется:
+Предыдущая гипотеза о 4096 обычных `floor()` на nonce устарела. Production-путь уже использует битовые/exact fast paths для `sw` и selector decoding. В частности:
 
-`sw = sum / 1024.0 - floor(sum / 1024.0)`
+- `sw` хранится как predicate и обновляется через `positive_fraction_div1024_le_002_finite()`;
+- `one_region` извлекается из IEEE-754 битов;
+- `two = frac(2*one_base)` восстанавливается без второго общего `floor()`;
+- `safe_nonlinear()` для валидного диапазона не выполняет retry loop.
 
-Следовательно, текущий solver выполняет до 4096 FP64 `floor()`-зависимых обновлений состояния на один nonce ещё до финального BLAKE3.
+Поэтому дальнейшая оптимизация должна быть сосредоточена на самой дорогой nonlinear математике, а не на уже устранённом bookkeeping overhead.
 
-Матрица генерируется из `uint32_t` и нормализуется в диапазон `[0, 1_000_000]`. Вектор состоит из nibble-значений `[0,15]`. Все три ветки `nonlinear()` возвращают неотрицательные значения (`exp(sin+cos)`, `sin^2`, `1/sqrt(abs(y)+1)`), поэтому `sum` в матричном проходе неотрицателен. Это важное свойство: для положительного `q = sum / 1024.0` операция `floor(q)` семантически эквивалентна целочисленному truncation toward zero при условии отсутствия переполнения диапазона преобразования.
+## Текущий дорогой nonlinear path
 
-Это даёт первый consensus-safe кандидат уровня critical path: заменить общий libdevice/floor path на специализированный неотрицательный fast-path с явным FP64-to-integer truncation и доказанным fallback для границ диапазона. До hardware test такой кандидат обязан пройти побитовое сравнение с CPU/reference на большом наборе nonce и матриц.
+Для cold-cell PepeW вычисляет:
 
-## Второй выявленный источник FP64 overhead
+1. `one_base = x * 1e-6 / 8`;
+2. selector и transform `y`;
+3. одну из трёх веток:
+   - `exp(sin(y) + cos(y))` через `sincos + exp`;
+   - `sin(y)^2`;
+   - `1 / sqrt(abs(y) + 1)`.
 
-В `nonlinear(x)` сейчас отдельно вычисляются:
+`service4warp` лишь выполняет эти операции шире; число transcendental/FP64 операций на cold task не уменьшается.
 
-- `one = frac(x * 1e-6 / 8)`;
-- `two = frac(x * 1e-6 / 4)`.
+## Подтверждённые публичные сигналы Foztor
 
-Поскольку делители 8 и 4 являются степенями двойки, `two` математически равен `frac(2 * one_base)`, где `one_base = x * 1e-6 / 8`. Это открывает возможность убрать второй независимый FP64 `floor()` в каждой активации nonlinear path. Однако это оптимизация второго приоритета: сначала нужно убрать 4096-кратный `sw` floor path.
+История hoo_gpu даёт последовательные архитектурные подсказки:
 
-## Почему это лучше прежнего микротюнинга
+- v1.1.28: появился `--exp-threshold` (0.1–2.0). Более высокий threshold повышает hashrate, но увеличивает incorrect calculations; более низкий уменьшает ошибки ценой скорости.
+- v1.1.29: переход на per-architecture fatbins, что прямо открывает путь для отдельных оптимизаций `sm_70`.
+- v1.4.3: разработчик сообщает о **reduced FP64 calculations** и приросте HooHash.
+- v1.4.12: заявлено **+40–80% HooHash на Nvidia DataCentre GPU**, тогда как gaming NVIDIA получает до ~5%. Это особенно важно для V100.
+- v1.4.14: дополнительный прирост на части DataCentre GPU и Titan V.
+- v1.4.17: фактический hashrate вырос на всех NVIDIA GPU; solver стал сильнее зависеть от core clock, память рекомендуется держать низко.
 
-`sw` обновляется для каждого из 4096 matrix cells на nonce. Даже если сложная nonlinear-ветка срабатывает сравнительно редко, вычисление fractional-state выполняется всегда. Поэтому оптимизация именно этого участка потенциально меняет число дорогих FP64 операций на nonce на порядок больше, чем изменение размера CUDA-блока.
+Совокупность этих изменений указывает на уменьшение количества/стоимости FP64 transcendental work на nonce и архитектурно специализированный solver, а не только launch tuning.
 
-## Связь с подсказками Foztor
+## Почему нельзя просто поставить approximate exp
 
-История Foztor указывает, что заметные приросты HooHash были получены сокращением FP64 calculations и отдельными оптимизациями DataCentre GPU. Это согласуется с наблюдаемым bottleneck PepeW: V100 имеет сильный FP64, но текущий solver всё равно тратит огромное число FP64 операций на bookkeeping состояния `sw`, а не только на consensus-нелинейность.
+После HooHash выполняется финальный BLAKE3. Любая ошибка в mixed words полностью меняет итоговый hash. Поэтому схема «посчитать приблизительно, а exact проверить только найденные по approximate hash nonce» почти бесполезна: приблизительный final hash статистически не связан с consensus final hash.
 
-## Следующий кандидат
+Следовательно, безопасный быстрый путь обязан либо:
 
-Рабочее имя: `v21-v100-sw-fastpath`.
+1. доказуемо выдавать те же HooHash mixed bytes, что exact path; либо
+2. обнаруживать неоднозначность до финального BLAKE3 и выполнять exact fallback для конкретной cold-task/строки.
 
-Требования к реализации:
+Это принципиальная граница для нашего Foztor-style fastpath.
 
-1. Не менять HooHash/Stratum semantics.
-2. Сохранить `threads=704`, `min_blocks=1` и текущую share-producing геометрию.
-3. Менять только вычисление `sw` и связанные с ним строго доказуемые algebraic simplifications.
-4. Перед публикацией выполнить CPU-vs-CUDA differential validation на большом наборе nonce, включая граничные значения `sw` около 0.02 и целочисленных границ `sum/1024`.
-5. Запретить hardware promotion при любом mismatch.
-6. После успешной hosted validation поставить ровно один V100 real-pool test.
-7. Кандидат считается рабочим только при `accepted_delta > 0`, низких Rejects и реальном приросте относительно 4.101 MH/s.
+## Новый кандидат: bounded nonlinear fastpath
 
-## Более агрессивный следующий этап
+Рабочая идея — не «неточный HooHash», а **приближение с гарантированной границей ошибки** и exact fallback.
 
-Если consensus-safe `sw` fast-path не даёт кратного роста, следующий уровень — guarded mixed precision для простой матричной ветки. Идея: FP32/FP64 hybrid с консервативным error bound и обязательным FP64 fallback, когда приближение может изменить `sw <= 0.02` или итоговый low byte пары строк. Такой путь требует формального guard-а; приближённый HooHash без доказанной эквивалентности запрещён.
+Для exp-ветки аргумент `z = sin(y)+cos(y)` всегда находится в `[-sqrt(2), +sqrt(2)]`. Это маленький фиксированный диапазон, поэтому его можно покрыть компактной LUT или кусочно-полиномиальной аппроксимацией с известным абсолютным error bound.
+
+Fastpath должен вести не только приближённую сумму `S`, но и консервативную погрешность `E`, так что exact sum гарантированно лежит в `[S-E, S+E]`.
+
+### Guard 1: решение `sw`
+
+После каждого cell consensus проверяет fractional state `frac(sum/1024) <= 0.02`. Approx path разрешён только если весь интервал `[S-E, S+E]` лежит по одну сторону ближайшей границы predicate. Если interval может пересечь границу `k*1024 + 20.48`, выполняется exact nonlinear для неоднозначной task и error interval сужается.
+
+### Guard 2: итоговый byte пары строк
+
+После двух строк используется только:
+
+`(trunc(even_sum) + trunc(odd_sum)) & 0xff`.
+
+Approx path считается доказанно consensus-safe, только если интервалы обеих сумм гарантируют те же целочисленные значения modulo 256. Если interval пересекает целочисленную границу, либо допускает другой low byte, соответствующая неоднозначная часть пересчитывается exact.
+
+Таким образом, approximation никогда не должна попадать в финальный BLAKE3, если она может изменить consensus mixed byte.
+
+## Почему это может дать крупный прирост
+
+В отличие от `service4warp`, bounded fastpath уменьшает само число обращений к дорогим FP64 transcendental instructions. Если большая доля cold tasks находится далеко от `sw`/integer boundaries, LUT/polynomial path сможет обслуживать их без `sincos+exp` libdevice path. Exact FP64 останется только для малого ambiguous subset.
+
+Это соответствует публичной истории Foztor: `exp-threshold` явно связывает скорость с контролируемым количеством incorrect/ambiguous computations, а v1.4.3 и v1.4.12 указывают на уменьшение FP64 работы и крупный выигрыш именно на DataCentre NVIDIA.
+
+## Реализация по этапам
+
+1. Добавить offline/reference измеритель распределения cold tasks: доля exp/sin/sqrt веток, расстояние от `sw`-границы и от integer/low-byte границ.
+2. Построить `exp(z)` LUT/полином на `[-sqrt(2),sqrt(2)]` с формально заданным максимальным error bound.
+3. Реализовать interval propagation для cold contribution `nonlinear(x) * value * 1234`.
+4. Exact fallback при любом crossing `sw` boundary.
+5. Exact fallback при неоднозначном final low byte пары строк.
+6. CPU-vs-CUDA differential validation на большом наборе nonce; допустимо **0 mismatches**.
+7. Проверка ptxas: registers, local memory, spills, shared memory.
+8. Только после этого — один real-pool Tesla V100 test.
+9. Продвижение только при `accepted_delta > 0`, низких Rejects и существенном приросте относительно 4.335 MH/s.
+
+## Бинарный differential Foztor
+
+Параллельно сохраняется приоритет анализа `sm_70` версий 1.4.8 → 1.4.12 → 1.4.14 → 1.4.17 → 1.4.23: kernel topology, FP64 instruction mix, transcendental calls, registers, shared/local memory, synchronization, LUT/precompute, batching и conditional paths. Ключевая цель — определить, какой именно класс expensive FP64 work исчезает или заменяется между версиями с крупными DataCentre gains.
 
 ## Что не делать
 
-До завершения этих архитектурных экспериментов не запускать новые переборы `threads`, `min_blocks`, `byte_unroll` и другие варианты, ожидаемый эффект которых составляет лишь несколько процентов.
+До завершения bounded-fastpath/differential не запускать новые серии `threads`, `min_blocks`, `byte_unroll` или последовательный перебор service-warps. Следующий hardware test должен проверять архитектурную гипотезу с потенциалом значительно больше нескольких процентов.
