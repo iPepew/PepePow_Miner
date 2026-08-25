@@ -6,6 +6,10 @@ on:
       - agent/v21-v100-nobarrier-direct
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     runs-on: ubuntu-22.04
