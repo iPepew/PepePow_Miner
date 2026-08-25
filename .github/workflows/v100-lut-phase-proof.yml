@@ -6,6 +6,7 @@ on:
       - agent/v21-v100-lut-phase-proof
     paths:
       - analysis/fixed192_phase_reducer_proof.py
+      - analysis/dual_lut_interpolation_bound.py
       - .github/workflows/v100-lut-phase-proof.yml
   workflow_dispatch:
 
@@ -20,11 +21,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 analysis/fixed192_phase_reducer_proof.py --samples 250000 | tee /tmp/phase-proof.txt
+      - name: Prove dual-LUT interpolation error bounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 analysis/dual_lut_interpolation_bound.py | tee /tmp/interpolation-proof.txt
       - name: Upload proof
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fixed192-phase-proof-${{ github.sha }}
-          path: /tmp/phase-proof.txt
+          name: fixed192-dual-lut-proof-${{ github.sha }}
+          path: |
+            /tmp/phase-proof.txt
+            /tmp/interpolation-proof.txt
           if-no-files-found: warn
           retention-days: 30
