@@ -1,9 +1,9 @@
-name: PepeW-Miner-v2.1 BETA V100 threads704
+name: PepeW-Miner-v2.1 BETA V100 service4warp
 
 on:
   push:
     branches:
-      - agent/v21-v100-threads704
+      - agent/v21-v100-service4warp
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      RELEASE_TAG: v2.1-beta.1-v100-t704-test
+      RELEASE_TAG: v2.1-beta.1-v100-t704-svc4-test
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-HiveOS.tar.gz
 
@@ -64,7 +64,7 @@ jobs:
           bash -n hiveos/h-run.sh
           bash -n hiveos/h-stats.sh
 
-      - name: Configure V100 threads704 geometry test
+      - name: Configure V100 four-warp nonlinear service test
         run: |
           set -Eeuo pipefail
           export CUDACXX=/usr/local/cuda/bin/nvcc
@@ -95,6 +95,7 @@ jobs:
           strings -a build/pepepowminer | grep -F 'POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY'
           strings -a build/pepepowminer | grep -F 'cuda-header80-monolithic-pipeline'
           ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
 
       - name: Assemble HiveOS beta package
         run: |
@@ -130,23 +131,22 @@ jobs:
           version=2.1-beta.1
           source_branch=${GITHUB_REF_NAME}
           source_commit=${GITHUB_SHA}
-          source_behavior=v2.1-beta.1-service736-share-producing
-          optimization=thread-geometry-only
+          source_behavior=v2.1-beta.1-service704-share-producing
+          optimization=nonlinear-service-workers-1warp-to-4warp
           cuda_toolkit=12.8.1
           cuda_architectures=70-real
           cuda_native=sm_70
           gpu_target=Tesla V100 / Volta
-          cuda_profile=service704-test
+          cuda_profile=service704-svc4-test
           threads=704
+          nonlinear_service_threads=128
           min_blocks=1
           algorithm=HooHash V110
           hive_ar=accepted,rejected
           console_ui=professional-no-emoji
           build_profile_fallback=embedded
-          previous_verified_avg_mhs=4.056
-          previous_verified_min_mhs=4.035
-          previous_verified_max_mhs=4.090
-          previous_verified_accepted=239
+          previous_verified_avg_mhs=4.101
+          previous_verified_accepted=68
           previous_verified_rejected=0
           release_channel=BETA_TEST
           EOF
@@ -154,21 +154,21 @@ jobs:
           tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
           sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
 
-      - name: Publish isolated threads704 test prerelease
+      - name: Publish isolated four-warp service prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          notes="v2.1 BETA isolated Tesla V100 geometry test. Only PEPEPOW_CUDA_THREADS changes: 736 -> 704. HooHash, Stratum, UI, telemetry and all other CUDA service settings remain identical to the verified v2.1 beta package."
+          notes="Architecture-level Tesla V100 experiment. Keeps the verified service704 HooHash/Stratum path but expands the nonlinear FP64 service pool from one warp (32 workers) to four warps (128 workers). No thread-geometry, min_blocks, byte-unroll or consensus algorithm change."
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
-            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title "PepeW-Miner-v2.1 BETA V100 threads704 test" --notes "$notes" --prerelease
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title "PepeW-Miner-v2.1 V100 service4warp test" --notes "$notes" --prerelease
           else
             gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" \
               --repo "$GH_REPO" \
               --target "$GITHUB_SHA" \
-              --title "PepeW-Miner-v2.1 BETA V100 threads704 test" \
+              --title "PepeW-Miner-v2.1 V100 service4warp test" \
               --notes "$notes" \
               --prerelease
           fi
@@ -178,7 +178,7 @@ jobs:
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: pepew-v21-t704-${{ github.sha }}
+          name: pepew-v21-svc4-${{ github.sha }}
           path: |
             dist/PepeW-Miner-HiveOS.tar.gz
             dist/PepeW-Miner-HiveOS.tar.gz.sha256
