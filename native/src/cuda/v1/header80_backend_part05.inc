@@ -43,18 +43,18 @@
 
     __syncthreads();
     const unsigned int task_count = scratch.task_count;
-    if (threadIdx.x < 32U) {
-        for (unsigned int task_index = lane;
-             task_index < task_count; task_index += 32U) {
+    constexpr unsigned int kServiceThreads = 128U;
+    if (static_cast<unsigned int>(threadIdx.x) < kServiceThreads) {
+        for (unsigned int task_index = static_cast<unsigned int>(threadIdx.x);
+             task_index < task_count; task_index += kServiceThreads) {
             const double nonlinear_value =
                 safe_nonlinear(scratch.task_x[task_index]);
             const unsigned int owner = scratch.task_owner[task_index];
             scratch.task_result[owner] =
                 nonlinear_value * scratch.task_value[task_index] * 1234.0;
         }
-        __syncwarp();
-        if (lane == 0U) scratch.task_count = 0U;
     }
+    if (threadIdx.x == 0U) scratch.task_count = 0U;
     __syncthreads();
 
     if (active) {
