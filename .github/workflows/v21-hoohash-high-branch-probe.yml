@@ -1,0 +1,24 @@
+name: v21-hoohash-high-branch-probe
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-high-branch-probe
+    paths:
+      - analysis/hoohash_high_branch_probe.py
+      - .github/workflows/v21-hoohash-high-branch-probe.yml
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run deterministic branch probe
+        run: python3 analysis/hoohash_high_branch_probe.py | tee hoohash-high-branch-probe.json
+      - name: Upload probe result
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoohash-high-branch-probe
+          path: hoohash-high-branch-probe.json
