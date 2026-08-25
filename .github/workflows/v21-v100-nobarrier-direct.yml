@@ -1,4 +1,4 @@
-name: V100 architecture test - no-barrier direct HooHash
+name: V100 no-barrier direct HooHash
 
 on:
   push:
@@ -6,23 +6,12 @@ on:
       - agent/v21-v100-nobarrier-direct
   workflow_dispatch:
 
-permissions:
-  contents: write
-
-defaults:
-  run:
-    shell: bash
-
 jobs:
-  build-release:
+  build:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
-    env:
-      RELEASE_TAG: v2.1-beta.1-v100-nobarrier-direct-test
-      ROOT: PepeW-Miner
-      ASSET: PepeW-Miner-HiveOS.tar.gz
 
     steps:
       - uses: actions/checkout@v4
@@ -31,11 +20,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils gh
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip binutils
           python3 -m pip install --no-cache-dir "cmake==3.31.6"
           rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
 
-      - name: Replace block-wide cold-service pipeline with direct per-thread HooHash
+      - name: Replace service pipeline with direct per-thread HooHash
         run: |
           set -Eeuo pipefail
           python3 - <<'PY'
@@ -66,11 +57,6 @@ jobs:
     std::uint32_t final_hash[8]{};
     blake3_header80_words(nonce, first_pass);
 
-    // Architecture experiment: execute the already consensus-tested direct
-    // HooHash path independently per thread. This removes the 2 block-wide
-    // __syncthreads() barriers and shared/atomic task queue from every one of
-    // the 4096 matrix-cell updates. Correctness is unchanged because
-    // hoohash_mix_words() and the service path implement the same operation.
     hoohash_mix_words(
         matrix, scaled_nibble_table, byte_swap32(nonce), first_pass, mixed);
 
@@ -81,7 +67,7 @@ jobs:
           PY
           grep -F 'hoohash_mix_words(' native/src/cuda/v1/header80_backend_part06.inc
 
-      - name: Configure native sm70 architecture candidate
+      - name: Configure native sm70 candidate
         run: |
           set -Eeuo pipefail
           export CUDACXX=/usr/local/cuda/bin/nvcc
@@ -102,7 +88,7 @@ jobs:
             -DPEPEPOW_CUDA_DERIVE_TWO=OFF \
             -DPEPEPOW_CUDA_BYTE_UNROLL=1
 
-      - name: Build and static gate
+      - name: Build and validate
         run: |
           set -Eeuo pipefail
           cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation 2>&1 | tee /tmp/build.log
@@ -115,58 +101,11 @@ jobs:
           fi
           grep -E 'Function properties|Used [0-9]+ registers|bytes smem' /tmp/build.log || true
 
-      - name: Assemble isolated HiveOS package
-        run: |
-          set -Eeuo pipefail
-          rm -rf stage dist
-          mkdir -p "stage/${ROOT}" dist
-          install -m 0755 build/pepepowminer "stage/${ROOT}/pepepowminer"
-          install -m 0755 hiveos/h-config.sh "stage/${ROOT}/h-config.sh"
-          install -m 0755 hiveos/h-run.sh "stage/${ROOT}/h-run.sh"
-          install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
-          install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
-          cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
-          product=PepeW-Miner-v2.1 BETA ARCH TEST
-          version=2.1-beta.1
-          source_branch=${GITHUB_REF_NAME}
-          source_commit=${GITHUB_SHA}
-          source_behavior=v2.1-share-producing
-          optimization=remove-per-cell-block-barriers-direct-hoohash
-          cuda_toolkit=12.8.1
-          cuda_native=sm_70
-          gpu_target=Tesla V100 / Volta
-          threads=704
-          min_blocks=1
-          sw_state_mode=3
-          algorithm=HooHash V110
-          previous_verified_avg_mhs=4.101
-          previous_verified_accepted=68
-          previous_verified_rejected=0
-          release_channel=ARCH_TEST
-          EOF
-          tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
-          sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
-
-      - name: Publish isolated architecture prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -Eeuo pipefail
-          notes='Architecture-only V100 experiment: removes the block-wide cold-service queue and its two __syncthreads barriers from each of 4096 HooHash matrix cells. Keeps share-producing semantics, threads=704 and sm_70. Not stable; requires real-pool Accepted shares.'
-          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
-          else
-            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title "PepeW V100 no-barrier direct architecture test" --notes "$notes" --prerelease
-          fi
-
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
           name: v100-nobarrier-direct-${{ github.sha }}
           path: |
-            dist/PepeW-Miner-HiveOS.tar.gz
-            dist/PepeW-Miner-HiveOS.tar.gz.sha256
             /tmp/build.log
             /tmp/elf.txt
           retention-days: 30
