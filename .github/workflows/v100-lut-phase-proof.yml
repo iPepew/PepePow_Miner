@@ -1,0 +1,30 @@
+name: V100 LUT Phase Reducer Proof
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-lut-phase-proof
+    paths:
+      - analysis/fixed192_phase_reducer_proof.py
+      - .github/workflows/v100-lut-phase-proof.yml
+  workflow_dispatch:
+
+jobs:
+  proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate fixed192 reducer against high precision reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 analysis/fixed192_phase_reducer_proof.py --samples 250000 | tee /tmp/phase-proof.txt
+      - name: Upload proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixed192-phase-proof-${{ github.sha }}
+          path: /tmp/phase-proof.txt
+          if-no-files-found: warn
+          retention-days: 30
