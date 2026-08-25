@@ -45,6 +45,38 @@
 
 Совокупность этих изменений указывает на уменьшение количества/стоимости FP64 transcendental work на nonce и архитектурно специализированный solver, а не только launch tuning.
 
+## Новый измеренный факт: high/sqrt ветка почти всегда микроскопическая
+
+Добавлен детерминированный reference-probe `analysis/hoohash_high_branch_probe.py` в ветке `agent/v21-v100-high-branch-probe`. Hosted run `32859090996` успешно обработал 512 synthetic/reference nonce-проходов.
+
+Результаты:
+
+- в среднем **125.46 cold nonlinear tasks на nonce**;
+- распределение веток: `exp` 32.88%, `sin²` 32.52%, `1/sqrt` **34.61%**;
+- следовательно, около **43.4 sqrt-тасков на nonce** в среднем;
+- 100% high/sqrt задач имели `|y| >= 2^30`;
+- **99.72%** имели `|y| >= 2^40`;
+- **97.27%** high-вкладов были меньше `0.001`;
+- **99.87%** high-вкладов были меньше `0.01`;
+- грубое зануление всей high-ветки изменило итоговые mixed bytes только в **10 из 512** проходов (**1.95%**).
+
+Последний пункт не разрешает занулять ветку в production, но показывает, что почти вся цена FP64 `sqrt` платится за вклад, который обычно не влияет на consensus byte. Это намного сильнее обосновывает guarded-elision, чем общий approximate-exp как первый эксперимент.
+
+## Новый приоритет: guarded high-branch elision
+
+Следующий architecture-level fastpath должен сначала атаковать `1 / sqrt(abs(y)+1)`, потому что здесь можно избежать дорогой операции, используя только дешёвую классификацию масштаба `|y|` и консервативную верхнюю границу вклада.
+
+Идея:
+
+1. Для high-ветки не считать `sqrt` сразу.
+2. По exponent/`|y|` получить верхнюю границу `delta_max` для вклада `value*1234/sqrt(|y|+1)` без transcendental math.
+3. Вести интервал суммы `[S, S+E]`, где `E` — накопленная максимальная величина пропущенных положительных high-вкладов.
+4. После каждого cell продолжать speculative path только если весь interval даёт один и тот же `sw` predicate.
+5. На границе строки/пары принимать fastpath только если interval гарантирует тот же `trunc(sum)`/low byte.
+6. При неоднозначности выполнять exact fallback для строки/пары, а не выпускать approximate state в финальный BLAKE3.
+
+Поскольку high-вклад всегда положителен, interval здесь односторонний и проще, чем для общего exp/sin approximation. Если измеренная доля fallback останется около нескольких процентов, можно убрать почти треть cold transcendental вызовов, сохранив 0 consensus mismatches.
+
 ## Почему нельзя просто поставить approximate exp
 
 После HooHash выполняется финальный BLAKE3. Любая ошибка в mixed words полностью меняет итоговый hash. Поэтому схема «посчитать приблизительно, а exact проверить только найденные по approximate hash nonce» почти бесполезна: приблизительный final hash статистически не связан с consensus final hash.
@@ -52,49 +84,21 @@
 Следовательно, безопасный быстрый путь обязан либо:
 
 1. доказуемо выдавать те же HooHash mixed bytes, что exact path; либо
-2. обнаруживать неоднозначность до финального BLAKE3 и выполнять exact fallback для конкретной cold-task/строки.
+2. обнаруживать неоднозначность до финального BLAKE3 и выполнять exact fallback для конкретной строки/пары.
 
-Это принципиальная граница для нашего Foztor-style fastpath.
+## Второй приоритет: bounded exp fastpath
 
-## Новый кандидат: bounded nonlinear fastpath
-
-Рабочая идея — не «неточный HooHash», а **приближение с гарантированной границей ошибки** и exact fallback.
-
-Для exp-ветки аргумент `z = sin(y)+cos(y)` всегда находится в `[-sqrt(2), +sqrt(2)]`. Это маленький фиксированный диапазон, поэтому его можно покрыть компактной LUT или кусочно-полиномиальной аппроксимацией с известным абсолютным error bound.
-
-Fastpath должен вести не только приближённую сумму `S`, но и консервативную погрешность `E`, так что exact sum гарантированно лежит в `[S-E, S+E]`.
-
-### Guard 1: решение `sw`
-
-После каждого cell consensus проверяет fractional state `frac(sum/1024) <= 0.02`. Approx path разрешён только если весь интервал `[S-E, S+E]` лежит по одну сторону ближайшей границы predicate. Если interval может пересечь границу `k*1024 + 20.48`, выполняется exact nonlinear для неоднозначной task и error interval сужается.
-
-### Guard 2: итоговый byte пары строк
-
-После двух строк используется только:
-
-`(trunc(even_sum) + trunc(odd_sum)) & 0xff`.
-
-Approx path считается доказанно consensus-safe, только если интервалы обеих сумм гарантируют те же целочисленные значения modulo 256. Если interval пересекает целочисленную границу, либо допускает другой low byte, соответствующая неоднозначная часть пересчитывается exact.
-
-Таким образом, approximation никогда не должна попадать в финальный BLAKE3, если она может изменить consensus mixed byte.
-
-## Почему это может дать крупный прирост
-
-В отличие от `service4warp`, bounded fastpath уменьшает само число обращений к дорогим FP64 transcendental instructions. Если большая доля cold tasks находится далеко от `sw`/integer boundaries, LUT/polynomial path сможет обслуживать их без `sincos+exp` libdevice path. Exact FP64 останется только для малого ambiguous subset.
-
-Это соответствует публичной истории Foztor: `exp-threshold` явно связывает скорость с контролируемым количеством incorrect/ambiguous computations, а v1.4.3 и v1.4.12 указывают на уменьшение FP64 работы и крупный выигрыш именно на DataCentre NVIDIA.
+После guarded high-elision остаётся bounded fastpath для `exp(sin(y)+cos(y))`. Аргумент `z = sin(y)+cos(y)` всегда лежит в `[-sqrt(2), +sqrt(2)]`, поэтому можно использовать LUT/кусочно-полиномиальную аппроксимацию с формальным error bound и тем же interval/fallback механизмом.
 
 ## Реализация по этапам
 
-1. Добавить offline/reference измеритель распределения cold tasks: доля exp/sin/sqrt веток, расстояние от `sw`-границы и от integer/low-byte границ.
-2. Построить `exp(z)` LUT/полином на `[-sqrt(2),sqrt(2)]` с формально заданным максимальным error bound.
-3. Реализовать interval propagation для cold contribution `nonlinear(x) * value * 1234`.
-4. Exact fallback при любом crossing `sw` boundary.
-5. Exact fallback при неоднозначном final low byte пары строк.
-6. CPU-vs-CUDA differential validation на большом наборе nonce; допустимо **0 mismatches**.
-7. Проверка ptxas: registers, local memory, spills, shared memory.
-8. Только после этого — один real-pool Tesla V100 test.
-9. Продвижение только при `accepted_delta > 0`, низких Rejects и существенном приросте относительно 4.335 MH/s.
+1. Реализовать guarded high/sqrt elision на основе exponent-bound и row/pair exact fallback.
+2. CPU-vs-CUDA differential validation: допустимо **0 mismatches**.
+3. Измерить фактическую fallback rate и число реально устранённых `sqrt` вызовов.
+4. Проверить ptxas/registers/spills/shared memory.
+5. Только если fastpath действительно устраняет значимую долю sqrt — один real-pool V100 test.
+6. После этого переходить к bounded `exp` LUT/polynomial.
+7. Продвижение только при `accepted_delta > 0`, низких Rejects и существенном приросте относительно 4.335 MH/s.
 
 ## Бинарный differential Foztor
 
@@ -102,4 +106,4 @@ Approx path считается доказанно consensus-safe, только �
 
 ## Что не делать
 
-До завершения bounded-fastpath/differential не запускать новые серии `threads`, `min_blocks`, `byte_unroll` или последовательный перебор service-warps. Следующий hardware test должен проверять архитектурную гипотезу с потенциалом значительно больше нескольких процентов.
+До завершения guarded-fastpath/differential не запускать новые серии `threads`, `min_blocks`, `byte_unroll` или последовательный перебор service-warps. Следующий hardware test должен проверять архитектурную гипотезу с потенциалом значительно больше нескольких процентов.
