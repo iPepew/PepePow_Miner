@@ -1,4 +1,4 @@
-name: V100 no-barrier workflow smoke
+name: V100 no-barrier direct HooHash
 
 on:
   push:
@@ -7,8 +7,69 @@ on:
   workflow_dispatch:
 
 jobs:
-  smoke:
+  build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
       - uses: actions/checkout@v4
-      - run: echo workflow-ok
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir "cmake==3.31.6"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Apply no-barrier architecture patch
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/patch_nobarrier_direct.py
+          grep -F 'hoohash_mix_words(' native/src/cuda/v1/header80_backend_part06.inc
+
+      - name: Configure native sm70 candidate
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_DERIVE_TWO=OFF \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+
+      - name: Build and validate
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation 2>&1 | tee /tmp/build.log
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.txt
+          grep -F sm_70 /tmp/elf.txt
+          if grep -E 'spill stores|spill loads' /tmp/build.log | grep -Ev '0 bytes spill stores, 0 bytes spill loads'; then
+            echo 'Non-zero CUDA spills detected' >&2
+            exit 1
+          fi
+          grep -E 'Function properties|Used [0-9]+ registers|bytes smem' /tmp/build.log || true
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: v100-nobarrier-direct-${{ github.sha }}
+          path: |
+            /tmp/build.log
+            /tmp/elf.txt
+          retention-days: 30
