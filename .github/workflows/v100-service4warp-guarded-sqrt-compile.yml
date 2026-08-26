@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - agent/v21-v100-service4warp-guarded-sqrt
+      - agent/v21-v100-service4warp-guarded-sqrt-row
     paths:
       - analysis/guarded_sqrt_bound.py
       - native/tests/service4warp_guarded_sqrt_compile_probe.cu
+      - native/tests/service4warp_guarded_sqrt_row_compile_probe.cu
       - .github/workflows/v100-service4warp-guarded-sqrt-compile.yml
   workflow_dispatch:
 
@@ -38,11 +40,23 @@ jobs:
             -o /tmp/service4warp_guarded_sqrt.o 2>&1 | tee /tmp/ptxas-guarded-sqrt.log
           test -s /tmp/service4warp_guarded_sqrt.o
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-guarded-sqrt.log
-      - name: Upload resource log
+      - name: Compile guarded sqrt row-state probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/service4warp_guarded_sqrt_row_compile_probe.cu \
+            -o /tmp/service4warp_guarded_sqrt_row.o 2>&1 | tee /tmp/ptxas-guarded-sqrt-row.log
+          test -s /tmp/service4warp_guarded_sqrt_row.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-guarded-sqrt-row.log
+      - name: Upload resource logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: service4warp-guarded-sqrt-sm70-${{ github.sha }}
-          path: /tmp/ptxas-guarded-sqrt.log
+          path: |
+            /tmp/ptxas-guarded-sqrt.log
+            /tmp/ptxas-guarded-sqrt-row.log
           if-no-files-found: warn
           retention-days: 30
