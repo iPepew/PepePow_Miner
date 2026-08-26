@@ -1,5 +1,4 @@
 # Production guarded-sqrt architecture gate; no V100 hardware is used here.
-# Retriggered after an inconsistent queued/failed Actions state on 2026-08-26.
 name: V100 Service4Warp Guarded Sqrt Compile Gate
 
 on:
@@ -10,7 +9,12 @@ on:
       - agent/v21-v100-service4warp-guarded-sqrt-production
     paths:
       - analysis/guarded_sqrt_bound.py
+      - native/CMakeLists.txt
       - native/src/cuda/guarded_sqrt_primitives.cuh
+      - native/src/cuda/service4warp_guarded_sqrt_production.inc
+      - native/src/cuda/v1/header80_backend_part06.inc
+      - native/src/cuda/v1/header80_backend_part07.inc
+      - native/src/cuda/header80_backend.cu
       - native/tests/service4warp_guarded_sqrt_compile_probe.cu
       - native/tests/service4warp_guarded_sqrt_row_compile_probe.cu
       - native/tests/service4warp_guarded_sqrt_production_compile.cu
@@ -39,8 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
-            -Xptxas=-v \
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo -Xptxas=-v \
             -c native/tests/service4warp_guarded_sqrt_compile_probe.cu \
             -o /tmp/service4warp_guarded_sqrt.o 2>&1 | tee /tmp/ptxas-guarded-sqrt.log
           test -s /tmp/service4warp_guarded_sqrt.o
@@ -49,13 +52,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
-            -Xptxas=-v \
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo -Xptxas=-v \
             -c native/tests/service4warp_guarded_sqrt_row_compile_probe.cu \
             -o /tmp/service4warp_guarded_sqrt_row.o 2>&1 | tee /tmp/ptxas-guarded-sqrt-row.log
           test -s /tmp/service4warp_guarded_sqrt_row.o
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-guarded-sqrt-row.log
-      - name: Compile production-shaped guarded sqrt Header80 kernel for Volta
+      - name: Compile actual runtime Header80 guarded sqrt path for Volta
         shell: bash
         run: |
           set -euo pipefail
@@ -68,12 +70,13 @@ jobs:
             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
             -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
             -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_GUARDED_SQRT=1 \
             -Xptxas=-v \
-            -c native/tests/service4warp_guarded_sqrt_production_compile.cu \
-            -o /tmp/service4warp_guarded_sqrt_production.o 2>&1 | tee /tmp/ptxas-guarded-sqrt-production.log
-          test -s /tmp/service4warp_guarded_sqrt_production.o
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/header80_guarded_sqrt_runtime.o 2>&1 | tee /tmp/ptxas-guarded-sqrt-production.log
+          test -s /tmp/header80_guarded_sqrt_runtime.o
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-guarded-sqrt-production.log
-          grep -F 'header80_pow_service4warp_guarded_sqrt_kernel' /tmp/ptxas-guarded-sqrt-production.log || true
+          grep -F 'header80_pow_service4warp_guarded_sqrt_kernel' /tmp/ptxas-guarded-sqrt-production.log
       - name: Upload resource logs
         if: always()
         uses: actions/upload-artifact@v4
