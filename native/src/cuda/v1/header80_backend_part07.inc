@@ -70,17 +70,32 @@
 #else
     static thread_local bool cache_configured = false;
     if (!cache_configured) {
+#if PEPEPOW_CUDA_GUARDED_SQRT
+        check_cuda_header80(
+            cudaFuncSetCacheConfig(header80_pow_service4warp_guarded_sqrt_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(header80 guarded sqrt)");
+#else
         check_cuda_header80(
             cudaFuncSetCacheConfig(header80_pow_kernel, cudaFuncCachePreferL1),
             "cudaFuncSetCacheConfig(header80 monolithic)");
+#endif
         cache_configured = true;
     }
+#if PEPEPOW_CUDA_GUARDED_SQRT
+    header80_pow_service4warp_guarded_sqrt_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_),
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "header80 guarded sqrt kernel launch");
+#else
     header80_pow_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_),
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "header80_pow_kernel launch");
+#endif
 #endif
 
     DeviceShareResult host_result{};
