@@ -8,6 +8,7 @@ on:
       - 'native/src/cuda/header80_backend.cu'
       - 'native/src/cuda/guarded_lut_primitives.cuh'
       - 'native/src/cuda/v1/header80_guarded_lut_path.inc'
+      - 'native/src/cuda/v1/header80_backend_part06.inc'
       - '.github/workflows/v100-guarded-lut-full-kernel-compile.yml'
   workflow_dispatch:
 
