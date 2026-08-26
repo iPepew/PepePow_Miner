@@ -1,0 +1,119 @@
+name: V100 Service4Warp Dual-LUT Offline Benchmark Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-service4warp-duallut
+    paths:
+      - '.github/workflows/v100-service4warp-duallut-package.yml'
+      - 'native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+          cmake --version
+
+      - name: Build exact and service4warp dual-LUT production Header80 benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(
+            -G Ninja
+            -DPEPEPOW_ENABLE_CUDA=ON
+            -DPEPEPOW_BUILD_TESTS=OFF
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real
+            -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+          )
+
+          cmake -S native -B /tmp/exact "${common[@]}" \
+            -DPEPEPOW_CUDA_SERVICE4WARP_DUALLUT=OFF
+          cmake --build /tmp/exact \
+            --target pepepow_header80_benchmark pepepow_header80_differential -j2 \
+            2>&1 | tee /tmp/exact-build.log
+
+          cmake -S native -B /tmp/candidate "${common[@]}" \
+            -DPEPEPOW_CUDA_SERVICE4WARP_DUALLUT=ON
+          cmake --build /tmp/candidate \
+            --target pepepow_header80_benchmark pepepow_header80_differential -j2 \
+            2>&1 | tee /tmp/candidate-build.log
+
+          if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/candidate-build.log; then
+            echo 'ERROR: candidate production build contains CUDA spills on sm_70'
+            exit 1
+          fi
+
+          mkdir -p /tmp/pkg
+          cp /tmp/exact/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_exact
+          cp /tmp/candidate/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_guarded
+          cp /tmp/candidate/pepepow_header80_differential /tmp/pkg/pepepow_header80_differential_guarded
+          cp /tmp/exact-build.log /tmp/pkg/exact-build.log
+          cp /tmp/candidate-build.log /tmp/pkg/guarded-build.log
+          cat > /tmp/pkg/build-info.txt <<EOF
+          source_branch=agent/v21-v100-service4warp-duallut
+          source_commit=${GITHUB_SHA}
+          cuda_toolkit=12.8.1
+          cuda_arch=sm_70
+          cmake=$(cmake --version | awk 'NR==1{print $3}')
+          benchmark_path=production-header80-backend
+          exact_guarded_pair=true
+          differential_path=production-header80-search-max-target
+          architecture=service4warp-704-128workers-fixed192-768k-128k-row-replay
+          EOF
+          tar -C /tmp/pkg -czf /tmp/PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz .
+          sha256sum /tmp/PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz.sha256
+
+      - name: Publish replaceable prerelease asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v2.1-service4warp-duallut-v100-offline-bench
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${TAG}" 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+              "${api}/releases" \
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"Service4Warp Dual-LUT V100 Offline Bench\",\"prerelease\":true}")"
+          fi
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
+          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz"),""))' <<<"$assets")"
+          [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
+          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
+            --data-binary @/tmp/PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz"
