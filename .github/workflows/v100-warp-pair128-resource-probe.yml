@@ -1,0 +1,38 @@
+name: V100 Warp-Pair128 Named-Barrier Resource Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-warp-specialized128
+    paths:
+      - native/tests/warp_pair128_namedbarrier_probe.cu
+      - .github/workflows/v100-warp-pair128-resource-probe.yml
+  workflow_dispatch:
+
+jobs:
+  compile-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile two-pair named-barrier topology for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/warp_pair128_namedbarrier_probe.cu \
+            -o /tmp/warp_pair128_namedbarrier_probe.o 2>&1 | tee /tmp/ptxas-warp-pair128.log
+          test -s /tmp/warp_pair128_namedbarrier_probe.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-warp-pair128.log
+          grep -E 'Used [0-9]+ registers|bytes smem|stack frame|spill|barriers' /tmp/ptxas-warp-pair128.log || true
+      - name: Upload resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: warp-pair128-sm70-${{ github.sha }}
+          path: /tmp/ptxas-warp-pair128.log
+          if-no-files-found: warn
+          retention-days: 30
