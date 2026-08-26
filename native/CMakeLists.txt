@@ -23,6 +23,7 @@ option(PEPEPOW_CUDA_DERIVE_TWO "Derive nonlinear selector two from one" OFF)
 option(PEPEPOW_CUDA_NIBBLE_TABLE "Use constant nibble conversion table" OFF)
 option(PEPEPOW_CUDA_SCALED_NIBBLE_TABLE "Use device scaled-nibble lookup table" ON)
 option(PEPEPOW_CUDA_ASSUME_FINITE "Use finite consensus hot path" ON)
+option(PEPEPOW_CUDA_GUARDED_LUT "Use guarded dual-LUT HooHash path with exact row fallback" OFF)
 set(PEPEPOW_CUDA_SW_STATE_MODE "3" CACHE STRING "HooHash SW state mode")
 set(PEPEPOW_CUDA_BYTE_UNROLL "1" CACHE STRING "HooHash byte-loop unroll factor")
 
@@ -105,6 +106,7 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_NIBBLE_TABLE=$<BOOL:${PEPEPOW_CUDA_NIBBLE_TABLE}>
         PEPEPOW_CUDA_SCALED_NIBBLE_TABLE=$<BOOL:${PEPEPOW_CUDA_SCALED_NIBBLE_TABLE}>
         PEPEPOW_CUDA_ASSUME_FINITE=$<BOOL:${PEPEPOW_CUDA_ASSUME_FINITE}>
+        PEPEPOW_CUDA_GUARDED_LUT=$<BOOL:${PEPEPOW_CUDA_GUARDED_LUT}>
         PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
         PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
     set_target_properties(pepepow_cuda PROPERTIES
