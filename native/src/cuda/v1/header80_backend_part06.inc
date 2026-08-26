@@ -23,6 +23,7 @@
     }
 }
 
+#include "header80_guarded_lut_path.inc"
 
 } // namespace
 
