@@ -1,0 +1,38 @@
+name: V100 Service4Warp Dual-LUT Compile Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-service4warp-duallut
+    paths:
+      - native/src/cuda/guarded_lut_primitives.cuh
+      - native/tests/service4warp_duallut_compile_probe.cu
+      - .github/workflows/v100-service4warp-duallut-compile.yml
+  workflow_dispatch:
+
+jobs:
+  compile-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile service4warp dual-LUT worker probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/service4warp_duallut_compile_probe.cu \
+            -o /tmp/service4warp_duallut_compile_probe.o 2>&1 | tee /tmp/ptxas.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas.log
+          test -s /tmp/service4warp_duallut_compile_probe.o
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service4warp-duallut-sm70-compile-${{ github.sha }}
+          path: /tmp/ptxas.log
+          if-no-files-found: warn
+          retention-days: 30
