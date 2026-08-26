@@ -5,10 +5,13 @@ on:
     branches:
       - agent/v21-v100-service4warp-duallut
     paths:
+      - native/CMakeLists.txt
+      - native/src/benchmark/header80_differential.cpp
       - native/src/cuda/guarded_lut_primitives.cuh
       - native/src/cuda/service4warp_duallut_production.inc
       - native/src/cuda/header80_backend.cu
       - native/src/cuda/v1/header80_backend_part06.inc
+      - native/src/cuda/v1/header80_backend_part07.inc
       - native/tests/service4warp_duallut_compile_probe.cu
       - native/tests/service4warp_guarded_row_compile_probe.cu
       - .github/workflows/v100-service4warp-duallut-compile.yml
@@ -42,7 +45,7 @@ jobs:
             -o /tmp/service4warp_guarded_row_compile_probe.o 2>&1 | tee /tmp/ptxas-row.log
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-row.log
           test -s /tmp/service4warp_guarded_row_compile_probe.o
-      - name: Compile full production Header80 translation unit for Volta
+      - name: Compile full candidate-enabled Header80 translation unit for Volta
         shell: bash
         run: |
           set -euo pipefail
@@ -55,6 +58,7 @@ jobs:
             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
             -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
             -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_SERVICE4WARP_DUALLUT=1 \
             -Xptxas=-v \
             -c native/src/cuda/header80_backend.cu \
             -o /tmp/header80_service4warp_duallut.o 2>&1 | tee /tmp/ptxas-production.log
