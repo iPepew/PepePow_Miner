@@ -3,17 +3,17 @@
 using namespace cuda_guarded_lut;
 
 __device__ __forceinline__ bool guarded_classify_sw_prod(
-    double sum, double error, bool& cold) {
+    double sum, double error, bool* cold_out) {
     const double lo = sum - error;
     const double hi = sum + error;
-    if (lo < 0.0) return false;
+    if (lo < 0.0 || cold_out == nullptr) return false;
     const std::uint64_t qlo = positive_double_to_u64_rz(lo * (1.0 / 1024.0));
     const std::uint64_t qhi = positive_double_to_u64_rz(hi * (1.0 / 1024.0));
     if (qlo != qhi) return false;
     const bool lo_cold = positive_fraction_div1024_le_002_finite(lo);
     const bool hi_cold = positive_fraction_div1024_le_002_finite(hi);
     if (lo_cold != hi_cold) return false;
-    cold = lo_cold;
+    *cold_out = lo_cold;
     return true;
 }
 
@@ -29,8 +29,9 @@ __device__ __forceinline__ bool guarded_nonlinear_value_prod(
     double x,
     const double* __restrict__ exp_lut,
     const double* __restrict__ sin2_lut,
-    double& value,
-    double& abs_error) {
+    double* value_out,
+    double* abs_error_out) {
+    if (value_out == nullptr || abs_error_out == nullptr) return false;
     const double one_base = x * kTransformMultiplier * 0.125;
     const HooHashSelectorParts selector = decode_selector_parts(one_base);
     const double two = selector.two;
@@ -41,19 +42,19 @@ __device__ __forceinline__ bool guarded_nonlinear_value_prod(
     else y = x / (1.0 + two);
 
     if (selector.one_region == 0U) {
-        return exp_sincos_approx(y, exp_lut, value, abs_error);
+        return exp_sincos_approx(y, exp_lut, *value_out, *abs_error_out);
     }
     if (selector.one_region == 1U) {
         if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) {
-            value = 0.0;
-            abs_error = 0.0;
+            *value_out = 0.0;
+            *abs_error_out = 0.0;
             return true;
         }
-        return sin2_approx(y, sin2_lut, value, abs_error);
+        return sin2_approx(y, sin2_lut, *value_out, *abs_error_out);
     }
 
-    value = 1.0 / sqrt(fabs(y) + 1.0);
-    abs_error = 0.0;
+    *value_out = 1.0 / sqrt(fabs(y) + 1.0);
+    *abs_error_out = 0.0;
     return true;
 }
 
@@ -65,10 +66,11 @@ __device__ __noinline__ double guarded_row_exact_fallback_prod(
     double hash_mod_fp64,
     double nonce_mod,
     HooHashSwState checkpoint_sw,
-    HooHashSwState& out_sw) {
-    out_sw = checkpoint_sw;
+    HooHashSwState* out_sw) {
+    if (out_sw == nullptr) return 0.0;
+    *out_sw = checkpoint_sw;
     return matrix_row(matrix, scaled_nibble_table, row, first_pass,
-                      hash_mod_fp64, nonce_mod, out_sw);
+                      hash_mod_fp64, nonce_mod, *out_sw);
 }
 
 __device__ __forceinline__ double guarded_matrix_row_prod(
@@ -80,9 +82,10 @@ __device__ __forceinline__ double guarded_matrix_row_prod(
     const std::uint32_t first_pass[8],
     double hash_mod_fp64,
     double nonce_mod,
-    HooHashSwState& sw) {
-    const HooHashSwState checkpoint_sw = sw;
-    bool cold = sw_state_is_cold(sw);
+    HooHashSwState* sw) {
+    if (sw == nullptr) return 0.0;
+    const HooHashSwState checkpoint_sw = *sw;
+    bool cold = sw_state_is_cold(*sw);
     double sum = 0.0;
     double error = 0.0;
     const int row_offset = row * 64;
@@ -112,7 +115,7 @@ __device__ __forceinline__ double guarded_matrix_row_prod(
                         double nonlinear_error = 0.0;
                         if (!guarded_nonlinear_value_prod(
                                 x, exp_lut, sin2_lut,
-                                nonlinear_value, nonlinear_error)) {
+                                &nonlinear_value, &nonlinear_error)) {
                             return guarded_row_exact_fallback_prod(
                                 matrix, scaled_nibble_table, row, first_pass,
                                 hash_mod_fp64, nonce_mod, checkpoint_sw, sw);
@@ -134,7 +137,7 @@ __device__ __forceinline__ double guarded_matrix_row_prod(
                 }
 
                 bool next_cold = false;
-                if (!guarded_classify_sw_prod(sum, error, next_cold)) {
+                if (!guarded_classify_sw_prod(sum, error, &next_cold)) {
                     return guarded_row_exact_fallback_prod(
                         matrix, scaled_nibble_table, row, first_pass,
                         hash_mod_fp64, nonce_mod, checkpoint_sw, sw);
@@ -150,7 +153,7 @@ __device__ __forceinline__ double guarded_matrix_row_prod(
             hash_mod_fp64, nonce_mod, checkpoint_sw, sw);
     }
 
-    sw = cold;
+    *sw = static_cast<HooHashSwState>(cold);
     return sum;
 }
 
@@ -175,10 +178,10 @@ __device__ __forceinline__ void hoohash_mix_words_guarded(
     for (int pair = 0; pair < 32; ++pair) {
         const double even_sum = guarded_matrix_row_prod(
             matrix, scaled_nibble_table, exp_lut, sin2_lut,
-            pair * 2, first_pass, hash_mod_fp64, nonce_mod, sw);
+            pair * 2, first_pass, hash_mod_fp64, nonce_mod, &sw);
         const double odd_sum = guarded_matrix_row_prod(
             matrix, scaled_nibble_table, exp_lut, sin2_lut,
-            pair * 2 + 1, first_pass, hash_mod_fp64, nonce_mod, sw);
+            pair * 2 + 1, first_pass, hash_mod_fp64, nonce_mod, &sw);
         const std::uint64_t combined = positive_double_to_u64_rz(even_sum) +
                                        positive_double_to_u64_rz(odd_sum);
         const std::uint32_t shift = static_cast<std::uint32_t>((pair & 3) * 8);
