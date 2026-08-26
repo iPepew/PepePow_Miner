@@ -23,6 +23,7 @@
     }
 }
 
+#include "../service4warp_guarded_sqrt_production.inc"
 
 } // namespace
 
