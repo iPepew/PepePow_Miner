@@ -18,6 +18,13 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
       - uses: actions/checkout@v4
+      - name: Install proof runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3
+          python3 --version
       - name: Run exponent-bound proof
         shell: bash
         run: python3 analysis/guarded_sqrt_bound.py
