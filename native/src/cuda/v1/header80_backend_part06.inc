@@ -23,6 +23,9 @@
     }
 }
 
+// Experimental service4warp + guarded dual-LUT device path must stay inside
+// the anonymous CUDA namespace, before Header80CudaBackend host methods begin.
+#include "../service4warp_duallut_production.inc"
 
 } // namespace
 
