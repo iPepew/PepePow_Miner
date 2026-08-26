@@ -1,3 +1,4 @@
+# Production guarded-sqrt architecture gate; no V100 hardware is used here.
 name: V100 Service4Warp Guarded Sqrt Compile Gate
 
 on:
