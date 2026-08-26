@@ -7,6 +7,7 @@ on:
     paths:
       - native/src/cuda/guarded_lut_primitives.cuh
       - native/tests/service4warp_duallut_compile_probe.cu
+      - native/tests/service4warp_guarded_row_compile_probe.cu
       - .github/workflows/v100-service4warp-duallut-compile.yml
   workflow_dispatch:
 
@@ -25,14 +26,26 @@ jobs:
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
             -Xptxas=-v \
             -c native/tests/service4warp_duallut_compile_probe.cu \
-            -o /tmp/service4warp_duallut_compile_probe.o 2>&1 | tee /tmp/ptxas.log
-          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas.log
+            -o /tmp/service4warp_duallut_compile_probe.o 2>&1 | tee /tmp/ptxas-worker.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-worker.log
           test -s /tmp/service4warp_duallut_compile_probe.o
-      - name: Upload compile log
+      - name: Compile guarded row interval and exact-replay probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/service4warp_guarded_row_compile_probe.cu \
+            -o /tmp/service4warp_guarded_row_compile_probe.o 2>&1 | tee /tmp/ptxas-row.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-row.log
+          test -s /tmp/service4warp_guarded_row_compile_probe.o
+      - name: Upload compile logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: service4warp-duallut-sm70-compile-${{ github.sha }}
-          path: /tmp/ptxas.log
+          path: |
+            /tmp/ptxas-worker.log
+            /tmp/ptxas-row.log
           if-no-files-found: warn
           retention-days: 30
