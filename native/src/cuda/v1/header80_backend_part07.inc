@@ -10,6 +10,52 @@
         header_cached = true;
     }
 
+#if PEPEPOW_CUDA_GUARDED_LUT
+    // Test-branch guarded LUT runtime. These tables are invariant for the
+    // process lifetime and are uploaded once per mining thread/device.
+    static thread_local double* guarded_exp_lut = nullptr;
+    static thread_local double* guarded_sin2_lut = nullptr;
+    static thread_local int guarded_lut_device = -1;
+    if (guarded_lut_device != device_index_ || guarded_exp_lut == nullptr ||
+        guarded_sin2_lut == nullptr) {
+        if (guarded_lut_device != -1 && guarded_lut_device != device_index_) {
+            throw std::runtime_error("guarded LUT thread reused across CUDA devices");
+        }
+        std::vector<double> host_exp(cuda_guarded_lut::kExpLutIntervals + 1U);
+        std::vector<double> host_sin2(cuda_guarded_lut::kSin2LutIntervals + 1U);
+        for (unsigned i = 0; i <= cuda_guarded_lut::kExpLutIntervals; ++i) {
+            const double phase = cuda_guarded_lut::kTwoPi *
+                static_cast<double>(i) /
+                static_cast<double>(cuda_guarded_lut::kExpLutIntervals);
+            host_exp[i] = std::exp(std::sin(phase) + std::cos(phase));
+        }
+        for (unsigned i = 0; i <= cuda_guarded_lut::kSin2LutIntervals; ++i) {
+            const double phase = cuda_guarded_lut::kTwoPi *
+                static_cast<double>(i) /
+                static_cast<double>(cuda_guarded_lut::kSin2LutIntervals);
+            const double s = std::sin(phase);
+            host_sin2[i] = s * s;
+        }
+        check_cuda_header80(
+            cudaMalloc(reinterpret_cast<void**>(&guarded_exp_lut),
+                       host_exp.size() * sizeof(double)),
+            "cudaMalloc(guarded exp LUT)");
+        check_cuda_header80(
+            cudaMalloc(reinterpret_cast<void**>(&guarded_sin2_lut),
+                       host_sin2.size() * sizeof(double)),
+            "cudaMalloc(guarded sin2 LUT)");
+        check_cuda_header80(
+            cudaMemcpy(guarded_exp_lut, host_exp.data(),
+                       host_exp.size() * sizeof(double), cudaMemcpyHostToDevice),
+            "cudaMemcpy(guarded exp LUT)");
+        check_cuda_header80(
+            cudaMemcpy(guarded_sin2_lut, host_sin2.data(),
+                       host_sin2.size() * sizeof(double), cudaMemcpyHostToDevice),
+            "cudaMemcpy(guarded sin2 LUT)");
+        guarded_lut_device = device_index_;
+    }
+#endif
+
     static thread_local bool target_cached = false;
     static thread_local std::array<std::uint8_t, 32> cached_target{};
     std::array<std::uint8_t, 32> target_copy{};
@@ -67,6 +113,21 @@
         static_cast<std::uint32_t>(range.begin), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
+#elif PEPEPOW_CUDA_GUARDED_LUT
+    static thread_local bool guarded_cache_configured = false;
+    if (!guarded_cache_configured) {
+        check_cuda_header80(
+            cudaFuncSetCacheConfig(header80_pow_guarded_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(header80 guarded LUT)");
+        guarded_cache_configured = true;
+    }
+    header80_pow_guarded_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_),
+        guarded_exp_lut, guarded_sin2_lut,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "header80_pow_guarded_kernel launch");
 #else
     static thread_local bool cache_configured = false;
     if (!cache_configured) {
