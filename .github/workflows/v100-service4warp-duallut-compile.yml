@@ -8,6 +8,7 @@ on:
       - native/src/cuda/guarded_lut_primitives.cuh
       - native/src/cuda/service4warp_duallut_production.inc
       - native/src/cuda/header80_backend.cu
+      - native/src/cuda/v1/header80_backend_part06.inc
       - native/tests/service4warp_duallut_compile_probe.cu
       - native/tests/service4warp_guarded_row_compile_probe.cu
       - .github/workflows/v100-service4warp-duallut-compile.yml
