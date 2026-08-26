@@ -10,6 +10,7 @@ project(PepePowMiner VERSION 1.0.4 LANGUAGES C CXX)
 option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
+option(PEPEPOW_CUDA_SERVICE4WARP_DUALLUT "Enable service4warp guarded dual-LUT Header80 candidate" OFF)
 set(PEPEPOW_CUDA_ARCHITECTURES "61-real;75-real;86-real;89-real;120" CACHE STRING "CUDA targets for GTX 10, RTX 20, RTX 30, RTX 40 and RTX 50")
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_THREADS "768" CACHE STRING "CUDA threads per Header80 search block")
@@ -105,6 +106,7 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_NIBBLE_TABLE=$<BOOL:${PEPEPOW_CUDA_NIBBLE_TABLE}>
         PEPEPOW_CUDA_SCALED_NIBBLE_TABLE=$<BOOL:${PEPEPOW_CUDA_SCALED_NIBBLE_TABLE}>
         PEPEPOW_CUDA_ASSUME_FINITE=$<BOOL:${PEPEPOW_CUDA_ASSUME_FINITE}>
+        PEPEPOW_CUDA_SERVICE4WARP_DUALLUT=$<BOOL:${PEPEPOW_CUDA_SERVICE4WARP_DUALLUT}>
         PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
         PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
     set_target_properties(pepepow_cuda PROPERTIES
@@ -126,6 +128,8 @@ if(PEPEPOW_ENABLE_CUDA)
     target_link_libraries(pepepow_cuda_benchmark PRIVATE pepepow_cuda)
     add_executable(pepepow_header80_benchmark src/benchmark/header80_benchmark.cpp)
     target_link_libraries(pepepow_header80_benchmark PRIVATE pepepow_cuda)
+    add_executable(pepepow_header80_differential src/benchmark/header80_differential.cpp)
+    target_link_libraries(pepepow_header80_differential PRIVATE pepepow_cuda)
     add_executable(pepepow_cuda_warp_probe src/benchmark/warp_divergence_probe.cpp)
     target_link_libraries(pepepow_cuda_warp_probe PRIVATE pepepow_cuda)
 endif()
