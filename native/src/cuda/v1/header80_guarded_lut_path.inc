@@ -157,7 +157,12 @@ __device__ __forceinline__ double guarded_matrix_row_prod(
     return sum;
 }
 
-__device__ __forceinline__ void hoohash_mix_words_guarded(
+// Deliberately keep the full guarded HooHash stage out-of-line. The standalone
+// row hotpath compiles spill-free on sm_70, while inlining the whole stage into
+// BLAKE3 -> HooHash -> BLAKE3 keeps both register sets live and causes local
+// memory spills. There is only one call per nonce, so the device-call overhead
+// is tiny compared with 4096 matrix-cell updates.
+__device__ __noinline__ void hoohash_mix_words_guarded(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
     const double* __restrict__ exp_lut,
