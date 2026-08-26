@@ -1,4 +1,4 @@
-name: V100 Compact128 Topology Resource Gate
+name: V100 Compact128 Production Topology Gate
 
 on:
   push:
@@ -6,6 +6,8 @@ on:
       - agent/v21-v100-compact128-topology
     paths:
       - native/tests/compact128_topology_probe.cu
+      - native/src/cuda/header80_backend.cu
+      - native/src/cuda/v1/**
       - .github/workflows/v100-compact128-resource-probe.yml
   workflow_dispatch:
 
@@ -17,22 +19,46 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Compile compact128 topology probe for Volta
+
+      - name: Compile compact128 synthetic topology probe for Volta
         shell: bash
         run: |
           set -euo pipefail
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
             -Xptxas=-v \
             -c native/tests/compact128_topology_probe.cu \
-            -o /tmp/compact128_topology_probe.o 2>&1 | tee /tmp/ptxas-compact128.log
+            -o /tmp/compact128_topology_probe.o 2>&1 | tee /tmp/ptxas-compact128-probe.log
           test -s /tmp/compact128_topology_probe.o
-          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-compact128.log
-          grep -E 'Used [0-9]+ registers|bytes smem|stack frame|spill' /tmp/ptxas-compact128.log || true
-      - name: Upload resource log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-compact128-probe.log
+
+      - name: Compile actual share-producing Header80 service kernel at Foztor 128-thread topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=128 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=0 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -Xptxas=-v \
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/header80_compact128_production.o 2>&1 | tee /tmp/ptxas-compact128-production.log
+          test -s /tmp/header80_compact128_production.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-compact128-production.log
+          grep -F 'header80_pow_kernel' /tmp/ptxas-compact128-production.log || true
+          grep -E 'Used [0-9]+ registers|bytes smem|stack frame|spill' /tmp/ptxas-compact128-production.log || true
+
+      - name: Upload resource logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: compact128-sm70-${{ github.sha }}
-          path: /tmp/ptxas-compact128.log
+          name: compact128-production-sm70-${{ github.sha }}
+          path: |
+            /tmp/ptxas-compact128-probe.log
+            /tmp/ptxas-compact128-production.log
           if-no-files-found: warn
           retention-days: 30
