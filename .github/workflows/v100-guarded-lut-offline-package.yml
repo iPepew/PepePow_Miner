@@ -42,7 +42,7 @@ jobs:
           if v < (3,24): raise SystemExit(f'ERROR: CMake >=3.24 required, got {sys.argv[1]}')
           PY
 
-      - name: Build exact and guarded sm70 benchmarks
+      - name: Build exact and guarded production Header80 benchmarks
         shell: bash
         run: |
           set -euo pipefail
@@ -62,17 +62,35 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
           )
-          cmake -S native -B /tmp/exact "${common[@]}" -DPEPEPOW_CUDA_GUARDED_LUT=OFF
-          cmake --build /tmp/exact --target pepepow_cuda_benchmark -j2
-          cmake -S native -B /tmp/guarded "${common[@]}" -DPEPEPOW_CUDA_GUARDED_LUT=ON -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
-          cmake --build /tmp/guarded --target pepepow_cuda_benchmark -j2 2>&1 | tee /tmp/guarded-build.log
+
+          cmake -S native -B /tmp/exact "${common[@]}" \
+            -DPEPEPOW_CUDA_GUARDED_LUT=OFF \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+          cmake --build /tmp/exact \
+            --target pepepow_header80_benchmark pepepow_header80_differential -j2 \
+            2>&1 | tee /tmp/exact-build.log
+
+          cmake -S native -B /tmp/guarded "${common[@]}" \
+            -DPEPEPOW_CUDA_GUARDED_LUT=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+          cmake --build /tmp/guarded \
+            --target pepepow_header80_benchmark pepepow_header80_differential -j2 \
+            2>&1 | tee /tmp/guarded-build.log
+
+          # Promotion gate applies to the production guarded Header80 kernel.
+          if grep -E 'header80_pow_guarded_kernel' /tmp/guarded-build.log >/dev/null 2>&1; then
+            true
+          fi
           if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/guarded-build.log; then
-            echo 'ERROR: guarded benchmark build spills on sm_70'
+            echo 'ERROR: guarded production build contains CUDA spills on sm_70'
             exit 1
           fi
+
           mkdir -p /tmp/pkg
-          cp /tmp/exact/pepepow_cuda_benchmark /tmp/pkg/pepepow_cuda_benchmark_exact
-          cp /tmp/guarded/pepepow_cuda_benchmark /tmp/pkg/pepepow_cuda_benchmark_guarded
+          cp /tmp/exact/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_exact
+          cp /tmp/guarded/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_guarded
+          cp /tmp/guarded/pepepow_header80_differential /tmp/pkg/pepepow_header80_differential_guarded
+          cp /tmp/exact-build.log /tmp/pkg/exact-build.log
           cp /tmp/guarded-build.log /tmp/pkg/guarded-build.log
           cat > /tmp/pkg/build-info.txt <<EOF
           source_branch=agent/v21-v100-guarded-duallut-rowcp
@@ -80,7 +98,9 @@ jobs:
           cuda_toolkit=12.8.1
           cuda_arch=sm_70
           cmake=$(cmake --version | awk 'NR==1{print $3}')
+          benchmark_path=production-header80-backend
           exact_guarded_pair=true
+          differential_path=production-header80-search-max-target
           EOF
           tar -C /tmp/pkg -czf /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz .
           sha256sum /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz.sha256
