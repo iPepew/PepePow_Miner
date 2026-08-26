@@ -13,6 +13,5 @@
 #include "v1/header80_backend_part03.inc"
 #include "v1/header80_backend_part04.inc"
 #include "v1/header80_backend_part05.inc"
-#include "v1/header80_guarded_lut_path.inc"
 #include "v1/header80_backend_part06.inc"
 #include "v1/header80_backend_part07.inc"
