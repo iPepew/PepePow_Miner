@@ -6,6 +6,8 @@ on:
       - agent/v21-v100-service4warp-duallut
     paths:
       - native/src/cuda/guarded_lut_primitives.cuh
+      - native/src/cuda/service4warp_duallut_production.inc
+      - native/src/cuda/header80_backend.cu
       - native/tests/service4warp_duallut_compile_probe.cu
       - native/tests/service4warp_guarded_row_compile_probe.cu
       - .github/workflows/v100-service4warp-duallut-compile.yml
@@ -39,6 +41,25 @@ jobs:
             -o /tmp/service4warp_guarded_row_compile_probe.o 2>&1 | tee /tmp/ptxas-row.log
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-row.log
           test -s /tmp/service4warp_guarded_row_compile_probe.o
+      - name: Compile full production Header80 translation unit for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=0 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -Xptxas=-v \
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/header80_service4warp_duallut.o 2>&1 | tee /tmp/ptxas-production.log
+          test -s /tmp/header80_service4warp_duallut.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-production.log
+          grep -F 'header80_pow_service4warp_duallut_kernel' /tmp/ptxas-production.log || true
       - name: Upload compile logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,5 +68,6 @@ jobs:
           path: |
             /tmp/ptxas-worker.log
             /tmp/ptxas-row.log
+            /tmp/ptxas-production.log
           if-no-files-found: warn
           retention-days: 30
