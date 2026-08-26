@@ -23,6 +23,7 @@
     }
 }
 
+#include "../warp_pair128_production.inc"
 
 } // namespace
 
