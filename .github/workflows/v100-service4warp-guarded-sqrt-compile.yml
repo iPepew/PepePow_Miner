@@ -1,4 +1,5 @@
 # Production guarded-sqrt architecture gate; no V100 hardware is used here.
+# Retriggered after an inconsistent queued/failed Actions state on 2026-08-26.
 name: V100 Service4Warp Guarded Sqrt Compile Gate
 
 on:
