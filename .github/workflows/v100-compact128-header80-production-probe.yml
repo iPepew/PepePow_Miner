@@ -1,0 +1,47 @@
+name: V100 Compact128 Exact Header80 Resource Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-compact128-topology
+    paths:
+      - native/tests/compact128_header80_production_probe.cu
+      - native/src/cuda/**
+      - .github/workflows/v100-compact128-header80-production-probe.yml
+  workflow_dispatch:
+
+jobs:
+  compile-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile exact compact128 Header80 probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=0 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -Xptxas=-v \
+            -c native/tests/compact128_header80_production_probe.cu \
+            -o /tmp/compact128-header80.o 2>&1 | tee /tmp/ptxas-compact128-header80.log
+          test -s /tmp/compact128-header80.o
+          grep -F 'compact128_header80_production_probe' /tmp/ptxas-compact128-header80.log
+          ! grep -A3 -F 'compact128_header80_production_probe' /tmp/ptxas-compact128-header80.log | grep -Eq '[1-9][0-9]* bytes spill (stores|loads)'
+      - name: Upload resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compact128-header80-sm70-${{ github.sha }}
+          path: /tmp/ptxas-compact128-header80.log
+          if-no-files-found: warn
+          retention-days: 30
