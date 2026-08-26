@@ -25,7 +25,21 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake ninja-build g++ ca-certificates curl python3
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+          cmake --version
+          cmake_ver="$(cmake --version | awk 'NR==1{print $3}')"
+          python3 - "$cmake_ver" <<'PY'
+          import sys
+          v=tuple(map(int,sys.argv[1].split('.')[:2]))
+          if v < (3,24): raise SystemExit(f'ERROR: CMake >=3.24 required, got {sys.argv[1]}')
+          PY
 
       - name: Build exact and guarded sm70 benchmarks
         shell: bash
@@ -64,6 +78,7 @@ jobs:
           source_commit=${GITHUB_SHA}
           cuda_toolkit=12.8.1
           cuda_arch=sm_70
+          cmake=$(cmake --version | awk 'NR==1{print $3}')
           exact_guarded_pair=true
           EOF
           tar -C /tmp/pkg -czf /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz .
