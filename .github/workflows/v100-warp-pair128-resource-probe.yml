@@ -1,4 +1,4 @@
-name: V100 Warp-Pair128 Named-Barrier Resource Gate
+name: V100 Warp-Pair128 Production Resource Gate
 
 on:
   push:
@@ -6,6 +6,10 @@ on:
       - agent/v21-v100-warp-specialized128
     paths:
       - native/tests/warp_pair128_namedbarrier_probe.cu
+      - native/src/cuda/warp_pair128_production.inc
+      - native/src/cuda/header80_backend.cu
+      - native/src/cuda/v1/header80_backend_part06.inc
+      - native/src/cuda/v1/header80_backend_part07.inc
       - .github/workflows/v100-warp-pair128-resource-probe.yml
   workflow_dispatch:
 
@@ -17,22 +21,44 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Compile two-pair named-barrier topology for Volta
+      - name: Compile two-pair named-barrier topology probe for Volta
         shell: bash
         run: |
           set -euo pipefail
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
             -Xptxas=-v \
             -c native/tests/warp_pair128_namedbarrier_probe.cu \
-            -o /tmp/warp_pair128_namedbarrier_probe.o 2>&1 | tee /tmp/ptxas-warp-pair128.log
+            -o /tmp/warp_pair128_namedbarrier_probe.o 2>&1 | tee /tmp/ptxas-warp-pair128-probe.log
           test -s /tmp/warp_pair128_namedbarrier_probe.o
-          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-warp-pair128.log
-          grep -E 'Used [0-9]+ registers|bytes smem|stack frame|spill|barriers' /tmp/ptxas-warp-pair128.log || true
-      - name: Upload resource log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-warp-pair128-probe.log
+      - name: Compile full production Header80 warp-pair128 path for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=0 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_WARP_PAIR128=1 \
+            -Xptxas=-v \
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/header80_warp_pair128.o 2>&1 | tee /tmp/ptxas-warp-pair128-production.log
+          test -s /tmp/header80_warp_pair128.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-warp-pair128-production.log
+          grep -F 'header80_pow_warp_pair128_kernel' /tmp/ptxas-warp-pair128-production.log
+          grep -E 'Used [0-9]+ registers|bytes smem|stack frame|spill|barriers' /tmp/ptxas-warp-pair128-production.log || true
+      - name: Upload resource logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: warp-pair128-sm70-${{ github.sha }}
-          path: /tmp/ptxas-warp-pair128.log
+          name: warp-pair128-production-sm70-${{ github.sha }}
+          path: |
+            /tmp/ptxas-warp-pair128-probe.log
+            /tmp/ptxas-warp-pair128-production.log
           if-no-files-found: warn
           retention-days: 30
