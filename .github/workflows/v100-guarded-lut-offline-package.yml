@@ -1,0 +1,94 @@
+name: V100 Guarded LUT Offline Benchmark Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-guarded-duallut-rowcp
+    paths:
+      - '.github/workflows/v100-guarded-lut-offline-package.yml'
+      - 'native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake ninja-build g++ ca-certificates curl python3
+
+      - name: Build exact and guarded sm70 benchmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(
+            -G Ninja
+            -DPEPEPOW_ENABLE_CUDA=ON
+            -DPEPEPOW_BUILD_TESTS=OFF
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real
+            -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+          )
+          cmake -S native -B /tmp/exact "${common[@]}" -DPEPEPOW_CUDA_GUARDED_LUT=OFF
+          cmake --build /tmp/exact --target pepepow_cuda_benchmark -j2
+          cmake -S native -B /tmp/guarded "${common[@]}" -DPEPEPOW_CUDA_GUARDED_LUT=ON -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+          cmake --build /tmp/guarded --target pepepow_cuda_benchmark -j2 2>&1 | tee /tmp/guarded-build.log
+          if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/guarded-build.log; then
+            echo 'ERROR: guarded benchmark build spills on sm_70'
+            exit 1
+          fi
+          mkdir -p /tmp/pkg
+          cp /tmp/exact/pepepow_cuda_benchmark /tmp/pkg/pepepow_cuda_benchmark_exact
+          cp /tmp/guarded/pepepow_cuda_benchmark /tmp/pkg/pepepow_cuda_benchmark_guarded
+          cp /tmp/guarded-build.log /tmp/pkg/guarded-build.log
+          cat > /tmp/pkg/build-info.txt <<EOF
+          source_branch=agent/v21-v100-guarded-duallut-rowcp
+          source_commit=${GITHUB_SHA}
+          cuda_toolkit=12.8.1
+          cuda_arch=sm_70
+          exact_guarded_pair=true
+          EOF
+          tar -C /tmp/pkg -czf /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz .
+          sha256sum /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz.sha256
+
+      - name: Publish replaceable prerelease asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v2.1-guarded-lut-v100-offline-bench
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${TAG}" 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+              "${api}/releases" \
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"Guarded LUT V100 Offline Bench\",\"prerelease\":true}")"
+          fi
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
+          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz"),""))' <<<"$assets")"
+          [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
+          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
+            --data-binary @/tmp/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz"
