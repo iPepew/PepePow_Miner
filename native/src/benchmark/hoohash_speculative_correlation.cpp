@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -21,11 +22,7 @@ using pepepow::crypto::HoohashMatrix;
 
 constexpr double kTransformMultiplier = 0.000001;
 
-enum class FastMode {
-    LinearizeNonlinear,
-    ZeroNonlinear,
-    BranchConstant,
-};
+enum class FastMode { LinearizeNonlinear, ZeroNonlinear, BranchConstant };
 
 std::uint8_t hex_nibble(char value) {
     if (value >= '0' && value <= '9') return static_cast<std::uint8_t>(value - '0');
@@ -39,8 +36,8 @@ std::array<std::uint8_t, N> parse_hex(std::string_view text) {
     if (text.size() != N * 2U) throw std::invalid_argument("unexpected hex length");
     std::array<std::uint8_t, N> output{};
     for (std::size_t index = 0; index < N; ++index) {
-        output[index] = static_cast<std::uint8_t>(
-            (hex_nibble(text[index * 2U]) << 4U) | hex_nibble(text[index * 2U + 1U]));
+        output[index] = static_cast<std::uint8_t>((hex_nibble(text[index * 2U]) << 4U) |
+                                                  hex_nibble(text[index * 2U + 1U]));
     }
     return output;
 }
@@ -60,11 +57,9 @@ std::uint32_t load_be32(const std::uint8_t* p) {
 }
 
 bool relaxed_hit(const Hash256& hash, unsigned target_bits) {
-    unsigned full_bytes = target_bits / 8U;
+    const unsigned full_bytes = target_bits / 8U;
     const unsigned rem_bits = target_bits % 8U;
-    for (unsigned i = 0; i < full_bytes; ++i) {
-        if (hash[i] != 0U) return false;
-    }
+    for (unsigned i = 0; i < full_bytes; ++i) if (hash[i] != 0U) return false;
     if (rem_bits == 0U) return true;
     const std::uint8_t mask = static_cast<std::uint8_t>(0xffU << (8U - rem_bits));
     return (hash[full_bytes] & mask) == 0U;
@@ -73,18 +68,14 @@ bool relaxed_hit(const Hash256& hash, unsigned target_bits) {
 double cheap_nonlinear(double x, FastMode mode) {
     if (mode == FastMode::ZeroNonlinear) return 0.0;
     if (mode == FastMode::LinearizeNonlinear) return x * 0.0001 / 1234.0;
-
     const double one = x * kTransformMultiplier / 8.0 - std::floor(x * kTransformMultiplier / 8.0);
     if (one < 0.33) return 1.0;
     if (one < 0.66) return 0.5;
     return 0.0;
 }
 
-Hash256 fast_matrix_mix(
-    const HoohashMatrix& matrix,
-    const Hash256& first_pass,
-    std::uint64_t nonce,
-    FastMode mode) {
+Hash256 fast_matrix_mix(const HoohashMatrix& matrix, const Hash256& first_pass,
+                        std::uint64_t nonce, FastMode mode) {
     std::array<std::uint8_t, 64> vector{};
     std::array<double, 64> product{};
     std::uint32_t hash_mod{};
@@ -105,8 +96,7 @@ Hash256 fast_matrix_mix(
                     if (mode == FastMode::LinearizeNonlinear) {
                         product[i] += matrix[i][j] * 0.0001 * static_cast<double>(vector[j]);
                     } else {
-                        product[i] += cheap_nonlinear(input, mode) *
-                                      static_cast<double>(vector[j]) * 1234.0;
+                        product[i] += cheap_nonlinear(input, mode) * static_cast<double>(vector[j]) * 1234.0;
                     }
                 }
             } else {
@@ -134,15 +124,6 @@ const char* mode_name(FastMode mode) {
     return "unknown";
 }
 
-struct Metrics {
-    std::uint64_t strict_hits{};
-    std::uint64_t fast_hits{};
-    std::uint64_t true_positives{};
-    std::uint64_t false_negatives{};
-    std::uint64_t false_positives{};
-    double seconds{};
-};
-
 } // namespace
 
 int main(int argc, char** argv) {
@@ -150,8 +131,8 @@ int main(int argc, char** argv) {
     unsigned target_bits = 6U;
     if (argc > 1) nonce_count = static_cast<std::uint32_t>(std::strtoul(argv[1], nullptr, 10));
     if (argc > 2) target_bits = static_cast<unsigned>(std::strtoul(argv[2], nullptr, 10));
-    if (nonce_count == 0U || target_bits == 0U || target_bits > 24U) {
-        std::cerr << "usage: hoohash_speculative_correlation [nonces>0] [target_bits 1..24]\n";
+    if (nonce_count == 0U || target_bits == 0U || target_bits > 8U) {
+        std::cerr << "usage: hoohash_speculative_correlation [nonces>0] [target_bits 1..8]\n";
         return 2;
     }
 
@@ -196,51 +177,101 @@ int main(int argc, char** argv) {
               << "strict_seconds=" << strict_seconds << '\n'
               << "strict_nonce_per_sec=" << strict_rate << '\n';
 
-    constexpr std::array<FastMode, 3> modes{
-        FastMode::LinearizeNonlinear,
-        FastMode::ZeroNonlinear,
-        FastMode::BranchConstant,
-    };
+    constexpr std::array<FastMode, 3> modes{FastMode::LinearizeNonlinear,
+                                            FastMode::ZeroNonlinear,
+                                            FastMode::BranchConstant};
+    constexpr std::array<unsigned, 14> cutoffs{4U, 8U, 16U, 32U, 64U, 128U, 192U,
+                                               224U, 240U, 248U, 252U, 254U, 255U, 256U};
 
-    bool any_recall_pass = false;
+    bool any_direct_recall_pass = false;
+    bool any_effective_pass = false;
     for (FastMode mode : modes) {
-        Metrics m{};
-        m.strict_hits = strict_hits;
+        std::vector<std::uint8_t> fast_prefix(nonce_count, 0U);
+        std::uint64_t fast_hits = 0U;
+        std::uint64_t true_positives = 0U;
+        std::uint64_t false_negatives = 0U;
+        std::uint64_t false_positives = 0U;
+
         const auto begin = std::chrono::steady_clock::now();
         for (std::uint32_t nonce = 0; nonce < nonce_count; ++nonce) {
             const auto mixed = fast_matrix_mix(matrix, first_passes[nonce], nonce, mode);
             const auto final_hash = pepepow::crypto::blake3_hash(mixed);
+            fast_prefix[nonce] = final_hash[0];
             const bool fast = relaxed_hit(final_hash, target_bits);
             const bool strict = strict_hit[nonce] != 0U;
-            if (fast) ++m.fast_hits;
-            if (fast && strict) ++m.true_positives;
-            if (!fast && strict) ++m.false_negatives;
-            if (fast && !strict) ++m.false_positives;
+            if (fast) ++fast_hits;
+            if (fast && strict) ++true_positives;
+            if (!fast && strict) ++false_negatives;
+            if (fast && !strict) ++false_positives;
         }
         const auto end = std::chrono::steady_clock::now();
-        m.seconds = std::chrono::duration<double>(end - begin).count();
-        const double fast_rate = static_cast<double>(nonce_count) / m.seconds;
-        const double recall = m.strict_hits == 0U ? 0.0 :
-            static_cast<double>(m.true_positives) / static_cast<double>(m.strict_hits);
-        const double precision = m.fast_hits == 0U ? 0.0 :
-            static_cast<double>(m.true_positives) / static_cast<double>(m.fast_hits);
+        const double fast_seconds = std::chrono::duration<double>(end - begin).count();
+        const double fast_rate = static_cast<double>(nonce_count) / fast_seconds;
+        const double recall = strict_hits == 0U ? 0.0 :
+            static_cast<double>(true_positives) / static_cast<double>(strict_hits);
+        const double precision = fast_hits == 0U ? 0.0 :
+            static_cast<double>(true_positives) / static_cast<double>(fast_hits);
         const double throughput_gain = fast_rate / strict_rate - 1.0;
-        const bool recall_pass = recall >= 0.995;
-        any_recall_pass = any_recall_pass || recall_pass;
+        const bool direct_recall_pass = recall >= 0.995;
+        any_direct_recall_pass = any_direct_recall_pass || direct_recall_pass;
 
         std::cout << "mode=" << mode_name(mode) << '\n'
-                  << "fast_hits=" << m.fast_hits << '\n'
-                  << "true_positives=" << m.true_positives << '\n'
-                  << "false_negatives=" << m.false_negatives << '\n'
-                  << "false_positives=" << m.false_positives << '\n'
+                  << "fast_hits=" << fast_hits << '\n'
+                  << "true_positives=" << true_positives << '\n'
+                  << "false_negatives=" << false_negatives << '\n'
+                  << "false_positives=" << false_positives << '\n'
                   << "recall=" << recall << '\n'
                   << "precision=" << precision << '\n'
-                  << "fast_seconds=" << m.seconds << '\n'
+                  << "fast_seconds=" << fast_seconds << '\n'
                   << "fast_nonce_per_sec=" << fast_rate << '\n'
                   << "throughput_gain=" << throughput_gain << '\n'
-                  << "recall_gate_0_995=" << (recall_pass ? "PASS" : "REJECT") << '\n';
+                  << "recall_gate_0_995=" << (direct_recall_pass ? "PASS" : "REJECT") << '\n';
+
+        double best_validator_fraction = std::numeric_limits<double>::infinity();
+        double best_effective_gain = -1.0;
+        unsigned best_cutoff = 0U;
+        std::uint64_t best_fn = strict_hits;
+        for (unsigned cutoff : cutoffs) {
+            std::uint64_t emitted = 0U;
+            std::uint64_t tp = 0U;
+            for (std::uint32_t nonce = 0; nonce < nonce_count; ++nonce) {
+                const bool emit = static_cast<unsigned>(fast_prefix[nonce]) < cutoff;
+                if (emit) {
+                    ++emitted;
+                    if (strict_hit[nonce] != 0U) ++tp;
+                }
+            }
+            const std::uint64_t fn = strict_hits - tp;
+            const double sweep_recall = strict_hits == 0U ? 0.0 :
+                static_cast<double>(tp) / static_cast<double>(strict_hits);
+            const double validator_fraction = static_cast<double>(emitted) / static_cast<double>(nonce_count);
+            const double effective_rate = 1.0 / (1.0 / fast_rate + validator_fraction / strict_rate);
+            const double effective_gain = effective_rate / strict_rate - 1.0;
+            std::cout << "superset_cutoff=" << cutoff
+                      << " validator_fraction=" << validator_fraction
+                      << " recall=" << sweep_recall
+                      << " false_negatives=" << fn
+                      << " effective_gain=" << effective_gain << '\n';
+            if (sweep_recall >= 0.995 && validator_fraction < best_validator_fraction) {
+                best_validator_fraction = validator_fraction;
+                best_effective_gain = effective_gain;
+                best_cutoff = cutoff;
+                best_fn = fn;
+            }
+        }
+
+        const bool superset_recall_pass = std::isfinite(best_validator_fraction);
+        const bool effective_pass = superset_recall_pass && best_effective_gain >= 0.25;
+        any_effective_pass = any_effective_pass || effective_pass;
+        std::cout << "superset_best_cutoff=" << best_cutoff << '\n'
+                  << "superset_best_validator_fraction="
+                  << (superset_recall_pass ? best_validator_fraction : 1.0) << '\n'
+                  << "superset_best_false_negatives=" << best_fn << '\n'
+                  << "superset_best_effective_gain=" << best_effective_gain << '\n'
+                  << "superset_gate_recall_0_995_gain_0_25=" << (effective_pass ? "PASS" : "REJECT") << '\n';
     }
 
-    std::cout << "correlation_gate=" << (any_recall_pass ? "PASS" : "REJECT") << '\n';
+    std::cout << "direct_correlation_gate=" << (any_direct_recall_pass ? "PASS" : "REJECT") << '\n'
+              << "superset_effective_gate=" << (any_effective_pass ? "PASS" : "REJECT") << '\n';
     return 0;
 }
