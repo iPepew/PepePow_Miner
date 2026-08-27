@@ -12,9 +12,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Register prefilter benchmark target
+      - name: Repair probe include and register benchmark target
         working-directory: native
         run: |
+          sed -i '/#include <chrono>/a #include <cmath>' src/benchmark/hoohash_speculative_prefilter.cpp
           cat >> CMakeLists.txt <<'EOF'
           add_executable(pepepow_hoohash_speculative_prefilter src/benchmark/hoohash_speculative_prefilter.cpp)
           target_link_libraries(pepepow_hoohash_speculative_prefilter PRIVATE pepepow_core)
