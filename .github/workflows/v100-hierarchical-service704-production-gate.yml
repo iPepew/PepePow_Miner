@@ -23,7 +23,7 @@ jobs:
           set -euo pipefail
           apt-get update
           apt-get install -y --no-install-recommends python3-pip ninja-build git ca-certificates
-          python3 -m pip install --break-system-packages 'cmake>=3.24,<4'
+          python3 -m pip install 'cmake>=3.24,<4'
           cmake --version
       - name: Compile production Header80 hierarchical service704 for Volta
         shell: bash
