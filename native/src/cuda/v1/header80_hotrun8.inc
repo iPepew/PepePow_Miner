@@ -152,6 +152,7 @@ void hoohash_mix_hotrun8_split_kernel(
     for (int i = 0; i < 8; ++i) work_words[base + i] = mixed[i];
 }
 
+#if !PEPEPOW_CUDA_SPLIT_PIPELINE
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
 void header80_pow_hotrun8_kernel(
     std::uint32_t first_nonce,
@@ -179,3 +180,4 @@ void header80_pow_hotrun8_kernel(
         for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
     }
 }
+#endif
