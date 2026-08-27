@@ -1,9 +1,9 @@
-name: V2 Speculative HooHash Census
+name: V2 Exact HooHash Hot-Run Prefix Census
 
 on:
   push:
     branches:
-      - agent/v21-v100-speculative-census
+      - agent/v21-v100-hotrun-prefix
   workflow_dispatch:
 
 jobs:
@@ -14,7 +14,7 @@ jobs:
       - name: Configure
         working-directory: native
         run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
-      - name: Build census and core tests
+      - name: Build exact hot-run census and core tests
         working-directory: native
         shell: bash
         run: |
@@ -27,18 +27,18 @@ jobs:
         if: env.build_rc == '0'
         working-directory: native
         run: ./build/pepepow_core_tests
-      - name: Run fixed-job nonlinear census
+      - name: Run fixed-job exact hot-run census
         if: env.build_rc == '0'
         working-directory: native
-        run: ./build/pepepow_hoohash_nonlinear_census 8192 | tee nonlinear-census.txt
+        run: ./build/pepepow_hoohash_nonlinear_census 8192 | tee hotrun-census.txt
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: v21-hoohash-nonlinear-census-${{ github.run_id }}
+          name: v21-hoohash-hotrun-prefix-census-${{ github.run_id }}
           path: |
             native/census-build.log
-            native/nonlinear-census.txt
+            native/hotrun-census.txt
           if-no-files-found: warn
       - name: Enforce build success
         if: always()
