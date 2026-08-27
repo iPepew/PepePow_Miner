@@ -1,0 +1,51 @@
+name: V100 Hierarchical Service704 Production Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hierarchical-service704
+    paths:
+      - 'native/src/cuda/**'
+      - 'native/CMakeLists.txt'
+      - '.github/workflows/v100-hierarchical-service704-production-gate.yml'
+  workflow_dispatch:
+
+jobs:
+  compile-production-sm70:
+    runs-on: ubuntu-22.04
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends python3-pip ninja-build git ca-certificates
+          python3 -m pip install --break-system-packages 'cmake>=3.24,<4'
+          cmake --version
+      - name: Compile production Header80 hierarchical service704 for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native -B /tmp/build -G Ninja \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DCMAKE_CUDA_FLAGS='-DPEPEPOW_CUDA_HIERARCHICAL_SERVICE704=1'
+          cmake --build /tmp/build --target pepepow_cuda -v 2>&1 | tee /tmp/production-hierarchical-build.log
+          grep -q 'header80_backend.cu' /tmp/production-hierarchical-build.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/production-hierarchical-build.log
+      - name: Upload production resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hierarchical-service704-production-sm70-${{ github.sha }}
+          path: /tmp/production-hierarchical-build.log
+          if-no-files-found: warn
+          retention-days: 30
