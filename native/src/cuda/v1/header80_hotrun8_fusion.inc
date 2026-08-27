@@ -1,14 +1,9 @@
-// Resource-only two-stage fusion probes for the proven exact hotrun8 split path.
-// These kernels are not selected by Header80CudaBackend yet. Their only purpose
-// is to determine whether one of the two global 32-byte/nonce boundaries can be
-// removed without reintroducing Volta register spills.
-
-namespace pepepow {
-namespace {
+// Exact two-stage fusion kernels for the proven hotrun8 split path.
+// This file is included inside pepepow's anonymous CUDA namespace after
+// header80_hotrun8.inc, so all exact BLAKE3/HooHash helpers are available.
 
 // Stage A+B fused: Header80 BLAKE3 -> exact hotrun8 HooHash -> global mixed[8].
-// If spill-free, this removes the first_pass global round-trip from the proven
-// three-stage pipeline while keeping final BLAKE3 in its own kernel.
+// Removes the first_pass global round-trip while keeping final BLAKE3 separate.
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
 void header80_first_hoohash_hotrun8_fused_kernel(
     std::uint32_t first_nonce,
@@ -34,8 +29,8 @@ void header80_first_hoohash_hotrun8_fused_kernel(
 }
 
 // Stage B+C fused: global first_pass[8] -> exact hotrun8 HooHash -> final
-// BLAKE3/target check. If spill-free, this removes the mixed global round-trip
-// while keeping the first BLAKE3 as a hard lifetime boundary.
+// BLAKE3/target check. Removes the mixed global round-trip while retaining the
+// first BLAKE3 as the register-lifetime boundary.
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
 void hoohash_final_hotrun8_fused_kernel(
     std::uint32_t first_nonce,
@@ -67,6 +62,3 @@ void hoohash_final_hotrun8_fused_kernel(
         for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
     }
 }
-
-} // namespace
-} // namespace pepepow
