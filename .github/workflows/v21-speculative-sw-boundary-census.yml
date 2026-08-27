@@ -1,0 +1,38 @@
+name: V2 Speculative SW Boundary Census
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-sw-boundary-census
+  workflow_dispatch:
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wire profile-only target
+        working-directory: native
+        run: |
+          cat >> CMakeLists.txt <<'EOF'
+          add_executable(pepepow_hoohash_sw_boundary_census src/benchmark/hoohash_sw_boundary_census.cpp)
+          target_link_libraries(pepepow_hoohash_sw_boundary_census PRIVATE pepepow_core)
+          EOF
+      - name: Configure and build profile
+        working-directory: native
+        run: |
+          cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target pepepow_hoohash_sw_boundary_census pepepow_core_tests -j2
+      - name: Run core consensus tests
+        working-directory: native
+        run: ./build/pepepow_core_tests
+      - name: Run exact SW boundary census
+        working-directory: native
+        run: ./build/pepepow_hoohash_sw_boundary_census 8192 | tee sw-boundary-census.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-sw-boundary-census-${{ github.run_id }}
+          path: native/sw-boundary-census.txt
+          if-no-files-found: warn
