@@ -122,6 +122,39 @@ void header80_final_kernel(
 }
 
 
+#if PEPEPOW_CUDA_HIERARCHICAL_SERVICE704
+constexpr unsigned int kHierarchicalGroups = 4U;
+constexpr unsigned int kHierarchicalCapacity = 192U;
+
+struct ColdServiceScratch {
+    unsigned int task_count[kHierarchicalGroups];
+    double task_x[kHierarchicalGroups][kHierarchicalCapacity];
+    double task_value[kHierarchicalGroups][kHierarchicalCapacity];
+    double task_result[PEPEPOW_CUDA_THREADS];
+    unsigned int task_owner[kHierarchicalGroups][kHierarchicalCapacity];
+};
+
+__device__ __forceinline__ unsigned int hierarchical_group_for_warp(unsigned int warp) {
+    return warp < 6U ? 0U : (warp < 12U ? 1U : (warp < 17U ? 2U : 3U));
+}
+
+__device__ __forceinline__ unsigned int hierarchical_first_warp(unsigned int group) {
+    return group == 0U ? 0U : (group == 1U ? 6U : (group == 2U ? 12U : 17U));
+}
+
+__device__ __forceinline__ unsigned int hierarchical_thread_count(unsigned int group) {
+    return group < 2U ? 192U : 160U;
+}
+
+__device__ __forceinline__ unsigned int hierarchical_capacity(unsigned int group) {
+    return group < 2U ? 192U : 160U;
+}
+
+__device__ __forceinline__ void hierarchical_barrier(unsigned int group) {
+    const unsigned int count = hierarchical_thread_count(group);
+    asm volatile("bar.sync %0, %1;" :: "r"(group + 1U), "r"(count) : "memory");
+}
+#else
 struct ColdServiceScratch {
     unsigned int task_count;
     double task_x[PEPEPOW_CUDA_THREADS];
@@ -129,6 +162,7 @@ struct ColdServiceScratch {
     double task_result[PEPEPOW_CUDA_THREADS];
     unsigned int task_owner[PEPEPOW_CUDA_THREADS];
 };
+#endif
 
 __device__ __forceinline__ void service_accumulate(
     const double* __restrict__ matrix,
