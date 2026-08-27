@@ -4,6 +4,9 @@
 #ifndef PEPEPOW_CUDA_WARP_PAIR128
 #define PEPEPOW_CUDA_WARP_PAIR128 0
 #endif
+#ifndef PEPEPOW_CUDA_NONCE_LOCAL128
+#define PEPEPOW_CUDA_NONCE_LOCAL128 0
+#endif
 #include "v1/header80_backend_part00.inc"
 #include "v1/header80_backend_part01.inc"
 #include "v1/header80_backend_part02.inc"
