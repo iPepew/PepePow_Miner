@@ -1,0 +1,37 @@
+name: V2 Hot-Run8 Exact Fallback SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun-prefix
+    paths:
+      - native/tests/hotrun8_exact_fallback_probe.cu
+      - .github/workflows/v21-hotrun8-exact-fallback-sm70.yml
+  workflow_dispatch:
+
+jobs:
+  resource:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile hotrun8 exact fallback probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/hotrun8_exact_fallback_probe.cu \
+            -o /tmp/hotrun8_exact_fallback.o 2>&1 | tee /tmp/ptxas-hotrun8.log
+          test -s /tmp/hotrun8_exact_fallback.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-hotrun8.log
+      - name: Upload resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-exact-fallback-sm70-${{ github.sha }}
+          path: /tmp/ptxas-hotrun8.log
+          if-no-files-found: warn
+          retention-days: 30
