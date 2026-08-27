@@ -1,0 +1,209 @@
+name: PepeW-Miner-v2.1 BETA Hot-Run8 Split HiveOS Smoke
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-split
+    paths:
+      - '.github/workflows/v21-hotrun8-split-hiveos-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      RELEASE_TAG: v2.1-hotrun8-split-v100-realpool-smoke
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+      OFFLINE_VERIFIED_COMMIT: 8e9d7fbbbf1bd16ecbe8f044ca244397009aef26
+
+    steps:
+      - name: Checkout exact offline-verified source
+        uses: actions/checkout@v4
+        with:
+          ref: 8e9d7fbbbf1bd16ecbe8f044ca244397009aef26
+          fetch-depth: 1
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils gh
+          python3 -m pip install --no-cache-dir "cmake==3.31.8"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+          test "$(git rev-parse HEAD)" = "$OFFLINE_VERIFIED_COMMIT"
+
+      - name: Apply professional console UI
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/professional_console_ui_v21.py
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('native/src/app/main.cpp').read_text(encoding='utf-8')
+          forbidden = ['🐸','🟣','🔵','✅','🟡','🔄','💰','❌','🔨','⏱','🔴','⚪']
+          found = [x for x in forbidden if x in text]
+          if found:
+              raise SystemExit(f'emoji still present in console UI: {found}')
+          required = ['[HOOHASH]','[POOL]','[READY]','[ACCEPTED]','[REJECTED]','[MINING]']
+          missing = [x for x in required if x not in text]
+          if missing:
+              raise SystemExit(f'professional UI markers missing: {missing}')
+          print('Professional no-emoji console UI verified')
+          PY
+
+      - name: Validate beta identity
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = "2.1-beta.1"
+          grep -F 'CUSTOM_VERSION="v2.1 BETA"' hiveos/h-manifest.conf
+          bash -n hiveos/h-config.sh
+          bash -n hiveos/h-run.sh
+          bash -n hiveos/h-stats.sh
+
+      - name: Configure exact offline-passed split candidate
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+
+      - name: Build and verify share-producing binary
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_benchmark \
+            pepepow_header80_differential 2>&1 | tee /tmp/build.log
+          ./build/pepepowminer --version | tee /tmp/version.txt
+          grep -F '2.1-beta.1' /tmp/version.txt
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.txt
+          grep -F sm_70 /tmp/elf.txt
+          ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
+          strings -a build/pepepowminer | grep -F 'POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY'
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          grep -q 'hoohash_mix_hotrun8_split_kernel' /tmp/build.log
+          grep -q 'header80_first_kernel' /tmp/build.log
+          grep -q 'header80_final_kernel' /tmp/build.log
+
+      - name: Assemble pinned HiveOS beta smoke package
+        run: |
+          set -Eeuo pipefail
+          rm -rf stage dist
+          mkdir -p "stage/${ROOT}" dist
+          install -m 0755 build/pepepowminer "stage/${ROOT}/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "stage/${ROOT}/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "stage/${ROOT}/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('stage/PepeW-Miner/h-stats.sh')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('"ver":"1.0.6"', '"ver":"v2.1 BETA"')
+          s = s.replace('"ver":"v2.0 BETA"', '"ver":"v2.1 BETA"')
+          p.write_text(s, encoding='utf-8')
+          p = Path('stage/PepeW-Miner/h-run.sh')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('PepeW-Miner-v2.0 BETA workers started:', 'PepeW-Miner-v2.1 BETA workers started:')
+          s = s.replace('PepeW Miner v1.0.4 multi-GPU workers started:', 'PepeW-Miner-v2.1 BETA workers started:')
+          s = s.replace('PepeW Miner v1.0.5 workers started:', 'PepeW-Miner-v2.1 BETA workers started:')
+          p.write_text(s, encoding='utf-8')
+          PY
+          cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
+          product=PepeW-Miner-v2.1 BETA
+          version=2.1-beta.1
+          source_branch=agent/v21-v100-hotrun8-split
+          source_commit=${OFFLINE_VERIFIED_COMMIT}
+          workflow_commit=${GITHUB_SHA}
+          offline_verified_run=33093574668
+          offline_verified_asset_sha256=b57974ac7d6ee514cf0045b52b5545e71afb9c0b3d578b3e5acff277dbeb5a80
+          offline_full_mhs=6.302
+          offline_gain_pct=36.473
+          differential_cases=100000
+          differential_mismatches=0
+          spills=0
+          source_behavior=v2.1-beta.1-hotrun8-split-share-producing
+          architecture=split-b3-hoohash-hotrun8-b3-704
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          cuda_native=sm_70
+          gpu_target=Tesla V100 / Volta
+          threads=704
+          min_blocks=1
+          split_pipeline=1
+          hotrun8=1
+          scaled_matrix=0
+          scaled_nibble_table=1
+          sw_state_mode=3
+          byte_unroll=1
+          algorithm=HooHash V110
+          hive_ar=accepted,rejected
+          console_ui=professional-no-emoji
+          verified_realpool_baseline_mhs=4.335
+          verified_realpool_baseline_accepted=109
+          verified_realpool_baseline_rejected=0
+          release_channel=BETA_SMOKE
+          EOF
+          sha256sum "stage/${ROOT}/pepepowminer" > "stage/${ROOT}/pepepowminer.sha256"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
+          sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
+
+      - name: Publish isolated real-pool smoke prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          notes="Offline-passed Tesla V100 smoke candidate pinned to source ${OFFLINE_VERIFIED_COMMIT}. Exact split BLAKE3 -> hot-run8 HooHash -> BLAKE3 pipeline. Offline 2M A/B: 6.302 vs 4.618 MH/s (+36.473%), 100000 differential cases / 0 mismatches, 0 CUDA spills. This prerelease is not promoted until real-pool Accepted shares validate it."
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title "PepeW-Miner-v2.1 BETA Hot-Run8 Split Smoke" --notes "$notes" --prerelease
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" \
+              --repo "$GH_REPO" --target "$OFFLINE_VERIFIED_COMMIT" \
+              --title "PepeW-Miner-v2.1 BETA Hot-Run8 Split Smoke" \
+              --notes "$notes" --prerelease
+          fi
+          echo "release=https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          echo "download=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
+          cat "dist/${ASSET}.sha256"
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v21-hotrun8-split-smoke-${{ github.sha }}
+          path: |
+            dist/PepeW-Miner-HiveOS.tar.gz
+            dist/PepeW-Miner-HiveOS.tar.gz.sha256
+            /tmp/build.log
+            /tmp/version.txt
+            /tmp/elf.txt
+          retention-days: 30
