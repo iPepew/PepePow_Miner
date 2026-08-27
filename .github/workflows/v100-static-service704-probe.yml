@@ -1,4 +1,4 @@
-name: V100 Static Service704 Resource Gate
+name: V100 Static Service704 Production Resource Gate
 
 on:
   push:
@@ -6,32 +6,59 @@ on:
       - agent/v21-v100-static-service704
     paths:
       - native/tests/static_service704_probe.cu
+      - native/src/cuda/header80_backend.cu
+      - native/src/cuda/v1/header80_backend_part04.inc
+      - native/src/cuda/v1/header80_backend_part05.inc
+      - native/src/cuda/v1/header80_backend_part06.inc
+      - native/CMakeLists.txt
       - .github/workflows/v100-static-service704-probe.yml
   workflow_dispatch:
 
 jobs:
   compile-sm70:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Compile static service704 probe for Volta
+      - name: Compile probe and production Header80 for Volta
         shell: bash
         run: |
           set -euo pipefail
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cmake ninja-build git >/dev/null
+
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
             -Xptxas=-v \
             -c native/tests/static_service704_probe.cu \
-            -o /tmp/static_service704_probe.o 2>&1 | tee /tmp/ptxas-static-service704.log
+            -o /tmp/static_service704_probe.o 2>&1 | tee /tmp/ptxas-static-service704-probe.log
           test -s /tmp/static_service704_probe.o
-          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-static-service704.log
-      - name: Upload resource log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-static-service704-probe.log
+
+          cmake -S native -B /tmp/static-service704-build -G Ninja \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+          cmake --build /tmp/static-service704-build --target pepepow_cuda -j2 2>&1 | tee /tmp/ptxas-static-service704-production.log
+          grep -F 'header80_backend.cu' /tmp/ptxas-static-service704-production.log >/dev/null || true
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-static-service704-production.log
+          test -s /tmp/static-service704-build/libpepepow_cuda.a
+      - name: Upload resource logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: static-service704-sm70-${{ github.sha }}
-          path: /tmp/ptxas-static-service704.log
+          name: static-service704-production-sm70-${{ github.sha }}
+          path: |
+            /tmp/ptxas-static-service704-probe.log
+            /tmp/ptxas-static-service704-production.log
           if-no-files-found: warn
           retention-days: 30
