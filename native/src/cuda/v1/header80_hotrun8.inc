@@ -1,8 +1,11 @@
-// Exact hot-run width-8 candidate. This file is included inside the anonymous
-// CUDA namespace, before host methods. Consensus arithmetic is unchanged:
-// warm cells are committed in the original order and every state transition
-// is evaluated with update_sw_state(); cold cells use the existing exact
-// safe_nonlinear() path. No approximate result can reach share submission.
+// Exact hot-run width-4 production recovery candidate. This file is included
+// inside the anonymous CUDA namespace, before host methods. The internal
+// HOTRUN8 macro/kernel name is intentionally retained for minimal integration
+// churn; the active production batching width in this candidate is four cells.
+// Consensus arithmetic is unchanged: warm cells are committed in the original
+// order and every state transition is evaluated with update_sw_state(); cold
+// cells use the existing exact safe_nonlinear() path. No approximate result can
+// reach share submission.
 
 __device__ __forceinline__ std::uint32_t hotrun8_nibble(
     const std::uint32_t first_pass[8], int col) {
@@ -36,33 +39,27 @@ __device__ __forceinline__ double matrix_row_hotrun8(
 
     #pragma unroll 1
     for (int col = 0; col < 64;) {
-        if (!sw_state_is_cold(sw) && col <= 56) {
-            // Preserve an eight-cell logical hot run, but materialize only four
-            // contributions at a time. The production integration previously
-            // kept eight FP64 values live across the serial SW-state commits,
-            // which forced ptxas spills even though the isolated probe was clean.
-            // Reusing one 4-value staging window cuts live state without changing
-            // arithmetic order or the exact cold transition point.
-            int consumed = 0;
-            #pragma unroll 1
-            for (int batch = 0; batch < 2; ++batch) {
-                double contribution[4];
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    const int offset = batch * 4 + i;
-                    const int cell = row_offset + col + offset;
-                    const std::uint32_t nibble = hotrun8_nibble(first_pass, col + offset);
-                    contribution[i] = hotrun8_warm_contribution(
-                        matrix, scaled_nibble_table, cell, nibble);
-                }
+        if (!sw_state_is_cold(sw) && col <= 60) {
+            // The previous logical width-8 production candidate still spilled
+            // after reducing its staging window because the wider control/live
+            // state remained visible to ptxas. This recovery candidate makes the
+            // actual hot-run width four so only four FP64 contributions and the
+            // corresponding state transitions are live at once.
+            double contribution[4];
+            #pragma unroll
+            for (int i = 0; i < 4; ++i) {
+                const int cell = row_offset + col + i;
+                const std::uint32_t nibble = hotrun8_nibble(first_pass, col + i);
+                contribution[i] = hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble);
+            }
 
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    sum += contribution[i];
-                    update_sw_state(sw, sum);
-                    ++consumed;
-                    if (sw_state_is_cold(sw)) break;
-                }
+            int consumed = 0;
+            #pragma unroll
+            for (int i = 0; i < 4; ++i) {
+                sum += contribution[i];
+                update_sw_state(sw, sum);
+                ++consumed;
                 if (sw_state_is_cold(sw)) break;
             }
             col += consumed;
