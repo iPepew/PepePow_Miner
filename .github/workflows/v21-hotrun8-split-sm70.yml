@@ -35,21 +35,21 @@ jobs:
             -o /tmp/header80-hotrun8-split.o 2>&1 | tee /tmp/ptxas-hotrun8-split.log
           test -s /tmp/header80-hotrun8-split.o
           grep -q 'hoohash_mix_hotrun8_split_kernel' /tmp/ptxas-hotrun8-split.log
-          python3 - <<'PY'
-          import re
-          t=open('/tmp/ptxas-hotrun8-split.log',errors='replace').read()
-          marker='hoohash_mix_hotrun8_split_kernel'
-          pos=t.find(marker)
-          if pos < 0: raise SystemExit('missing split kernel')
-          chunk=t[pos:pos+1200]
-          m=re.search(r'(\d+) bytes stack frame, (\d+) bytes spill stores, (\d+) bytes spill loads',chunk)
-          if not m: raise SystemExit('missing split resource record')
-          stack,stores,loads=map(int,m.groups())
-          print(f'split_stack_bytes={stack}')
-          print(f'split_spill_store_bytes={stores}')
-          print(f'split_spill_load_bytes={loads}')
-          if stores or loads: raise SystemExit(2)
-          PY
+
+          resource_line="$(awk '
+            /hoohash_mix_hotrun8_split_kernel/ { seen=1 }
+            seen && /bytes stack frame, [0-9]+ bytes spill stores, [0-9]+ bytes spill loads/ { print; exit }
+          ' /tmp/ptxas-hotrun8-split.log)"
+          test -n "$resource_line"
+          stack="$(printf '%s\n' "$resource_line" | sed -n 's/.*[^0-9]\([0-9][0-9]*\) bytes stack frame.*/\1/p')"
+          stores="$(printf '%s\n' "$resource_line" | sed -n 's/.*stack frame, \([0-9][0-9]*\) bytes spill stores.*/\1/p')"
+          loads="$(printf '%s\n' "$resource_line" | sed -n 's/.*spill stores, \([0-9][0-9]*\) bytes spill loads.*/\1/p')"
+          test -n "$stack" && test -n "$stores" && test -n "$loads"
+          echo "split_stack_bytes=$stack"
+          echo "split_spill_store_bytes=$stores"
+          echo "split_spill_load_bytes=$loads"
+          test "$stores" -eq 0
+          test "$loads" -eq 0
       - name: Upload resource log
         if: always()
         uses: actions/upload-artifact@v4
