@@ -1,9 +1,9 @@
-name: V100 Warp-Pair128 Offline Benchmark Package
+name: V100 Nonce-Local128 Offline Benchmark Package
 
 on:
   push:
     branches:
-      - agent/v21-v100-warp-specialized128
+      - agent/v21-v100-noncelocal128
     paths:
       - '.github/workflows/v100-warp-pair128-package.yml'
       - 'native/**'
@@ -35,7 +35,7 @@ jobs:
           ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
           cmake --version
 
-      - name: Build verified service704 baseline and warp-pair128 production Header80 candidate
+      - name: Build verified service704 baseline and nonce-local128 production Header80 candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -70,7 +70,7 @@ jobs:
             2>&1 | tee /tmp/candidate-build.log
 
           if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/candidate-build.log; then
-            echo 'ERROR: warp-pair128 production build contains CUDA spills on sm_70'
+            echo 'ERROR: nonce-local128 production build contains CUDA spills on sm_70'
             exit 1
           fi
 
@@ -81,7 +81,7 @@ jobs:
           cp /tmp/exact-build.log /tmp/pkg/exact-build.log
           cp /tmp/candidate-build.log /tmp/pkg/guarded-build.log
           cat > /tmp/pkg/build-info.txt <<EOF
-          source_branch=agent/v21-v100-warp-specialized128
+          source_branch=agent/v21-v100-noncelocal128
           source_commit=${GITHUB_SHA}
           cuda_toolkit=12.8.1
           cuda_arch=sm_70
@@ -89,20 +89,19 @@ jobs:
           benchmark_path=production-header80-backend
           exact_guarded_pair=true
           differential_path=production-header80-search-max-target
-          architecture=warp-pair128-two-owner-service-pairs-named-barriers
+          architecture=nonce-local128-all-threads-own-nonces-no-service-warps
           baseline_threads=704
           candidate_block_threads=128
-          candidate_nonces_per_block=64
-          candidate_shared_bytes=1792
+          candidate_nonces_per_block=128
           EOF
-          tar -C /tmp/pkg -czf /tmp/PepeW-WarpPair128-V100-Offline-Bench.tar.gz .
-          sha256sum /tmp/PepeW-WarpPair128-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-WarpPair128-V100-Offline-Bench.tar.gz.sha256
+          tar -C /tmp/pkg -czf /tmp/PepeW-NonceLocal128-V100-Offline-Bench.tar.gz .
+          sha256sum /tmp/PepeW-NonceLocal128-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-NonceLocal128-V100-Offline-Bench.tar.gz.sha256
 
       - name: Publish replaceable prerelease asset
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v2.1-warp-pair128-v100-offline-bench
+          TAG: v2.1-noncelocal128-v100-offline-bench
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
@@ -111,13 +110,13 @@ jobs:
           if [[ -z "$release_json" ]]; then
             release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
               "${api}/releases" \
-              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"Warp-Pair128 V100 Offline Bench\",\"prerelease\":true}")"
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"Nonce-Local128 V100 Offline Bench\",\"prerelease\":true}")"
           fi
           rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
           assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
-          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-WarpPair128-V100-Offline-Bench.tar.gz"),""))' <<<"$assets")"
+          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-NonceLocal128-V100-Offline-Bench.tar.gz"),""))' <<<"$assets")"
           [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
           curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
-            --data-binary @/tmp/PepeW-WarpPair128-V100-Offline-Bench.tar.gz \
-            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-WarpPair128-V100-Offline-Bench.tar.gz" >/dev/null
-          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-WarpPair128-V100-Offline-Bench.tar.gz"
+            --data-binary @/tmp/PepeW-NonceLocal128-V100-Offline-Bench.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-NonceLocal128-V100-Offline-Bench.tar.gz" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-NonceLocal128-V100-Offline-Bench.tar.gz"
