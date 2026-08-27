@@ -50,9 +50,19 @@
     static thread_local bool cache_configured = false;
     if (!cache_configured) {
 #if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8
+  #if defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 1
+        check_cuda_header80(
+            cudaFuncSetCacheConfig(header80_first_hoohash_hotrun8_fused_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(first+hoohash hotrun8 fusion)");
+  #elif defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
+        check_cuda_header80(
+            cudaFuncSetCacheConfig(hoohash_final_hotrun8_fused_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(hoohash+final hotrun8 fusion)");
+  #else
         check_cuda_header80(
             cudaFuncSetCacheConfig(hoohash_mix_hotrun8_split_kernel, cudaFuncCachePreferL1),
             "cudaFuncSetCacheConfig(hoohash hotrun8 split)");
+  #endif
 #else
         check_cuda_header80(
             cudaFuncSetCacheConfig(hoohash_mix_kernel, cudaFuncCachePreferL1),
@@ -61,6 +71,27 @@
         cache_configured = true;
     }
     auto* work_words = static_cast<std::uint32_t*>(device_work_);
+#if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 1
+    header80_first_hoohash_hotrun8_fused_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "header80_first_hoohash_hotrun8_fused_kernel launch");
+    header80_final_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin), work_words,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
+#elif defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
+    header80_first_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+    hoohash_final_hotrun8_fused_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_fused_kernel launch");
+#else
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
@@ -81,6 +112,7 @@
         static_cast<std::uint32_t>(range.begin), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
+#endif
 #else
     static thread_local bool cache_configured = false;
     if (!cache_configured) {
