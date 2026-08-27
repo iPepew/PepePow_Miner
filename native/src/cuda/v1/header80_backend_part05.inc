@@ -17,50 +17,36 @@
         task_x = cell * hash_mod * value + nonce_mod;
     }
 
-    const unsigned int lane = static_cast<unsigned int>(threadIdx.x) & 31U;
-    const unsigned int warp_mask = __activemask();
-    const unsigned int task_mask = __ballot_sync(warp_mask, task);
-    unsigned int slot = 0U;
-    if (task_mask != 0U) {
-        const int leader = __ffs(static_cast<int>(task_mask)) - 1;
-        unsigned int base = 0U;
-        if (static_cast<int>(lane) == leader) {
-            base = atomicAdd(&scratch.task_count,
-                             static_cast<unsigned int>(__popc(task_mask)));
-        }
-        base = __shfl_sync(warp_mask, base, leader);
-        const unsigned int lower_mask =
-            lane == 0U ? 0U : ((1U << lane) - 1U);
-        slot = base + static_cast<unsigned int>(
-            __popc(task_mask & lower_mask));
-        if (task) {
-            scratch.task_x[slot] = task_x;
-            scratch.task_value[slot] = value;
-            scratch.task_owner[slot] =
-                static_cast<unsigned int>(threadIdx.x);
-        }
+    // Deterministic owner slot: no ballot/atomicAdd compaction and no
+    // task_owner lookup.  Inactive/warm owners explicitly publish task=0 so
+    // service workers can safely scan all 704 slots after the barrier.
+    const unsigned int owner = static_cast<unsigned int>(threadIdx.x);
+    scratch.task[owner] = task ? 1U : 0U;
+    if (task) {
+        scratch.task_x[owner] = task_x;
+        scratch.task_value[owner] = value;
     }
 
     __syncthreads();
-    const unsigned int task_count = scratch.task_count;
     constexpr unsigned int kServiceThreads = 128U;
-    if (static_cast<unsigned int>(threadIdx.x) < kServiceThreads) {
-        for (unsigned int task_index = static_cast<unsigned int>(threadIdx.x);
-             task_index < task_count; task_index += kServiceThreads) {
-            const double nonlinear_value =
-                safe_nonlinear(scratch.task_x[task_index]);
-            const unsigned int owner = scratch.task_owner[task_index];
-            scratch.task_result[owner] =
-                nonlinear_value * scratch.task_value[task_index] * 1234.0;
+    if (owner < kServiceThreads) {
+        for (unsigned int slot = owner;
+             slot < static_cast<unsigned int>(PEPEPOW_CUDA_THREADS);
+             slot += kServiceThreads) {
+            if (scratch.task[slot] != 0U) {
+                const double nonlinear_value =
+                    safe_nonlinear(scratch.task_x[slot]);
+                scratch.task_result[slot] =
+                    nonlinear_value * scratch.task_value[slot] * 1234.0;
+            }
         }
     }
-    if (threadIdx.x == 0U) scratch.task_count = 0U;
     __syncthreads();
 
     if (active) {
         if (cold) {
             if (nibble != 0U) {
-                sum += scratch.task_result[threadIdx.x];
+                sum += scratch.task_result[owner];
             }
         } else {
             sum += warm_contribution;
@@ -147,8 +133,6 @@ void header80_pow_kernel(
     DeviceShareResult* __restrict__ result,
     std::size_t count) {
     __shared__ ColdServiceScratch scratch;
-    if (threadIdx.x == 0U) scratch.task_count = 0U;
-    __syncthreads();
 
     const std::size_t index =
         static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
