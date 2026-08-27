@@ -21,6 +21,23 @@ struct Xoshiro256pp {
     [[nodiscard]] std::uint64_t next() noexcept;
 };
 
+// Host-only census used by the speculative/filter research branch. It observes
+// the exact consensus reference without changing normal HooHash behaviour.
+struct HooHashNonlinearCensus {
+    std::uint64_t nonces{};
+    std::uint64_t matrix_cells{};
+    std::uint64_t nonlinear_cells{};
+    std::uint64_t linear_cells{};
+    std::uint64_t zero_nibble_skips{};
+    std::array<std::uint64_t, 3> nonlinear_branch_counts{}; // exp(sin+cos), sin^2, invsqrt
+    std::array<std::uint64_t, 4> transform_counts{};        // add, sub, mul, div
+    std::uint64_t retry_rounds{};
+    double x_min{};
+    double x_max{};
+    std::array<double, 3> y_min{};
+    std::array<double, 3> y_max{};
+};
+
 [[nodiscard]] Xoshiro256pp make_xoshiro(const Hash256& seed) noexcept;
 [[nodiscard]] HoohashMatrix generate_hoohash_matrix(const Hash256& seed);
 
@@ -29,5 +46,13 @@ struct Xoshiro256pp {
     const HoohashMatrix& matrix,
     const Hash256& first_pass,
     std::uint64_t nonce);
+
+// Exact-reference equivalent of hoohash_matrix_mix that additionally updates
+// branch/range statistics. Intended only for fixed-job profiling in CI/lab.
+[[nodiscard]] Hash256 hoohash_matrix_mix_profiled(
+    const HoohashMatrix& matrix,
+    const Hash256& first_pass,
+    std::uint64_t nonce,
+    HooHashNonlinearCensus& census);
 
 } // namespace pepepow::crypto
