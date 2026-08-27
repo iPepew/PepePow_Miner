@@ -21,8 +21,8 @@ struct Xoshiro256pp {
     [[nodiscard]] std::uint64_t next() noexcept;
 };
 
-// Host-only census used by the speculative/filter research branch. It observes
-// the exact consensus reference without changing normal HooHash behaviour.
+// Host-only census used by architecture research. It observes the exact
+// consensus reference without changing normal HooHash behaviour.
 struct HooHashNonlinearCensus {
     std::uint64_t nonces{};
     std::uint64_t matrix_cells{};
@@ -36,6 +36,14 @@ struct HooHashNonlinearCensus {
     double x_max{};
     std::array<double, 3> y_min{};
     std::array<double, 3> y_max{};
+
+    // Exact lengths of consecutive linear-state cells, bounded by a matrix row.
+    // This is used to evaluate a warp-prefix hot-run architecture where linear
+    // cells are processed in exact prefix chunks and any cold transition falls
+    // back to the existing sequential/service path before state is committed.
+    std::array<std::uint64_t, 65> linear_run_histogram{};
+    std::uint64_t linear_runs{};
+    std::uint64_t max_linear_run{};
 };
 
 [[nodiscard]] Xoshiro256pp make_xoshiro(const Hash256& seed) noexcept;
@@ -48,7 +56,7 @@ struct HooHashNonlinearCensus {
     std::uint64_t nonce);
 
 // Exact-reference equivalent of hoohash_matrix_mix that additionally updates
-// branch/range statistics. Intended only for fixed-job profiling in CI/lab.
+// branch/range/run statistics. Intended only for fixed-job profiling in CI/lab.
 [[nodiscard]] Hash256 hoohash_matrix_mix_profiled(
     const HoohashMatrix& matrix,
     const Hash256& first_pass,
