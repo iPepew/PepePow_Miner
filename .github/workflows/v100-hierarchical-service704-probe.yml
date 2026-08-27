@@ -1,0 +1,37 @@
+name: V100 Hierarchical Service704 Resource Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hierarchical-service704
+    paths:
+      - native/tests/hierarchical_service704_compile_probe.cu
+      - .github/workflows/v100-hierarchical-service704-probe.yml
+  workflow_dispatch:
+
+jobs:
+  compile-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile hierarchical service704 probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/hierarchical_service704_compile_probe.cu \
+            -o /tmp/hierarchical_service704_probe.o 2>&1 | tee /tmp/ptxas-hierarchical.log
+          test -s /tmp/hierarchical_service704_probe.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-hierarchical.log
+      - name: Upload resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hierarchical-service704-sm70-${{ github.sha }}
+          path: /tmp/ptxas-hierarchical.log
+          if-no-files-found: warn
+          retention-days: 30
