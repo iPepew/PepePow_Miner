@@ -37,21 +37,32 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     #pragma unroll 1
     for (int col = 0; col < 64;) {
         if (!sw_state_is_cold(sw) && col <= 56) {
-            double contribution[8];
-            #pragma unroll
-            for (int i = 0; i < 8; ++i) {
-                const int cell = row_offset + col + i;
-                const std::uint32_t nibble = hotrun8_nibble(first_pass, col + i);
-                contribution[i] = hotrun8_warm_contribution(
-                    matrix, scaled_nibble_table, cell, nibble);
-            }
-
+            // Preserve an eight-cell logical hot run, but materialize only four
+            // contributions at a time. The production integration previously
+            // kept eight FP64 values live across the serial SW-state commits,
+            // which forced ptxas spills even though the isolated probe was clean.
+            // Reusing one 4-value staging window cuts live state without changing
+            // arithmetic order or the exact cold transition point.
             int consumed = 0;
-            #pragma unroll
-            for (int i = 0; i < 8; ++i) {
-                sum += contribution[i];
-                update_sw_state(sw, sum);
-                consumed = i + 1;
+            #pragma unroll 1
+            for (int batch = 0; batch < 2; ++batch) {
+                double contribution[4];
+                #pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    const int offset = batch * 4 + i;
+                    const int cell = row_offset + col + offset;
+                    const std::uint32_t nibble = hotrun8_nibble(first_pass, col + offset);
+                    contribution[i] = hotrun8_warm_contribution(
+                        matrix, scaled_nibble_table, cell, nibble);
+                }
+
+                #pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    sum += contribution[i];
+                    update_sw_state(sw, sum);
+                    ++consumed;
+                    if (sw_state_is_cold(sw)) break;
+                }
                 if (sw_state_is_cold(sw)) break;
             }
             col += consumed;
