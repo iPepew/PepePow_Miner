@@ -21,6 +21,42 @@
     const unsigned int warp_mask = __activemask();
     const unsigned int task_mask = __ballot_sync(warp_mask, task);
     unsigned int slot = 0U;
+#if PEPEPOW_CUDA_HIERARCHICAL_SERVICE704
+    const unsigned int warp = static_cast<unsigned int>(threadIdx.x) >> 5U;
+    const unsigned int group = hierarchical_group_for_warp(warp);
+    const unsigned int first_warp = hierarchical_first_warp(group);
+    if (task_mask != 0U) {
+        const int leader = __ffs(static_cast<int>(task_mask)) - 1;
+        unsigned int base = 0U;
+        if (static_cast<int>(lane) == leader) {
+            base = atomicAdd(&scratch.task_count[group],
+                             static_cast<unsigned int>(__popc(task_mask)));
+        }
+        base = __shfl_sync(warp_mask, base, leader);
+        const unsigned int lower_mask =
+            lane == 0U ? 0U : ((1U << lane) - 1U);
+        slot = base + static_cast<unsigned int>(__popc(task_mask & lower_mask));
+        if (task && slot < hierarchical_capacity(group)) {
+            scratch.task_x[group][slot] = task_x;
+            scratch.task_value[group][slot] = value;
+            scratch.task_owner[group][slot] = static_cast<unsigned int>(threadIdx.x);
+        }
+    }
+
+    hierarchical_barrier(group);
+    const unsigned int task_count = scratch.task_count[group];
+    if (warp == first_warp) {
+        for (unsigned int task_index = lane;
+             task_index < task_count; task_index += 32U) {
+            const double nonlinear_value = safe_nonlinear(scratch.task_x[group][task_index]);
+            const unsigned int owner = scratch.task_owner[group][task_index];
+            scratch.task_result[owner] =
+                nonlinear_value * scratch.task_value[group][task_index] * 1234.0;
+        }
+        if (lane == 0U) scratch.task_count[group] = 0U;
+    }
+    hierarchical_barrier(group);
+#else
     if (task_mask != 0U) {
         const int leader = __ffs(static_cast<int>(task_mask)) - 1;
         unsigned int base = 0U;
@@ -56,6 +92,7 @@
     }
     if (threadIdx.x == 0U) scratch.task_count = 0U;
     __syncthreads();
+#endif
 
     if (active) {
         if (cold) {
@@ -147,8 +184,17 @@ void header80_pow_kernel(
     DeviceShareResult* __restrict__ result,
     std::size_t count) {
     __shared__ ColdServiceScratch scratch;
+#if PEPEPOW_CUDA_HIERARCHICAL_SERVICE704
+    const unsigned int init_warp = static_cast<unsigned int>(threadIdx.x) >> 5U;
+    const unsigned int init_group = hierarchical_group_for_warp(init_warp);
+    const unsigned int init_first_warp = hierarchical_first_warp(init_group);
+    const unsigned int init_lane = static_cast<unsigned int>(threadIdx.x) & 31U;
+    if (init_warp == init_first_warp && init_lane == 0U) scratch.task_count[init_group] = 0U;
+    hierarchical_barrier(init_group);
+#else
     if (threadIdx.x == 0U) scratch.task_count = 0U;
     __syncthreads();
+#endif
 
     const std::size_t index =
         static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
