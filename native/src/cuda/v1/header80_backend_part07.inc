@@ -70,10 +70,10 @@
 #else
     static thread_local bool cache_configured = false;
     if (!cache_configured) {
-#if PEPEPOW_CUDA_WARP_PAIR128
+#if PEPEPOW_CUDA_WARP_PAIR256
         check_cuda_header80(
-            cudaFuncSetCacheConfig(header80_pow_warp_pair128_kernel, cudaFuncCachePreferL1),
-            "cudaFuncSetCacheConfig(header80 warp-pair128)");
+            cudaFuncSetCacheConfig(header80_pow_warp_pair256_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(header80 warp-pair256)");
 #else
         check_cuda_header80(
             cudaFuncSetCacheConfig(header80_pow_kernel, cudaFuncCachePreferL1),
@@ -81,15 +81,15 @@
 #endif
         cache_configured = true;
     }
-#if PEPEPOW_CUDA_WARP_PAIR128
-    constexpr unsigned int pair_threads = 128U;
-    const unsigned int pair_blocks = static_cast<unsigned int>((count + 63U) / 64U);
-    header80_pow_warp_pair128_kernel<<<pair_blocks, pair_threads>>>(
+#if PEPEPOW_CUDA_WARP_PAIR256
+    constexpr unsigned int pair_threads = 256U;
+    const unsigned int pair_blocks = static_cast<unsigned int>((count + 127U) / 128U);
+    header80_pow_warp_pair256_kernel<<<pair_blocks, pair_threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_),
         static_cast<DeviceShareResult*>(device_result_), count);
-    check_cuda_header80(cudaGetLastError(), "header80_pow_warp_pair128_kernel launch");
+    check_cuda_header80(cudaGetLastError(), "header80_pow_warp_pair256_kernel launch");
 #else
     header80_pow_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
