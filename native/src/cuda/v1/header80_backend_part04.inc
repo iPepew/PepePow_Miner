@@ -121,13 +121,15 @@ void header80_final_kernel(
     }
 }
 
-
+// Static owner-indexed service scratch.  Every one of the 704 owner threads
+// owns exactly one slot, while threads 0..127 also service those slots in a
+// fixed stride.  This removes task_count atomic compaction and task_owner
+// indirection without changing the verified 704-owner/128-service topology.
 struct ColdServiceScratch {
-    unsigned int task_count;
     double task_x[PEPEPOW_CUDA_THREADS];
     double task_value[PEPEPOW_CUDA_THREADS];
     double task_result[PEPEPOW_CUDA_THREADS];
-    unsigned int task_owner[PEPEPOW_CUDA_THREADS];
+    unsigned int task[PEPEPOW_CUDA_THREADS];
 };
 
 __device__ __forceinline__ void service_accumulate(
