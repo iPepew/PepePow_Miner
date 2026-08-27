@@ -71,6 +71,9 @@ jobs:
           source_commit=${GITHUB_SHA}
           cuda_toolkit=12.8.1
           cuda_arch=sm_70
+          benchmark_path=production-header80-backend
+          differential_path=production-header80-search-max-target
+          exact_guarded_pair=true
           architecture=warp-pair256-four-owner-service-pairs-named-barriers
           baseline_threads=704
           candidate_block_threads=256
