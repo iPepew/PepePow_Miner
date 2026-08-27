@@ -1,9 +1,9 @@
-name: V2 Hot-Run8 Production SM70 Gate
+name: V2 Hot-Run4 Production SM70 Gate
 
 on:
   push:
     branches:
-      - agent/v21-v100-hotrun-prefix
+      - agent/v21-v100-hotrun4-production
     paths:
       - native/src/cuda/v1/header80_hotrun8.inc
       - native/src/cuda/v1/header80_backend_part06.inc
@@ -19,7 +19,7 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Compile production Header80 hotrun8 for Volta
+      - name: Compile production Header80 hotrun4 for Volta
         shell: bash
         run: |
           set -euo pipefail
@@ -33,15 +33,15 @@ jobs:
             -DPEPEPOW_CUDA_HOTRUN8=1 \
             -Xptxas=-v \
             -c native/src/cuda/header80_backend.cu \
-            -o /tmp/header80-hotrun8.o 2>&1 | tee /tmp/ptxas-hotrun8-production.log
-          test -s /tmp/header80-hotrun8.o
-          grep -q 'header80_pow_hotrun8_kernel' /tmp/ptxas-hotrun8-production.log
-          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-hotrun8-production.log
+            -o /tmp/header80-hotrun4.o 2>&1 | tee /tmp/ptxas-hotrun4-production.log
+          test -s /tmp/header80-hotrun4.o
+          grep -q 'header80_pow_hotrun8_kernel' /tmp/ptxas-hotrun4-production.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-hotrun4-production.log
       - name: Upload production resource log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hotrun8-production-sm70-${{ github.sha }}
-          path: /tmp/ptxas-hotrun8-production.log
+          name: hotrun4-production-sm70-${{ github.sha }}
+          path: /tmp/ptxas-hotrun4-production.log
           if-no-files-found: warn
           retention-days: 30
