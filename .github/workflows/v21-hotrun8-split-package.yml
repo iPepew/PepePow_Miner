@@ -1,9 +1,9 @@
-name: V2.1 Hot-Run8 Split Offline Benchmark Package
+name: V2.1 Hot-Run16 Split Offline Benchmark Package
 
 on:
   push:
     branches:
-      - agent/v21-v100-hotrun8-split
+      - agent/v21-v100-hotrun16-split
     paths:
       - '.github/workflows/v21-hotrun8-split-package.yml'
       - 'native/**'
@@ -35,7 +35,7 @@ jobs:
           ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
           cmake --version
 
-      - name: Build exact baseline and split hot-run8 candidate
+      - name: Build exact baseline and split hot-run16 candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -71,7 +71,7 @@ jobs:
             2>&1 | tee /tmp/candidate-build.log
 
           if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/candidate-build.log; then
-            echo 'ERROR: split hot-run8 production build contains CUDA spills on sm_70'
+            echo 'ERROR: split hot-run16 production build contains CUDA spills on sm_70'
             exit 1
           fi
           grep -q 'hoohash_mix_hotrun8_split_kernel' /tmp/candidate-build.log
@@ -85,7 +85,7 @@ jobs:
           cp /tmp/exact-build.log /tmp/pkg/exact-build.log
           cp /tmp/candidate-build.log /tmp/pkg/candidate-build.log
           cat > /tmp/pkg/build-info.txt <<EOF
-          source_branch=agent/v21-v100-hotrun8-split
+          source_branch=agent/v21-v100-hotrun16-split
           source_commit=${GITHUB_SHA}
           cuda_toolkit=12.8.1
           cuda_arch=sm_70
@@ -93,19 +93,19 @@ jobs:
           benchmark_path=production-header80-backend
           exact_candidate_pair=true
           differential_path=production-header80-search-max-target
-          architecture=split-b3-hoohash-hotrun8-b3-704
+          architecture=split-b3-hoohash-hotrun16-b3-704
           candidate_split_pipeline=true
-          candidate_hotrun8=true
+          candidate_hotrun16=true
           candidate_spills=0
           EOF
-          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz .
-          sha256sum /tmp/PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz.sha256
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz.sha256
 
       - name: Publish replaceable prerelease asset
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v2.1-hotrun8-split-v100-offline-bench
+          TAG: v2.1-hotrun16-split-v100-offline-bench
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
@@ -114,13 +114,13 @@ jobs:
           if [[ -z "$release_json" ]]; then
             release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
               "${api}/releases" \
-              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA Hot-Run8 Split Offline Bench\",\"prerelease\":true}")"
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA Hot-Run16 Split Offline Bench\",\"prerelease\":true}")"
           fi
           rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
           assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
-          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz"),""))' <<<"$assets")"
+          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz"),""))' <<<"$assets")"
           [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
           curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
-            --data-binary @/tmp/PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz \
-            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz" >/dev/null
-          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz"
+            --data-binary @/tmp/PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz"
