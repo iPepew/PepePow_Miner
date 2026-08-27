@@ -35,6 +35,7 @@ __device__ __forceinline__ double exact_nonlinear(double x, unsigned int selecto
 // service threads (same service width as verified service4warp) while removing
 // one global atomic task queue and block-wide synchronization from the probe.
 // warp0<->1, warp2<->3, warp4<->5, warp6<->7.
+// Discovery gate: resource profile first; no V100 allocation at this stage.
 __global__ __launch_bounds__(256, 1)
 void warp_pair256_namedbarrier_probe(
     const double* __restrict__ input,
