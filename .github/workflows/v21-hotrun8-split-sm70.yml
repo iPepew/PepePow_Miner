@@ -1,0 +1,60 @@
+name: V2 Hot-Run8 Split Middle SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-split
+    paths:
+      - native/src/cuda/v1/header80_hotrun8.inc
+      - native/src/cuda/header80_backend.cu
+      - .github/workflows/v21-hotrun8-split-sm70.yml
+  workflow_dispatch:
+
+jobs:
+  split-middle-resource:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile split hotrun8 middle stage for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=1 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_HOTRUN8=1 \
+            -Xptxas=-v \
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/header80-hotrun8-split.o 2>&1 | tee /tmp/ptxas-hotrun8-split.log
+          test -s /tmp/header80-hotrun8-split.o
+          grep -q 'hoohash_mix_hotrun8_split_kernel' /tmp/ptxas-hotrun8-split.log
+          python3 - <<'PY'
+          import re
+          t=open('/tmp/ptxas-hotrun8-split.log',errors='replace').read()
+          marker='hoohash_mix_hotrun8_split_kernel'
+          pos=t.find(marker)
+          if pos < 0: raise SystemExit('missing split kernel')
+          chunk=t[pos:pos+1200]
+          m=re.search(r'(\d+) bytes stack frame, (\d+) bytes spill stores, (\d+) bytes spill loads',chunk)
+          if not m: raise SystemExit('missing split resource record')
+          stack,stores,loads=map(int,m.groups())
+          print(f'split_stack_bytes={stack}')
+          print(f'split_spill_store_bytes={stores}')
+          print(f'split_spill_load_bytes={loads}')
+          if stores or loads: raise SystemExit(2)
+          PY
+      - name: Upload resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-split-sm70-${{ github.sha }}
+          path: /tmp/ptxas-hotrun8-split.log
+          if-no-files-found: warn
+          retention-days: 30
