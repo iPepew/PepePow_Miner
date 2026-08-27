@@ -27,7 +27,9 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cmake ninja-build git >/dev/null
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pip ninja-build git >/dev/null
+          python3 -m pip install --no-cache-dir 'cmake>=3.24,<4' >/dev/null
+          cmake --version
 
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
             -Xptxas=-v \
