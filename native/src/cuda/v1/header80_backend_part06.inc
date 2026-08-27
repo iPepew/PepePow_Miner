@@ -23,6 +23,7 @@
     }
 }
 
+#include "header80_hotrun8.inc"
 
 } // namespace
 
