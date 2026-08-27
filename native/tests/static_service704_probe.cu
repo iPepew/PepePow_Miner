@@ -6,15 +6,12 @@ namespace {
 
 constexpr unsigned int kThreads = 704U;
 constexpr unsigned int kServiceThreads = 128U;
-constexpr unsigned int kOwnerThreads = kThreads - kServiceThreads; // 576 = 18 warps
-constexpr unsigned int kOwnerWarps = kOwnerThreads / 32U;
-constexpr unsigned int kServiceWarps = kServiceThreads / 32U;
 
 struct StaticServiceScratch {
-    double task_x[kOwnerThreads];
-    double task_value[kOwnerThreads];
-    double task_result[kOwnerThreads];
-    unsigned int task[kOwnerThreads];
+    double task_x[kThreads];
+    double task_value[kThreads];
+    double task_result[kThreads];
+    unsigned int task[kThreads];
 };
 
 __device__ __forceinline__ double exact_nonlinear(double x, unsigned int selector) {
@@ -32,12 +29,12 @@ __device__ __forceinline__ double exact_nonlinear(double x, unsigned int selecto
     }
 }
 
-// Preserve the verified 704-thread geometry and the full 128-thread nonlinear
-// service width, but remove dynamic atomicAdd/task_owner compaction. Every owner
-// thread owns a deterministic scratch slot. Four service warps consume those
-// slots by static warp partitioning. This probe deliberately keeps the two
-// block-wide phase barriers so the first experiment isolates queue/compaction
-// overhead from synchronization topology.
+// Match the verified service704 topology exactly: all 704 threads remain nonce
+// owners, while threads 0..127 simultaneously act as nonlinear service workers.
+// Every owner has one deterministic scratch slot, eliminating atomicAdd and
+// task_owner compaction without reducing owner-side parallelism. The two
+// block-wide barriers are deliberately preserved so this experiment isolates
+// queue/compaction overhead only.
 __global__ __launch_bounds__(704, 1)
 void static_service704_probe(const double* __restrict__ input,
                              const std::uint32_t* __restrict__ selector,
@@ -46,11 +43,8 @@ void static_service704_probe(const double* __restrict__ input,
     __shared__ StaticServiceScratch scratch;
 
     const unsigned int tid = static_cast<unsigned int>(threadIdx.x);
-    const bool service = tid < kServiceThreads;
-    const unsigned int owner_tid = tid - kServiceThreads;
-    const bool owner = !service;
-    const std::size_t owner_index = static_cast<std::size_t>(blockIdx.x) * kOwnerThreads + owner_tid;
-    const bool active = owner && owner_index < owner_count;
+    const std::size_t owner_index = static_cast<std::size_t>(blockIdx.x) * kThreads + tid;
+    const bool active = owner_index < owner_count;
 
     double acc = 0.0;
     double x = active ? input[owner_index] : 0.0;
@@ -58,26 +52,21 @@ void static_service704_probe(const double* __restrict__ input,
 
     #pragma unroll 1
     for (int cell = 0; cell < 64; ++cell) {
-        if (owner) {
-            const bool task = active && (((sel + static_cast<unsigned int>(cell)) & 7U) != 0U);
-            scratch.task[owner_tid] = task ? 1U : 0U;
-            scratch.task_x[owner_tid] = x + static_cast<double>(cell) * 0.0001;
-            scratch.task_value[owner_tid] = 1.0 + static_cast<double>((sel >> 4U) & 15U);
-        }
+        const bool task = active && (((sel + static_cast<unsigned int>(cell)) & 7U) != 0U);
+        scratch.task[tid] = task ? 1U : 0U;
+        scratch.task_x[tid] = x + static_cast<double>(cell) * 0.0001;
+        scratch.task_value[tid] = 1.0 + static_cast<double>((sel >> 4U) & 15U);
 
         __syncthreads();
 
-        if (service) {
-            const unsigned int service_warp = tid >> 5U;
-            const unsigned int lane = tid & 31U;
-            // 18 owner warps split deterministically as 5/5/4/4 across service warps.
-            const unsigned int first_warp = service_warp < 2U ? service_warp * 5U : 10U + (service_warp - 2U) * 4U;
-            const unsigned int warp_count = service_warp < 2U ? 5U : 4U;
-            #pragma unroll 1
-            for (unsigned int w = 0; w < warp_count; ++w) {
-                const unsigned int slot = (first_warp + w) * 32U + lane;
+        if (tid < kServiceThreads) {
+            // Static striped ownership of all 704 slots across 128 workers.
+            // No atomic counter and no task_owner indirection are required.
+            for (unsigned int slot = tid; slot < kThreads; slot += kServiceThreads) {
                 if (scratch.task[slot]) {
-                    const double r = exact_nonlinear(scratch.task_x[slot], sel + static_cast<unsigned int>(cell));
+                    const double r = exact_nonlinear(
+                        scratch.task_x[slot], selector[static_cast<std::size_t>(blockIdx.x) * kThreads + slot] +
+                        static_cast<unsigned int>(cell));
                     scratch.task_result[slot] = r * scratch.task_value[slot];
                 }
             }
@@ -86,8 +75,8 @@ void static_service704_probe(const double* __restrict__ input,
         __syncthreads();
 
         if (active) {
-            if (scratch.task[owner_tid]) acc += scratch.task_result[owner_tid];
-            else acc += scratch.task_x[owner_tid] * 0.0001;
+            if (task) acc += scratch.task_result[tid];
+            else acc += scratch.task_x[tid] * 0.0001;
             x = acc * 0.999999 + x * 0.000001;
             sel = sel * 1664525U + 1013904223U;
         }
