@@ -1,8 +1,9 @@
-// Exact hot-run width-8 candidate. This file is included inside the anonymous
-// CUDA namespace, before host methods. Consensus arithmetic is unchanged:
-// warm cells are committed in the original order and every state transition
-// is evaluated with update_sw_state(); cold cells use the existing exact
-// safe_nonlinear() path. No approximate result can reach share submission.
+// Exact hot-run width-16 candidate, temporarily using the established hotrun8
+// plumbing/names so this evidence-driven resource probe stays isolated from
+// production selection logic. Consensus arithmetic is unchanged: warm cells
+// are committed in the original order and every state transition is evaluated
+// with update_sw_state(); cold cells use the existing exact safe_nonlinear()
+// path. No approximate result can reach share submission.
 
 __device__ __forceinline__ std::uint32_t hotrun8_nibble(
     const std::uint32_t first_pass[8], int col) {
@@ -36,14 +37,13 @@ __device__ __forceinline__ double matrix_row_hotrun8(
 
     #pragma unroll 1
     for (int col = 0; col < 64;) {
-        if (!sw_state_is_cold(sw) && col <= 56) {
-            // Preserve an eight-cell logical hot run, but materialize only four
-            // contributions at a time. Reusing one 4-value staging window cuts
-            // live state without changing arithmetic order or the exact cold
-            // transition point.
+        if (!sw_state_is_cold(sw) && col <= 48) {
+            // Preserve a sixteen-cell logical hot run, but materialize only
+            // four contributions at a time. The four-value staging window
+            // bounds live registers while reducing outer-loop/control work.
             int consumed = 0;
             #pragma unroll 1
-            for (int batch = 0; batch < 2; ++batch) {
+            for (int batch = 0; batch < 4; ++batch) {
                 double contribution[4];
                 #pragma unroll
                 for (int i = 0; i < 4; ++i) {
@@ -121,11 +121,10 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
     }
 }
 
-// Split middle-stage probe/candidate. The first BLAKE3 result lives in the
-// existing global work buffer, so the HooHash kernel owns only first_pass +
-// mixed state. This deliberately trades 64 B/nonce of global round-trip for a
-// hard register-lifetime boundary. Consensus order and exact nonlinear math are
-// identical to the monolithic hot-run path.
+// Split middle-stage candidate. The first BLAKE3 result lives in the existing
+// global work buffer, so the HooHash kernel owns only first_pass + mixed state.
+// This trades 64 B/nonce of global round-trip for a hard register-lifetime
+// boundary. Consensus order and exact nonlinear math remain unchanged.
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
 void hoohash_mix_hotrun8_split_kernel(
     std::uint32_t first_nonce,
