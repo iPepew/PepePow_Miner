@@ -24,6 +24,7 @@
 }
 
 #include "header80_hotrun8.inc"
+#include "header80_hotrun8_fusion.inc"
 
 } // namespace
 
