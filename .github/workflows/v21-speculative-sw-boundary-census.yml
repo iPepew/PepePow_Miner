@@ -36,3 +36,5 @@ jobs:
           name: v21-sw-boundary-census-${{ github.run_id }}
           path: native/sw-boundary-census.txt
           if-no-files-found: warn
+
+# trigger: profile SW control-boundary density after guarded-row replay rejection
