@@ -49,20 +49,34 @@
     }
     static thread_local bool cache_configured = false;
     if (!cache_configured) {
+#if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8
+        check_cuda_header80(
+            cudaFuncSetCacheConfig(hoohash_mix_hotrun8_split_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(hoohash hotrun8 split)");
+#else
         check_cuda_header80(
             cudaFuncSetCacheConfig(hoohash_mix_kernel, cudaFuncCachePreferL1),
             "cudaFuncSetCacheConfig(hoohash mix)");
+#endif
         cache_configured = true;
     }
     auto* work_words = static_cast<std::uint32_t*>(device_work_);
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+#if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8
+    hoohash_mix_hotrun8_split_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_mix_hotrun8_split_kernel launch");
+#else
     hoohash_mix_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_), work_words, count);
     check_cuda_header80(cudaGetLastError(), "hoohash_mix_kernel launch");
+#endif
     header80_final_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
