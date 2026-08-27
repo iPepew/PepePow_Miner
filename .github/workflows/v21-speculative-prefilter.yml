@@ -1,0 +1,40 @@
+name: V2 Speculative Candidate Prefilter
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-prefilter
+  workflow_dispatch:
+
+jobs:
+  prefilter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Register prefilter benchmark target
+        working-directory: native
+        run: |
+          cat >> CMakeLists.txt <<'EOF'
+          add_executable(pepepow_hoohash_speculative_prefilter src/benchmark/hoohash_speculative_prefilter.cpp)
+          target_link_libraries(pepepow_hoohash_speculative_prefilter PRIVATE pepepow_core)
+          EOF
+      - name: Configure CPU reference build
+        working-directory: native
+        run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build prefilter probe and core tests
+        working-directory: native
+        run: cmake --build build --target pepepow_hoohash_speculative_prefilter pepepow_core_tests -j2
+      - name: Run core tests
+        working-directory: native
+        run: ./build/pepepow_core_tests
+      - name: Run fixed-job candidate-level prefilter probe
+        working-directory: native
+        run: ./build/pepepow_hoohash_speculative_prefilter 131072 8 | tee speculative-prefilter.txt
+      - name: Upload prefilter evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-hoohash-speculative-prefilter-${{ github.run_id }}
+          path: native/speculative-prefilter.txt
+          if-no-files-found: warn
