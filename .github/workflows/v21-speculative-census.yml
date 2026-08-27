@@ -1,0 +1,30 @@
+name: V2 Speculative HooHash Census
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-census
+  workflow_dispatch:
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        working-directory: native
+        run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build census and core tests
+        working-directory: native
+        run: cmake --build build --target pepepow_hoohash_nonlinear_census pepepow_core_tests -j2
+      - name: Run core tests
+        working-directory: native
+        run: ./build/pepepow_core_tests
+      - name: Run fixed-job nonlinear census
+        working-directory: native
+        run: ./build/pepepow_hoohash_nonlinear_census 8192 | tee nonlinear-census.txt
+      - name: Upload census
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-hoohash-nonlinear-census-${{ github.run_id }}
+          path: native/nonlinear-census.txt
