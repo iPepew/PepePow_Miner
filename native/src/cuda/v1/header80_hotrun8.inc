@@ -85,11 +85,9 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     return sum;
 }
 
-// Keep the long HooHash state machine behind a call boundary.  Inlining it into
+// Keep the long HooHash state machine behind a call boundary. Inlining it into
 // the BLAKE3 wrapper extends first_pass/mixed/final_hash lifetimes across all 64
-// rows and made ptxas spill 132 B in each direction on sm_70.  This boundary is
-// consensus-neutral and mirrors the earlier successful register-lifetime fix
-// used by the guarded architecture experiments.
+// rows and made ptxas spill 132 B in each direction on sm_70.
 __device__ __noinline__ void hoohash_mix_words_hotrun8(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
@@ -121,6 +119,37 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
         mixed[pair >> 2] ^=
             static_cast<std::uint32_t>(combined & 0xffU) << shift;
     }
+}
+
+// Split middle-stage probe/candidate. The first BLAKE3 result lives in the
+// existing global work buffer, so the HooHash kernel owns only first_pass +
+// mixed state. This deliberately trades 64 B/nonce of global round-trip for a
+// hard register-lifetime boundary. Consensus order and exact nonlinear math are
+// identical to the monolithic hot-run path.
+__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+void hoohash_mix_hotrun8_split_kernel(
+    std::uint32_t first_nonce,
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    std::uint32_t* __restrict__ work_words,
+    std::size_t count) {
+    const std::size_t index =
+        static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    std::uint32_t first_pass[8];
+    std::uint32_t mixed[8];
+    const std::size_t base = index * 8U;
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) first_pass[i] = work_words[base + i];
+
+    const std::uint32_t nonce =
+        first_nonce + static_cast<std::uint32_t>(index);
+    hoohash_mix_words_hotrun8(
+        matrix, scaled_nibble_table, byte_swap32(nonce), first_pass, mixed);
+
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) work_words[base + i] = mixed[i];
 }
 
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
