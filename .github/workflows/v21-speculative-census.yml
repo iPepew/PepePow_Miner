@@ -16,15 +16,31 @@ jobs:
         run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build census and core tests
         working-directory: native
-        run: cmake --build build --target pepepow_hoohash_nonlinear_census pepepow_core_tests -j2
+        shell: bash
+        run: |
+          set +e
+          cmake --build build --target pepepow_hoohash_nonlinear_census pepepow_core_tests -j2 2>&1 | tee census-build.log
+          rc=${PIPESTATUS[0]}
+          echo "build_rc=${rc}" >> "$GITHUB_ENV"
+          exit 0
       - name: Run core tests
+        if: env.build_rc == '0'
         working-directory: native
         run: ./build/pepepow_core_tests
       - name: Run fixed-job nonlinear census
+        if: env.build_rc == '0'
         working-directory: native
         run: ./build/pepepow_hoohash_nonlinear_census 8192 | tee nonlinear-census.txt
-      - name: Upload census
+      - name: Upload diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: v21-hoohash-nonlinear-census-${{ github.run_id }}
-          path: native/nonlinear-census.txt
+          path: |
+            native/census-build.log
+            native/nonlinear-census.txt
+          if-no-files-found: warn
+      - name: Enforce build success
+        if: always()
+        shell: bash
+        run: test "${build_rc:-1}" = "0"
