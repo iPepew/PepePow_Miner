@@ -1,0 +1,49 @@
+name: V100 HotRun8 Two-Stage Fusion SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-two-stage-fusion
+    paths:
+      - native/src/cuda/header80_backend.cu
+      - native/src/cuda/v1/header80_hotrun8.inc
+      - native/src/cuda/v1/header80_hotrun8_fusion.inc
+      - .github/workflows/v100-hotrun8-two-stage-fusion.yml
+  workflow_dispatch:
+
+jobs:
+  resource-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile production TU with two-stage fusion probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=1 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -Xptxas=-v \
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/header80-hotrun8-fusion.o 2>&1 | tee /tmp/ptxas.log
+          test -s /tmp/header80-hotrun8-fusion.o
+          grep -F 'header80_first_hoohash_hotrun8_fused_kernel' /tmp/ptxas.log
+          grep -F 'hoohash_final_hotrun8_fused_kernel' /tmp/ptxas.log
+          ! grep -A6 -E 'header80_first_hoohash_hotrun8_fused_kernel|hoohash_final_hotrun8_fused_kernel' /tmp/ptxas.log | grep -Eq '[1-9][0-9]* bytes spill (stores|loads)'
+      - name: Upload ptxas log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-two-stage-fusion-sm70-${{ github.sha }}
+          path: /tmp/ptxas.log
+          if-no-files-found: warn
+          retention-days: 30
