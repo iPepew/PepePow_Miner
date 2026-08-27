@@ -1,0 +1,60 @@
+name: V2 Speculative Linear Guarded
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-linear-guarded
+  workflow_dispatch:
+
+jobs:
+  correlation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure CPU reference build
+        working-directory: native
+        run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build guarded speculative probe and core tests
+        working-directory: native
+        run: cmake --build build --target pepepow_hoohash_linear_guarded_correlation pepepow_core_tests -j2
+      - name: Run core tests
+        working-directory: native
+        run: ./build/pepepow_core_tests
+      - name: Run relaxed-target guarded correlation gate
+        working-directory: native
+        run: ./build/pepepow_hoohash_linear_guarded_correlation 131072 8 | tee linear-guarded-correlation.txt
+      - name: Enforce speculative pre-CUDA gate
+        working-directory: native
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          text=open('linear-guarded-correlation.txt',encoding='utf-8').read()
+          blocks=text.split('mode=fp32_interval_guard_row_replay')[1:]
+          if not blocks:
+              raise SystemExit('missing guarded candidate blocks')
+          passing=[]
+          for b in blocks:
+              def val(name):
+                  m=re.search(rf'^{name}=([^\n]+)', b, re.M)
+                  return m.group(1).strip() if m else None
+              recall=float(val('recall') or 0)
+              gain=float(val('cpu_throughput_gain_pct') or -999)
+              fallback=float(val('fallback_row_pct') or 100)
+              invalid=int(val('invalid_submissions_after_strict_validation') or 1)
+              scale=float(val('guard_scale') or 0)
+              if recall >= 0.995 and gain >= 25.0 and invalid == 0:
+                  passing.append((gain, -fallback, scale, recall))
+          if not passing:
+              print('SPECULATIVE_PRECUDA_REJECT=no_mode_meets_recall_and_throughput')
+              raise SystemExit(0)
+          best=max(passing)
+          print(f'SPECULATIVE_PRECUDA_PASS guard_scale={best[2]} recall={best[3]:.6f} gain_pct={best[0]:.3f}')
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-linear-guarded-${{ github.run_id }}
+          path: native/linear-guarded-correlation.txt
+          if-no-files-found: warn
