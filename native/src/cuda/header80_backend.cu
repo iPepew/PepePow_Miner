@@ -9,3 +9,4 @@
 #include "v1/header80_backend_part05.inc"
 #include "v1/header80_backend_part06.inc"
 #include "v1/header80_backend_part07.inc"
+#include "v1/header80_hotrun8_fusion.inc"
