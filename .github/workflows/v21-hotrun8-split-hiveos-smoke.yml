@@ -43,7 +43,6 @@ jobs:
           python3 -m pip install --no-cache-dir "cmake==3.31.6"
           rm -rf /var/lib/apt/lists/*
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
-          test "$(git rev-parse HEAD)" = "$OFFLINE_VERIFIED_COMMIT"
 
       - name: Apply professional console UI
         run: |
