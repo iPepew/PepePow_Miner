@@ -16,6 +16,7 @@ set(PEPEPOW_CUDA_THREADS "768" CACHE STRING "CUDA threads per Header80 search bl
 set(PEPEPOW_CUDA_MIN_BLOCKS "1" CACHE STRING "Requested resident blocks per SM for launch bounds")
 option(PEPEPOW_CUDA_SCALED_MATRIX "Use exact pre-scaled matrix" ON)
 option(PEPEPOW_CUDA_SPLIT_PIPELINE "Use split Header80 pipeline" OFF)
+option(PEPEPOW_CUDA_HOTRUN8 "Use exact hot-run8 HooHash middle stage" OFF)
 option(PEPEPOW_CUDA_FAST_FRACTION "Use exact bit-level positive fraction" ON)
 option(PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS "Use exact integer-to-FP64 bit conversion" ON)
 option(PEPEPOW_CUDA_BIT_SW_FRACTION "Use exact bit-level SW fraction" ON)
@@ -98,6 +99,7 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_MIN_BLOCKS=${PEPEPOW_CUDA_MIN_BLOCKS}
         PEPEPOW_CUDA_SCALED_MATRIX=$<BOOL:${PEPEPOW_CUDA_SCALED_MATRIX}>
         PEPEPOW_CUDA_SPLIT_PIPELINE=$<BOOL:${PEPEPOW_CUDA_SPLIT_PIPELINE}>
+        PEPEPOW_CUDA_HOTRUN8=$<BOOL:${PEPEPOW_CUDA_HOTRUN8}>
         PEPEPOW_CUDA_FAST_FRACTION=$<BOOL:${PEPEPOW_CUDA_FAST_FRACTION}>
         PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS=$<BOOL:${PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS}>
         PEPEPOW_CUDA_BIT_SW_FRACTION=$<BOOL:${PEPEPOW_CUDA_BIT_SW_FRACTION}>
@@ -126,6 +128,8 @@ if(PEPEPOW_ENABLE_CUDA)
     target_link_libraries(pepepow_cuda_benchmark PRIVATE pepepow_cuda)
     add_executable(pepepow_header80_benchmark src/benchmark/header80_benchmark.cpp)
     target_link_libraries(pepepow_header80_benchmark PRIVATE pepepow_cuda)
+    add_executable(pepepow_header80_differential src/benchmark/header80_differential.cpp)
+    target_link_libraries(pepepow_header80_differential PRIVATE pepepow_cuda)
     add_executable(pepepow_cuda_warp_probe src/benchmark/warp_divergence_probe.cpp)
     target_link_libraries(pepepow_cuda_warp_probe PRIVATE pepepow_cuda)
 endif()
