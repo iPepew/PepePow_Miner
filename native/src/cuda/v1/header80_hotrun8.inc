@@ -38,11 +38,9 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     for (int col = 0; col < 64;) {
         if (!sw_state_is_cold(sw) && col <= 56) {
             // Preserve an eight-cell logical hot run, but materialize only four
-            // contributions at a time. The production integration previously
-            // kept eight FP64 values live across the serial SW-state commits,
-            // which forced ptxas spills even though the isolated probe was clean.
-            // Reusing one 4-value staging window cuts live state without changing
-            // arithmetic order or the exact cold transition point.
+            // contributions at a time. Reusing one 4-value staging window cuts
+            // live state without changing arithmetic order or the exact cold
+            // transition point.
             int consumed = 0;
             #pragma unroll 1
             for (int batch = 0; batch < 2; ++batch) {
@@ -87,7 +85,12 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     return sum;
 }
 
-__device__ __forceinline__ void hoohash_mix_words_hotrun8(
+// Keep the long HooHash state machine behind a call boundary.  Inlining it into
+// the BLAKE3 wrapper extends first_pass/mixed/final_hash lifetimes across all 64
+// rows and made ptxas spill 132 B in each direction on sm_70.  This boundary is
+// consensus-neutral and mirrors the earlier successful register-lifetime fix
+// used by the guarded architecture experiments.
+__device__ __noinline__ void hoohash_mix_words_hotrun8(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
     std::uint32_t mix_nonce, const std::uint32_t first_pass[8],
