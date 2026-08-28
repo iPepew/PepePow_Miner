@@ -1,0 +1,79 @@
+name: V2 Speculative Q20 Bitmask SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-q20-bitmask
+    paths:
+      - 'native/src/cuda/v1/speculative_q20_probe.cu'
+      - '.github/workflows/v21-speculative-q20-bitmask-sm70.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sm70-static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install static-analysis tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils grep ca-certificates
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Compile Q20 bitmask generator for Volta
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/q20-bitmask-sm70
+          /usr/local/cuda/bin/nvcc \
+            -std=c++17 -O3 -lineinfo \
+            -arch=sm_70 -cubin \
+            -Xptxas=-v \
+            native/src/cuda/v1/speculative_q20_probe.cu \
+            -o artifacts/q20-bitmask-sm70/probe.cubin \
+            2>&1 | tee artifacts/q20-bitmask-sm70/ptxas.log
+          test -s artifacts/q20-bitmask-sm70/probe.cubin
+
+      - name: Enforce static resource and instruction gate
+        run: |
+          set -Eeuo pipefail
+          log=artifacts/q20-bitmask-sm70/ptxas.log
+          cat "$log"
+          if grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' "$log"; then
+            echo 'Q20_BITMASK_STATIC_REJECT=spills'
+            exit 1
+          fi
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage artifacts/q20-bitmask-sm70/probe.cubin | tee artifacts/q20-bitmask-sm70/resources.txt
+          /usr/local/cuda/bin/cuobjdump --dump-sass artifacts/q20-bitmask-sm70/probe.cubin > artifacts/q20-bitmask-sm70/sass.txt
+          grep -q 'hoohash_q20_bitmask_fast_generator_probe' artifacts/q20-bitmask-sm70/resources.txt
+          grep -q 'strict_validation_barrier_probe' artifacts/q20-bitmask-sm70/resources.txt
+          # Evidence for the intended machine-level change: no software integer div/rem helper calls are allowed.
+          if grep -Eqi '(div\.u64|rem\.u64|__udiv|__umod|__div|__mod)' artifacts/q20-bitmask-sm70/sass.txt; then
+            echo 'Q20_BITMASK_STATIC_REJECT=integer_divrem_present'
+            exit 1
+          fi
+          inst=$(grep -Ec '^\s*/\*[0-9a-fA-F]+\*/' artifacts/q20-bitmask-sm70/sass.txt || true)
+          echo "sass_instruction_lines=$inst"
+          echo 'Q20_BITMASK_STATIC_PASS=sm70_no_spills_no_int_divrem'
+          echo 'PROMOTION_ALLOWED=false'
+          echo 'NEXT_GATE=integrate_e2e_then_sequential_v100_offline_only_if_static_profile_improves'
+
+      - name: Upload Q20 bitmask static evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-speculative-q20-bitmask-sm70-${{ github.run_id }}
+          path: artifacts/q20-bitmask-sm70/
+          retention-days: 30
