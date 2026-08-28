@@ -1,0 +1,51 @@
+name: V2.1 HotRun8 Segment Certificate SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-segment-cert
+    paths:
+      - native/src/cuda/v1/header80_hotrun8.inc
+      - native/src/cuda/v1/header80_hotrun8_fusion.inc
+      - native/src/cuda/v1/header80_backend_part*.inc
+      - native/src/cuda/header80_backend.cu
+      - .github/workflows/v21-hotrun8-segment-cert-sm70.yml
+  workflow_dispatch:
+
+jobs:
+  compile-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile production fusion2 segment-certificate path for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=1 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_HOTRUN8=1 \
+            -DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 \
+            -Xptxas=-v \
+            -c native/src/cuda/header80_backend.cu \
+            -o /tmp/hotrun8-segment-cert.o 2>&1 | tee /tmp/ptxas-segment-cert.log
+          test -s /tmp/hotrun8-segment-cert.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-segment-cert.log
+          grep -F 'hoohash_final_hotrun8_fused_kernel' /tmp/ptxas-segment-cert.log || true
+      - name: Upload ptxas log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-segment-cert-sm70-${{ github.sha }}
+          path: /tmp/ptxas-segment-cert.log
+          if-no-files-found: warn
+          retention-days: 30
