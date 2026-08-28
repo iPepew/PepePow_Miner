@@ -1,0 +1,100 @@
+name: V2 Speculative Fixed-Point Refine
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-fixedpoint-profile
+    paths:
+      - '.github/workflows/v21-speculative-fixedpoint-refine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  refine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select high-precision fixed-point modes
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/benchmark/hoohash_speculative_fixedpoint_profile.cpp')
+          s=p.read_text()
+          old='constexpr std::array<unsigned, 6> kFracBits{6U, 8U, 10U, 12U, 14U, 16U};'
+          new='constexpr std::array<unsigned, 6> kFracBits{16U, 17U, 18U, 19U, 20U, 22U};'
+          if old not in s:
+              raise SystemExit('fixed-point mode marker not found')
+          p.write_text(s.replace(old,new))
+          PY
+          cat >> native/CMakeLists.txt <<'EOF'
+          add_executable(pepepow_hoohash_speculative_fixedpoint_refine src/benchmark/hoohash_speculative_fixedpoint_profile.cpp)
+          target_link_libraries(pepepow_hoohash_speculative_fixedpoint_refine PRIVATE pepepow_core)
+          EOF
+
+      - name: Configure and build hosted refine
+        run: |
+          set -Eeuo pipefail
+          cmake -S native -B build \
+            -DPEPEPOW_ENABLE_CUDA=OFF \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target pepepow_hoohash_speculative_fixedpoint_refine pepepow_core_tests -j2
+
+      - name: Verify strict consensus reference
+        run: |
+          set -Eeuo pipefail
+          ./build/pepepow_core_tests
+
+      - name: Run refined relaxed-target profile
+        run: |
+          set -Eeuo pipefail
+          ./build/pepepow_hoohash_speculative_fixedpoint_refine 131072 8 | tee speculative-fixedpoint-refine.txt
+          grep -q '^strict_hits=512$' speculative-fixedpoint-refine.txt
+          grep -q '^invalid_submissions_after_strict_validation=0$' speculative-fixedpoint-refine.txt
+
+      - name: Select recall-passing precision
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import re
+          text=open('speculative-fixedpoint-refine.txt',encoding='utf-8').read()
+          passing=[]
+          for block in text.split('mode=fixed_q')[1:]:
+              first, _, body=block.partition('\n')
+              bits=int(first.strip())
+              def v(name, default=''):
+                  m=re.search(rf'^{name}=([^\n]+)', body, re.M)
+                  return m.group(1).strip() if m else default
+              recall=float(v('recall','0'))
+              gain=float(v('cpu_throughput_gain_pct','-999'))
+              fn=int(v('false_negatives','999999'))
+              fp=int(v('false_positives','999999'))
+              equal=float(v('mixed_equal_pct','0'))
+              invalid=int(v('invalid_submissions_after_strict_validation','1'))
+              print(f'CANDIDATE q{bits}: recall={recall:.6f} fn={fn} fp={fp} mixed_equal_pct={equal:.6f} cpu_gain_pct={gain:.3f}')
+              if recall >= 0.995 and invalid == 0:
+                  passing.append((bits, recall, gain, fn, fp, equal))
+          if not passing:
+              print('SPECULATIVE_REFINE_REJECT=no_mode_meets_recall_0_995')
+          else:
+              # Lowest precision that passes recall is preferred: same integer topology, largest quantization headroom.
+              best=min(passing, key=lambda x:x[0])
+              print(f'SPECULATIVE_REFINE_PASS=q{best[0]} recall={best[1]:.6f} fn={best[3]} fp={best[4]} mixed_equal_pct={best[5]:.6f} cpu_gain_pct={best[2]:.3f}')
+              print('STRICT_VALIDATION_POLICY=required_before_every_submission')
+          PY
+
+      - name: Upload refine evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-speculative-fixedpoint-refine-${{ github.run_id }}
+          path: speculative-fixedpoint-refine.txt
+          retention-days: 30
