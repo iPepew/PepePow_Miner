@@ -86,7 +86,9 @@ jobs:
           spills=re.findall(r'([1-9]\d*) bytes spill (?:stores|loads)',text)
           if not regs: raise SystemExit('no ptxas register data')
           if spills: raise SystemExit(f'spills detected: {spills}')
-          print(f'Q20_E2E_STATIC max_registers={max(regs)} spills=0 sass_instructions={sum(1 for l in Path("/tmp/q20.sass").read_text(errors="ignore").splitlines() if re.search(r"/\\* [0-9a-f]+ \\*/",l))}')
+          sass_lines=Path('/tmp/q20.sass').read_text(errors='ignore').splitlines()
+          insn=sum(1 for line in sass_lines if re.search(r'/\* [0-9a-f]+ \*/',line))
+          print(f'Q20_E2E_STATIC max_registers={max(regs)} spills=0 sass_instructions={insn}')
           PY
 
       - name: Assemble immutable offline package
