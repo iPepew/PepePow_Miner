@@ -1,0 +1,157 @@
+name: V2.1 Hot-Run8 Shared-Boundary SASS Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-shared-boundary
+    paths:
+      - '.github/workflows/v21-hotrun8-shared-boundary-sass.yml'
+      - 'native/src/cuda/v1/header80_hotrun8_fusion.inc'
+  workflow_dispatch:
+
+jobs:
+  sass:
+    runs-on: ubuntu-22.04
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - name: Build fusion2 reference and shared-boundary candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(
+            -G Ninja
+            -DPEPEPOW_ENABLE_CUDA=ON
+            -DPEPEPOW_BUILD_TESTS=OFF
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real
+            -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+          )
+          cmake -S native -B /tmp/fusion2 "${common[@]}" \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+          cmake --build /tmp/fusion2 --target pepepow_header80_benchmark -j2 2>&1 | tee /tmp/fusion2-build.log
+
+          cmake -S native -B /tmp/shared "${common[@]}" \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=3'
+          cmake --build /tmp/shared --target pepepow_header80_benchmark -j2 2>&1 | tee /tmp/shared-build.log
+
+          if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/shared-build.log; then
+            echo 'ERROR: shared-boundary candidate contains spills'
+            exit 1
+          fi
+
+      - name: Compare SASS footprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          cuobjdump --dump-sass /tmp/fusion2/pepepow_header80_benchmark > /tmp/fusion2.sass
+          cuobjdump --dump-sass /tmp/shared/pepepow_header80_benchmark > /tmp/shared.sass
+
+          python3 - <<'PY'
+          import json,re,pathlib,sys
+
+          def sections(path):
+              text=pathlib.Path(path).read_text(errors='replace').splitlines()
+              out={}
+              name=None
+              for line in text:
+                  m=re.search(r'Function\s*:\s*(.*)', line)
+                  if m:
+                      name=m.group(1).strip()
+                      out.setdefault(name,[])
+                  elif name is not None:
+                      out[name].append(line)
+              return out
+
+          def pick(sec, needle):
+              matches=[(n,ls) for n,ls in sec.items() if needle in n]
+              if len(matches)!=1:
+                  raise SystemExit(f'expected one SASS function containing {needle!r}, got {[n for n,_ in matches]}')
+              return matches[0]
+
+          def metrics(lines):
+              ins=[line for line in lines if re.search(r'/\*[0-9a-fA-F]+\*/\s+[A-Z]',line)]
+              joined='\n'.join(ins)
+              def count(rx): return len(re.findall(rx,joined))
+              return {
+                  'instructions':len(ins),
+                  'barriers':count(r'\b(?:BAR|BSYNC|WARPSYNC)\b'),
+                  'global_loads':count(r'\b(?:LDG|LDGSTS)\b'),
+                  'global_stores':count(r'\bSTG\b'),
+                  'shared_loads':count(r'\bLDS\b'),
+                  'shared_stores':count(r'\bSTS\b'),
+                  'local_loads':count(r'\bLDL\b'),
+                  'local_stores':count(r'\bSTL\b'),
+                  'atomics':count(r'\b(?:ATOM|RED)\b'),
+                  'mufu':count(r'\bMUFU\b'),
+              }
+
+          f=sections('/tmp/fusion2.sass')
+          s=sections('/tmp/shared.sass')
+          f_first=metrics(pick(f,'header80_first_kernel')[1])
+          f_final=metrics(pick(f,'hoohash_final_hotrun8_fused_kernel')[1])
+          s_pre=metrics(pick(s,'header80_hotrun8_shared_boundary_prelude_kernel')[1])
+          s_main=metrics(pick(s,'header80_hotrun8_shared_boundary_mode3_kernel')[1])
+
+          keys=f_first.keys()
+          fusion_total={k:f_first[k]+f_final[k] for k in keys}
+          shared_total={k:s_pre[k]+s_main[k] for k in keys}
+          growth=(shared_total['instructions']/fusion_total['instructions']-1.0) if fusion_total['instructions'] else 999.0
+          result={
+              'fusion2_first':f_first,
+              'fusion2_final':f_final,
+              'fusion2_total':fusion_total,
+              'shared_prelude':s_pre,
+              'shared_main':s_main,
+              'shared_total':shared_total,
+              'instruction_growth_pct':growth*100.0,
+              'max_instruction_growth_pct':15.0,
+          }
+          pathlib.Path('/tmp/sass-gate.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+
+          if growth > 0.15:
+              raise SystemExit(f'REJECT: instruction growth {growth*100:.2f}% exceeds 15%')
+          if shared_total['barriers'] > fusion_total['barriers']:
+              raise SystemExit('REJECT: barrier count increased')
+          if shared_total['local_loads'] or shared_total['local_stores']:
+              raise SystemExit('REJECT: local-memory SASS operations appeared')
+          PY
+
+      - name: Upload SASS evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-shared-boundary-sass
+          path: |
+            /tmp/sass-gate.json
+            /tmp/fusion2.sass
+            /tmp/shared.sass
+            /tmp/fusion2-build.log
+            /tmp/shared-build.log
