@@ -1,8 +1,10 @@
-// Exact hot-run width-8 candidate. This file is included inside the anonymous
-// CUDA namespace, before host methods. Consensus arithmetic is unchanged:
-// warm cells are committed in the original order and every state transition
-// is evaluated with update_sw_state(); cold cells use the existing exact
-// safe_nonlinear() path. No approximate result can reach share submission.
+// Profiling-driven exact HooHash candidate. The production fusion2 topology is
+// retained, but warm cells are processed in pairs when a monotonic certificate
+// proves that both sums remain inside the same 1024-wide state bin. In that
+// case the intermediate SW-state update is redundant: the entry state is warm,
+// all contributions are non-negative, and no 1024 wrap can occur. If the proof
+// fails, the original exact per-cell state transition path is executed. Cold
+// cells always use safe_nonlinear(). No approximate result can reach submission.
 
 __device__ __forceinline__ std::uint32_t hotrun8_nibble(
     const std::uint32_t first_pass[8], int col) {
@@ -26,6 +28,14 @@ __device__ __forceinline__ double hotrun8_warm_contribution(
 #endif
 }
 
+__device__ __forceinline__ bool hotrun2_same_1024_bin(double a, double b) {
+    // For non-negative finite consensus sums, floor(sum) >> 10 is exactly the
+    // 1024-wide bin used by frac(sum / 1024). Equality proves that a monotonic
+    // pair cannot wrap the fractional state between its entry and final sum.
+    return (positive_double_to_u64_rz(a) >> 10U) ==
+           (positive_double_to_u64_rz(b) >> 10U);
+}
+
 __device__ __forceinline__ double matrix_row_hotrun8(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
@@ -36,34 +46,42 @@ __device__ __forceinline__ double matrix_row_hotrun8(
 
     #pragma unroll 1
     for (int col = 0; col < 64;) {
-        if (!sw_state_is_cold(sw) && col <= 56) {
-            // Preserve an eight-cell logical hot run, but materialize only four
-            // contributions at a time. Reusing one 4-value staging window cuts
-            // live state without changing arithmetic order or the exact cold
-            // transition point.
-            int consumed = 0;
-            #pragma unroll 1
-            for (int batch = 0; batch < 2; ++batch) {
-                double contribution[4];
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    const int offset = batch * 4 + i;
-                    const int cell = row_offset + col + offset;
-                    const std::uint32_t nibble = hotrun8_nibble(first_pass, col + offset);
-                    contribution[i] = hotrun8_warm_contribution(
-                        matrix, scaled_nibble_table, cell, nibble);
-                }
+        if (!sw_state_is_cold(sw) && col <= 62) {
+            const int cell0 = row_offset + col;
+            const int cell1 = cell0 + 1;
+            const std::uint32_t nibble0 = hotrun8_nibble(first_pass, col);
+            const std::uint32_t nibble1 = hotrun8_nibble(first_pass, col + 1);
+            const double c0 = hotrun8_warm_contribution(
+                matrix, scaled_nibble_table, cell0, nibble0);
+            const double c1 = hotrun8_warm_contribution(
+                matrix, scaled_nibble_table, cell1, nibble1);
+            const double sum1 = sum + c0;
+            const double sum2 = sum1 + c1;
 
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    sum += contribution[i];
-                    update_sw_state(sw, sum);
-                    ++consumed;
-                    if (sw_state_is_cold(sw)) break;
-                }
-                if (sw_state_is_cold(sw)) break;
+            if (hotrun2_same_1024_bin(sum, sum2)) {
+                // Entry state is already known warm. Since c0/c1 are
+                // non-negative and there is no bin wrap, the intermediate
+                // state is also warm. Preserve FP64 addition order and update
+                // only the final state of the pair.
+                sum = sum2;
+                update_sw_state(sw, sum);
+                col += 2;
+                continue;
             }
-            col += consumed;
+
+            // Exact fallback: commit the first warm cell and evaluate its
+            // state transition. The second cell must then respect the new
+            // state, including the nonlinear path if the first cell went cold.
+            sum = sum1;
+            update_sw_state(sw, sum);
+            ++col;
+            if (sw_state_is_cold(sw)) {
+                continue;
+            }
+
+            sum += c1;
+            update_sw_state(sw, sum);
+            ++col;
             continue;
         }
 
