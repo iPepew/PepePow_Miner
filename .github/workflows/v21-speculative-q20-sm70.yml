@@ -1,0 +1,75 @@
+name: V2 Speculative Q20 SM70 Resource Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-q20-cuda
+    paths:
+      - 'native/src/cuda/v1/speculative_q20_probe.cu'
+      - '.github/workflows/v21-speculative-q20-sm70.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sm70-static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install static-analysis tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils grep ca-certificates
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Compile production-shaped Q20 generator for Volta
+        run: |
+          set -Eeuo pipefail
+          mkdir -p artifacts/q20-sm70
+          /usr/local/cuda/bin/nvcc \
+            -std=c++17 -O3 -lineinfo \
+            -arch=sm_70 -cubin \
+            -Xptxas=-v \
+            native/src/cuda/v1/speculative_q20_probe.cu \
+            -o artifacts/q20-sm70/speculative_q20_probe.cubin \
+            2>&1 | tee artifacts/q20-sm70/ptxas.log
+          test -s artifacts/q20-sm70/speculative_q20_probe.cubin
+
+      - name: Enforce static resource gate
+        run: |
+          set -Eeuo pipefail
+          log=artifacts/q20-sm70/ptxas.log
+          cat "$log"
+          if grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' "$log"; then
+            echo 'Q20_STATIC_REJECT=spills'
+            exit 1
+          fi
+          grep -q 'Used [0-9][0-9]* registers' "$log"
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage artifacts/q20-sm70/speculative_q20_probe.cubin \
+            | tee artifacts/q20-sm70/resources.txt
+          /usr/local/cuda/bin/cuobjdump --dump-sass artifacts/q20-sm70/speculative_q20_probe.cubin \
+            > artifacts/q20-sm70/sass.txt
+          grep -q 'hoohash_q20_fast_generator_probe' artifacts/q20-sm70/resources.txt
+          grep -q 'strict_validation_barrier_probe' artifacts/q20-sm70/resources.txt
+          echo 'Q20_STATIC_PASS=sm70_no_spills'
+          echo 'PROMOTION_ALLOWED=false'
+          echo 'NEXT_GATE=integrate_unchanged_strict_validator_then_sequential_v100_offline'
+
+      - name: Upload Q20 static evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-speculative-q20-sm70-${{ github.run_id }}
+          path: artifacts/q20-sm70/
+          retention-days: 30
