@@ -72,8 +72,8 @@ old_even = '''            matrix, scaled_nibble_table, pair * 2, first_pass,
 new_even = '''            matrix, scaled_nibble_table, pair * 2, first_pass,
             hash_mod_fp64, nonce_mod, sw,
             profile_nonlinear_cycles, profile_nonlinear_calls);'''
-if s.count(old_even) < 2:
-    raise SystemExit('matrix_row_hotrun8 call markers not found')
+if old_even not in s:
+    raise SystemExit('even matrix_row_hotrun8 call marker not found')
 s = s.replace(old_even, new_even, 1)
 old_odd = '''            matrix, scaled_nibble_table, pair * 2 + 1, first_pass,
             hash_mod_fp64, nonce_mod, sw);'''
@@ -123,7 +123,6 @@ reset = '''#if defined(PEPEPOW_CUDA_HOOHASH_CYCLE_PROFILE) && PEPEPOW_CUDA_HOOHA
     check_cuda_header80(cudaMemcpyToSymbol(g_hoohash_profile_samples, &profile_zero, sizeof(profile_zero)), "reset HooHash samples");
 #endif
 '''
-# Insert only in fusion2 branch, identified by the immediately preceding stage-profile block.
 fusion_anchor = '''#elif defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
 #if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE'''
 idx = p.find(fusion_anchor)
