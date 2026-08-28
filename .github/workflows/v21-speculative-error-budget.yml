@@ -1,0 +1,39 @@
+name: v2.1 speculative HooHash error budget
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-error-budget
+  workflow_dispatch:
+
+jobs:
+  error-budget:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure profiling target
+        shell: bash
+        run: |
+          cat >> native/CMakeLists.txt <<'EOF'
+          add_executable(pepepow_hoohash_speculative_error_budget src/benchmark/hoohash_speculative_error_budget.cpp)
+          target_link_libraries(pepepow_hoohash_speculative_error_budget PRIVATE pepepow_core)
+          EOF
+          cmake -S native -B build -DPEPEPOW_BUILD_TESTS=OFF -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build error amplification census
+        run: cmake --build build --target pepepow_hoohash_speculative_error_budget -j2
+
+      - name: Run fixed-job relaxed-target census
+        shell: bash
+        run: |
+          ./build/pepepow_hoohash_speculative_error_budget 32768 4 | tee speculative-error-budget.txt
+          grep -q '^reference_mismatches=0$' speculative-error-budget.txt
+          grep -q '^strict_hit_recall_gate=0.995$' speculative-error-budget.txt
+
+      - name: Upload profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: speculative-error-budget
+          path: speculative-error-budget.txt
