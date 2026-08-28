@@ -155,4 +155,6 @@ void header80_hotrun8_shared_boundary_mode3_kernel(
 
 #define header80_first_kernel header80_hotrun8_shared_boundary_prelude_kernel
 #define hoohash_final_hotrun8_fused_kernel header80_hotrun8_shared_boundary_mode3_kernel
+#undef PEPEPOW_CUDA_HOTRUN8_FUSION_MODE
+#define PEPEPOW_CUDA_HOTRUN8_FUSION_MODE 2
 #endif
