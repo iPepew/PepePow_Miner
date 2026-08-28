@@ -1,0 +1,63 @@
+name: Speculative HooHash Transition Census
+
+on:
+  push:
+    branches: [agent/v21-v100-speculative-transition-census]
+    paths:
+      - 'native/src/benchmark/hoohash_transition_census.cpp'
+      - '.github/workflows/speculative-transition-census.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build g++ git ca-certificates curl
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          sudo mkdir -p /opt/cmake
+          sudo tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          sudo ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - name: Build exact reference and transition census
+        run: |
+          set -euo pipefail
+          cmake -S native -B /tmp/build -G Ninja \
+            -DPEPEPOW_ENABLE_CUDA=OFF \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/build --target pepepow_hoohash_nonlinear_census pepepow_core_tests -j2
+          /tmp/build/pepepow_core_tests
+          g++ -O3 -std=c++20 \
+            -I native/include -I /tmp/build/generated \
+            native/src/benchmark/hoohash_transition_census.cpp \
+            /tmp/build/libpepepow_core.a \
+            /tmp/build/_deps/blake3_source-build/libblake3.a \
+            -lpthread -o /tmp/hoohash_transition_census
+
+      - name: Run fixed-job exact transition census
+        run: |
+          set -euo pipefail
+          /tmp/hoohash_transition_census 32768 | tee /tmp/transition-census.txt
+          grep -q '^mismatches=0$' /tmp/transition-census.txt
+          grep -q '^segment8_no_nonlinear_pct=' /tmp/transition-census.txt
+          grep -q '^segment16_no_nonlinear_pct=' /tmp/transition-census.txt
+          grep -q '^segment32_no_nonlinear_pct=' /tmp/transition-census.txt
+
+      - name: Upload census
+        uses: actions/upload-artifact@v4
+        with:
+          name: speculative-transition-census-${{ github.sha }}
+          path: /tmp/transition-census.txt
+          retention-days: 30
