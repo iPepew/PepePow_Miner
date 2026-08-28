@@ -34,7 +34,6 @@ jobs:
           set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p=Path('native/src/benchmark/hoohash_speculative_q20_cuda.cu')
           s=p.read_text(encoding='utf-8')
           replacements=[
@@ -55,25 +54,14 @@ jobs:
           warm_new='qsum+=static_cast<std::uint64_t>(static_cast<std::int64_t>(table[row*64+col])*static_cast<std::int64_t>(nib));'
           if warm_old not in s: raise SystemExit('missing warm lookup marker')
           s=s.replace(warm_old,warm_new,1)
-          loop_old='''            #pragma unroll 1
-            for (int col=0;col<64;++col) {
-                const std::uint8_t b=byte_at(first,col>>1);
-                const std::uint32_t nib=(col&1)?(b&0x0fU):(b>>4U);
-                if (cold) {
-                    if (nib!=0U) {
-                        const double val=static_cast<double>(nib);
-                        const double x=matrix[row*64+col]*static_cast<double>(hash_mod)*val+nonce_mod;
-                        const double c=safe_nonlinear(x)*val*1234.0;
-                        qsum+=static_cast<std::uint64_t>(floor(c*static_cast<double>(kQScale)+0.5));
-                    }
-                } else {
-                    qsum+=static_cast<std::uint64_t>(static_cast<std::int64_t>(table[row*64+col])*static_cast<std::int64_t>(nib));
-                }
-                const std::uint64_t rem=qsum & kQPeriodMask;
-                cold=rem<=kQColdThreshold;
-            }'''
-          loop_new='''            #pragma unroll 1
-            for (int byte_idx=0;byte_idx<32;++byte_idx) {
+          start_marker='            for (int col=0;col<64;++col) {'
+          start=s.find(start_marker)
+          if start < 0: raise SystemExit('missing byte-pair loop start')
+          end_marker='                cold=rem<=kQColdThreshold;\n            }'
+          end=s.find(end_marker,start)
+          if end < 0: raise SystemExit('missing byte-pair loop end')
+          end += len(end_marker)
+          loop_new='''            for (int byte_idx=0;byte_idx<32;++byte_idx) {
                 const std::uint8_t b=byte_at(first,byte_idx);
                 const int col0=byte_idx*2;
                 const std::uint32_t nib0=b>>4U;
@@ -102,8 +90,7 @@ jobs:
                 }
                 cold=(qsum & kQPeriodMask)<=kQColdThreshold;
             }'''
-          if s.count(loop_old)!=1: raise SystemExit(f'byte-pair loop marker count={s.count(loop_old)}')
-          s=s.replace(loop_old,loop_new,1)
+          s=s[:start]+loop_new+s[end:]
           p.write_text(s,encoding='utf-8')
           PY
           grep -F 'for (int byte_idx=0;byte_idx<32;++byte_idx)' native/src/benchmark/hoohash_speculative_q20_cuda.cu
