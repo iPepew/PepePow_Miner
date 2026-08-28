@@ -106,3 +106,53 @@ void header80_hotrun8_shared_boundary_kernel(
         for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
     }
 }
+
+#if defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 3
+// part07 already has a proven two-launch fusion-mode host path. For the first
+// production measurement, reuse that host plumbing without editing the live
+// baseline path: redirect its first launch to a no-op prelude and its second
+// launch to the exact shared-boundary kernel. The existing global work buffer
+// is allocated but never read or written by mode 3, so benchmarked per-nonce
+// traffic contains no first_pass global handoff. A later cleanup may remove
+// the unused allocation only after this architecture passes A/B.
+__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+void header80_hotrun8_shared_boundary_prelude_kernel(
+    std::uint32_t,
+    std::uint32_t*,
+    std::size_t) {
+}
+
+__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+void header80_hotrun8_shared_boundary_mode3_kernel(
+    std::uint32_t first_nonce,
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    const std::uint32_t*,
+    DeviceShareResult* __restrict__ result,
+    std::size_t count) {
+    __shared__ std::uint32_t first_pass_shared[PEPEPOW_CUDA_THREADS][8];
+
+    const std::size_t index =
+        static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    const std::uint32_t nonce = first_nonce + static_cast<std::uint32_t>(index);
+    std::uint32_t* first_pass = first_pass_shared[threadIdx.x];
+    blake3_header80_to_shared(nonce, first_pass);
+
+    std::uint32_t mixed[8];
+    std::uint32_t final_hash[8];
+    hoohash_mix_words_hotrun8(
+        matrix, scaled_nibble_table, byte_swap32(nonce), first_pass, mixed);
+    blake3_32_words(mixed, final_hash);
+    if (!hash_words_meet_target(final_hash)) return;
+    if (atomicCAS(&result->found, 0U, 1U) == 0U) {
+        result->nonce = nonce;
+        #pragma unroll
+        for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
+    }
+}
+
+#define header80_first_kernel header80_hotrun8_shared_boundary_prelude_kernel
+#define hoohash_final_hotrun8_fused_kernel header80_hotrun8_shared_boundary_mode3_kernel
+#endif
