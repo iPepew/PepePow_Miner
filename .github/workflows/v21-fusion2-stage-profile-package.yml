@@ -1,0 +1,124 @@
+name: V2.1 Fusion2 Stage Profile Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-fusion2-stage-profile
+    paths:
+      - 'native/src/cuda/header80_backend.cu'
+      - 'native/src/cuda/v1/header80_backend_part07.inc'
+      - '.github/workflows/v21-fusion2-stage-profile-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - name: Build instrumented production fusion2 benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native -B /tmp/profile -G Ninja \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_STAGE_PROFILE=1'
+          cmake --build /tmp/profile --target pepepow_header80_benchmark pepepow_core_tests -j2 \
+            2>&1 | tee /tmp/profile-build.log
+          /tmp/profile/pepepow_core_tests | tee /tmp/core-tests.log
+
+          grep -q 'header80_first_kernel' /tmp/profile-build.log
+          grep -q 'hoohash_final_hotrun8_fused_kernel' /tmp/profile-build.log
+          if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/profile-build.log; then
+            echo 'ERROR: profiling build contains CUDA spills on sm_70'
+            exit 1
+          fi
+
+          mkdir -p /tmp/pkg
+          cp /tmp/profile/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_fusion2_stage_profile
+          cp /tmp/profile-build.log /tmp/pkg/profile-build.log
+          cp /tmp/core-tests.log /tmp/pkg/core-tests.log
+          cat > /tmp/pkg/build-info.txt <<EOF
+          source_branch=agent/v21-v100-fusion2-stage-profile
+          source_commit=${GITHUB_SHA}
+          cuda_toolkit=12.8.1
+          cuda_arch=sm_70
+          benchmark_path=production-header80-backend
+          architecture=hotrun8-fusion2-stage-profile
+          candidate_split_pipeline=true
+          candidate_hotrun8=true
+          candidate_fusion_mode=2
+          stage_profile=cuda-events
+          candidate_spills=0
+          EOF
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz | tee /tmp/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz.sha256
+
+      - name: Upload hosted diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fusion2-stage-profile-build-${{ github.sha }}
+          path: |
+            /tmp/profile-build.log
+            /tmp/core-tests.log
+            /tmp/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish replaceable profiling prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v2.1-fusion2-stage-profile-v100
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${TAG}" 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+              "${api}/releases" \
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA Fusion2 Stage Profile\",\"prerelease\":true}")"
+          fi
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
+          aid="$(python3 -c 'import json,sys; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]=="PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz"),""))' <<<"$assets")"
+          [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
+          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
+            --data-binary @/tmp/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz"
