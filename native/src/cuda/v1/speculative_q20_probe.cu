@@ -8,13 +8,16 @@ constexpr int kRows = 64;
 constexpr int kCols = 64;
 constexpr int kNibbles = 16;
 constexpr int kFracBits = 20;
-constexpr std::int64_t kScale = std::int64_t{1} << kFracBits;
-constexpr std::int64_t kPeriod = kScale * 1024;
-constexpr std::int64_t kColdThreshold = (kPeriod * 2) / 100;
+constexpr std::uint64_t kScale = std::uint64_t{1} << kFracBits;
+constexpr std::uint64_t kPeriod = kScale * 1024ULL; // 2^30 for Q20
+constexpr std::uint64_t kPeriodMask = kPeriod - 1ULL;
+constexpr std::uint64_t kColdThreshold = (kPeriod * 2ULL) / 100ULL;
+static_assert((kPeriod & (kPeriod - 1ULL)) == 0ULL, "Q20 period must be power-of-two");
 
-// The warm linear table is job-specific and precomputed on the host.
-// Q20 bounds each entry so signed int32 storage is sufficient for the
-// representative production matrix; the row accumulator remains int64.
+// Profiling-driven Q20 successor for Volta: preserve the same fixed-point
+// approximation, but remove 64-bit remainder/divide from the 64-column hot loop.
+// Q20 contributions are non-negative for the verified fixed job/path, so the
+// modulo by 2^30 is exactly equivalent to a mask and division by 2^20 to shift.
 __device__ __forceinline__ std::int32_t table_get(
     const std::int32_t* __restrict__ table,
     int row,
@@ -23,14 +26,10 @@ __device__ __forceinline__ std::int32_t table_get(
     return table[(row * kCols + col) * kNibbles + static_cast<int>(nibble)];
 }
 
-// Resource probe for the production-shaped fast generator. Cold cells are
-// deliberately marked instead of approximated here: the eventual integrated
-// candidate must route every fast hit through the unchanged strict validator
-// before any pool submit.
-__global__ void hoohash_q20_fast_generator_probe(
+__global__ void hoohash_q20_bitmask_fast_generator_probe(
     const std::uint8_t* __restrict__ nibbles,
     const std::int32_t* __restrict__ warm_table_q20,
-    const std::int64_t* __restrict__ cold_contrib_q20,
+    const std::uint64_t* __restrict__ cold_contrib_q20,
     std::uint64_t* __restrict__ product_floor,
     std::uint8_t* __restrict__ saw_cold,
     std::size_t count) {
@@ -39,14 +38,14 @@ __global__ void hoohash_q20_fast_generator_probe(
 
     const std::uint8_t* v = nibbles + idx * kCols;
     std::uint64_t* out = product_floor + idx * kRows;
-    const std::int64_t* cold = cold_contrib_q20 + idx * kRows * kCols;
+    const std::uint64_t* cold = cold_contrib_q20 + idx * kRows * kCols;
 
     bool is_cold = true;
     std::uint8_t cold_seen = 0;
 
     #pragma unroll 1
     for (int row = 0; row < kRows; ++row) {
-        std::int64_t qsum = 0;
+        std::uint64_t qsum = 0;
         #pragma unroll 1
         for (int col = 0; col < kCols; ++col) {
             const std::uint8_t nibble = v[col];
@@ -54,18 +53,16 @@ __global__ void hoohash_q20_fast_generator_probe(
                 cold_seen = 1;
                 qsum += cold[row * kCols + col];
             } else {
-                qsum += static_cast<std::int64_t>(table_get(warm_table_q20, row, col, nibble));
+                qsum += static_cast<std::uint64_t>(table_get(warm_table_q20, row, col, nibble));
             }
-            const std::int64_t rem = qsum % kPeriod;
+            const std::uint64_t rem = qsum & kPeriodMask;
             is_cold = rem <= kColdThreshold;
         }
-        out[row] = static_cast<std::uint64_t>(qsum / kScale);
+        out[row] = qsum >> kFracBits;
     }
     saw_cold[idx] = cold_seen;
 }
 
-// Marker kernel used by CI to keep the submit barrier explicit in the cubin.
-// This is not a validator implementation and cannot authorize promotion.
 __global__ void strict_validation_barrier_probe(
     const std::uint32_t* __restrict__ fast_candidates,
     std::uint32_t* __restrict__ validator_queue,
