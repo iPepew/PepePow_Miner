@@ -1,0 +1,190 @@
+name: PepeW-Miner-v2.1 BETA SW FirstWarm2 HiveOS Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-sw-firstwarm2-prod
+    paths:
+      - '.github/workflows/v21-sw-firstwarm2-hiveos-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      RELEASE_TAG: v2.1-sw-firstwarm2-v100-pool-candidate
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils gh
+          python3 -m pip install --no-cache-dir "cmake==3.31.6"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Apply conservative first-state warm certificate
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/cuda/v1/header80_hotrun8.inc')
+          s=p.read_text()
+          old='''__device__ __forceinline__ bool hotrun2_same_1024_bin(double a, double b) {
+              // For non-negative finite consensus sums, floor(sum) >> 10 is exactly the
+              // 1024-wide bin used by frac(sum / 1024). Equality proves that a monotonic
+              // pair cannot wrap the fractional state between its entry and final sum.
+              return (positive_double_to_u64_rz(a) >> 10U) ==
+                     (positive_double_to_u64_rz(b) >> 10U);
+          }'''
+          new='''__device__ __forceinline__ bool hotrun2_first_state_proven_warm(double sum1) {
+              return (positive_double_to_u64_rz(sum1) & 1023ULL) >= 21ULL;
+          }'''
+          if old not in s:
+              raise SystemExit('expected monotonic helper not found')
+          s=s.replace(old,new,1)
+          s=s.replace('if (hotrun2_same_1024_bin(sum, sum2)) {','if (hotrun2_first_state_proven_warm(sum1)) {',1)
+          p.write_text(s)
+          PY
+          grep -q 'hotrun2_first_state_proven_warm' native/src/cuda/v1/header80_hotrun8.inc
+          ! grep -q 'hotrun2_same_1024_bin' native/src/cuda/v1/header80_hotrun8.inc
+
+      - name: Apply and verify no-emoji console UI
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/professional_console_ui_v21.py
+          python3 - <<'PY'
+          from pathlib import Path
+          text=Path('native/src/app/main.cpp').read_text(encoding='utf-8')
+          forbidden=['🐸','🟣','🔵','✅','🟡','🔄','💰','❌','🔨','⏱','🔴','⚪']
+          found=[x for x in forbidden if x in text]
+          if found: raise SystemExit(f'emoji still present in console UI: {found}')
+          required=['[HOOHASH]','[POOL]','[READY]','[ACCEPTED]','[REJECTED]','[MINING]']
+          missing=[x for x in required if x not in text]
+          if missing: raise SystemExit(f'professional UI markers missing: {missing}')
+          print('Professional no-emoji console UI verified')
+          PY
+
+      - name: Validate v2.1 beta identity
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = "2.1-beta.1"
+          grep -F 'CUSTOM_VERSION="v2.1 BETA"' hiveos/h-manifest.conf
+          bash -n hiveos/h-config.sh
+          bash -n hiveos/h-run.sh
+          bash -n hiveos/h-stats.sh
+
+      - name: Configure exact firstwarm2 production miner
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+
+      - name: Build and verify consensus/resources
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation \
+            pepepow_header80_benchmark pepepow_header80_differential 2>&1 | tee /tmp/build.log
+          ./build/pepepowminer --version | tee /tmp/version.txt
+          grep -F '2.1-beta.1' /tmp/version.txt
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.txt
+          grep -F sm_70 /tmp/elf.txt
+          ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
+          strings -a build/pepepowminer | grep -F 'POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX share_target=NBITS_DIV_DIFFICULTY'
+          grep -q 'hoohash_final_hotrun8_fused_kernel' /tmp/build.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+
+      - name: Assemble immutable HiveOS candidate package
+        run: |
+          set -Eeuo pipefail
+          rm -rf stage dist
+          mkdir -p "stage/${ROOT}" dist
+          install -m 0755 build/pepepowminer "stage/${ROOT}/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "stage/${ROOT}/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "stage/${ROOT}/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
+          cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
+          product=PepeW-Miner-v2.1 BETA
+          version=2.1-beta.1
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          architecture=hotrun8-fusion2-sw-firstwarm-width2
+          offline_full_gain_pct=24.657
+          offline_candidate_mhs=5.751931
+          offline_exact_mhs=4.614218
+          differential_2k_mismatches=0
+          differential_20k_mismatches=0
+          differential_100k_mismatches=0
+          candidate_spills=0
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          gpu_target=Tesla V100 / Volta
+          threads=704
+          algorithm=HooHash V110
+          console_ui=professional-no-emoji
+          release_channel=BETA_TEST
+          EOF
+          sha256sum "stage/${ROOT}/pepepowminer" > "stage/${ROOT}/pepepowminer.sha256"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
+          sha256sum "dist/${ASSET}" | tee "dist/${ASSET}.sha256"
+
+      - name: Publish isolated prerelease candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          notes='Share-producing PepeW-Miner-v2.1 BETA firstwarm2 candidate for adaptive real-pool validation only. Exact candidate passed stable offline A/B at +24.657%, 100k differential with 0 mismatches and 0 spills. Do not promote without newly accepted pool shares.'
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW-Miner-v2.1 BETA SW FirstWarm2 Pool Candidate' --notes "$notes" --prerelease
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW-Miner-v2.1 BETA SW FirstWarm2 Pool Candidate' --notes "$notes" --prerelease
+          fi
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-v21-sw-firstwarm2-pool-${{ github.sha }}
+          path: |
+            dist/PepeW-Miner-HiveOS.tar.gz
+            dist/PepeW-Miner-HiveOS.tar.gz.sha256
+            /tmp/build.log
+            /tmp/version.txt
+            /tmp/elf.txt
+          retention-days: 30
