@@ -39,28 +39,30 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('native/src/cuda/v1/header80_hotrun8.inc')
-          s=p.read_text()
-          old='''__device__ __forceinline__ bool hotrun2_same_1024_bin(double a, double b) {
-    // For non-negative finite consensus sums, floor(sum) >> 10 is exactly the
-    // 1024-wide bin used by frac(sum / 1024). Equality proves that a monotonic
-    // pair cannot wrap the fractional state between its entry and final sum.
-    return (positive_double_to_u64_rz(a) >> 10U) ==
-           (positive_double_to_u64_rz(b) >> 10U);
-}'''
-          new='''__device__ __forceinline__ bool hotrun2_first_state_proven_warm(double sum1) {
-    // sum is row-local even though SW state carries across rows. Therefore the
-    // first skipped transition must be proven from sum1 itself. For finite,
-    // non-negative consensus sums, integer remainder >= 21 implies
-    // frac(sum1 / 1024) >= 21/1024 > 0.02, so update_sw_state(sum1) is warm.
-    // Values below 21 conservatively fall back to the exact per-cell path.
-    return (positive_double_to_u64_rz(sum1) & 1023ULL) >= 21ULL;
-}'''
+          p = Path('native/src/cuda/v1/header80_hotrun8.inc')
+          s = p.read_text()
+          old = '''__device__ __forceinline__ bool hotrun2_same_1024_bin(double a, double b) {
+              // For non-negative finite consensus sums, floor(sum) >> 10 is exactly the
+              // 1024-wide bin used by frac(sum / 1024). Equality proves that a monotonic
+              // pair cannot wrap the fractional state between its entry and final sum.
+              return (positive_double_to_u64_rz(a) >> 10U) ==
+                     (positive_double_to_u64_rz(b) >> 10U);
+          }'''
+          new = '''__device__ __forceinline__ bool hotrun2_first_state_proven_warm(double sum1) {
+              // sum is row-local even though SW state carries across rows. Therefore the
+              // first skipped transition must be proven from sum1 itself. For finite,
+              // non-negative consensus sums, integer remainder >= 21 implies
+              // frac(sum1 / 1024) >= 21/1024 > 0.02, so update_sw_state(sum1) is warm.
+              // Values below 21 conservatively fall back to the exact per-cell path.
+              return (positive_double_to_u64_rz(sum1) & 1023ULL) >= 21ULL;
+          }'''
           if old not in s:
               raise SystemExit('expected monotonic helper not found')
-          s=s.replace(old,new,1)
-          s=s.replace('if (hotrun2_same_1024_bin(sum, sum2)) {','if (hotrun2_first_state_proven_warm(sum1)) {',1)
-          s=s.replace('// Entry state is already known warm. Since c0/c1 are\n                // non-negative and there is no bin wrap, the intermediate\n                // state is also warm. Preserve FP64 addition order and update\n                // only the final state of the pair.','// The first row-local state is proven warm directly from sum1.\n                // Preserve FP64 addition order, skip only that proven-redundant\n                // state write, then evaluate the exact final state of the pair.',1)
+          s = s.replace(old, new, 1)
+          s = s.replace('if (hotrun2_same_1024_bin(sum, sum2)) {',
+                        'if (hotrun2_first_state_proven_warm(sum1)) {', 1)
+          s = s.replace('// Entry state is already known warm. Since c0/c1 are\n                // non-negative and there is no bin wrap, the intermediate\n                // state is also warm. Preserve FP64 addition order and update\n                // only the final state of the pair.',
+                        '// The first row-local state is proven warm directly from sum1.\n                // Preserve FP64 addition order, skip only that proven-redundant\n                // state write, then evaluate the exact final state of the pair.', 1)
           p.write_text(s)
           PY
           grep -q 'hotrun2_first_state_proven_warm' native/src/cuda/v1/header80_hotrun8.inc
@@ -90,13 +92,17 @@ jobs:
           cmake -S native -B /tmp/exact "${common[@]}" \
             -DPEPEPOW_CUDA_SPLIT_PIPELINE=OFF \
             -DPEPEPOW_CUDA_HOTRUN8=OFF
-          cmake --build /tmp/exact --target pepepow_header80_benchmark pepepow_header80_differential -j2 2>&1 | tee /tmp/exact-build.log
+          cmake --build /tmp/exact \
+            --target pepepow_header80_benchmark pepepow_header80_differential -j2 \
+            2>&1 | tee /tmp/exact-build.log
 
           cmake -S native -B /tmp/candidate "${common[@]}" \
             -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
             -DPEPEPOW_CUDA_HOTRUN8=ON \
             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
-          cmake --build /tmp/candidate --target pepepow_header80_benchmark pepepow_header80_differential -j2 2>&1 | tee /tmp/candidate-build.log
+          cmake --build /tmp/candidate \
+            --target pepepow_header80_benchmark pepepow_header80_differential -j2 \
+            2>&1 | tee /tmp/candidate-build.log
 
           if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/candidate-build.log; then
             echo 'ERROR: first-warm width2 production build contains CUDA spills on sm_70'
@@ -128,12 +134,6 @@ jobs:
           tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz .
           sha256sum /tmp/PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz.sha256
 
-      - name: Hosted quick differential
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo 'Hosted builders have no V100; CUDA runtime differential is deferred to exclusive hardware gate.'
-
       - name: Upload hosted diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -157,12 +157,16 @@ jobs:
           auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
           release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${TAG}" 2>/dev/null || true)"
           if [[ -z "$release_json" ]]; then
-            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA SW FirstWarm Width2 Offline Bench\",\"prerelease\":true}")"
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+              "${api}/releases" \
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA SW FirstWarm Width2 Offline Bench\",\"prerelease\":true}")"
           fi
           rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
           assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
           name='PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz'
           aid="$(python3 -c 'import json,sys; n=sys.argv[1]; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]==n),""))' "$name" <<<"$assets")"
           [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
-          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' --data-binary @/tmp/PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${name}" >/dev/null
+          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
+            --data-binary @/tmp/PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${name}" >/dev/null
           echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${name}"
