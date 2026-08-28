@@ -1,0 +1,165 @@
+name: Publish Stable V100 Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'release/stable-v2.1.0-v100.json'
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v4
+
+      - name: Load immutable release specification
+        id: spec
+        run: |
+          set -Eeuo pipefail
+          spec='release/stable-v2.1.0-v100.json'
+          test -s "$spec"
+
+          tag="$(jq -r '.tag' "$spec")"
+          title="$(jq -r '.title' "$spec")"
+          source_tag="$(jq -r '.source_tag' "$spec")"
+          source_commit="$(jq -r '.source_commit' "$spec")"
+          expected_sha256="$(jq -r '.asset_sha256' "$spec")"
+          pool_mhs="$(jq -r '.verified_pool_mhs' "$spec")"
+          accepted="$(jq -r '.accepted_delta' "$spec")"
+          rejected="$(jq -r '.rejected_delta' "$spec")"
+
+          test "$tag" = 'v2.1.0-v100'
+          test "$source_tag" = 'v2.1-fusion2-sw-cvt-v100-pool-candidate'
+          test "$source_commit" = '8f17cfe86b62db4897f0a7a22402c72d7ada8ace'
+          test "$expected_sha256" = 'a56b6496283674fdfff11bd37eaef739dd6f9f39bc144d852ad63df33deef3eb'
+          test "$accepted" -gt 0
+          test "$rejected" -eq 0
+
+          {
+            echo "tag=$tag"
+            echo "title=$title"
+            echo "source_tag=$source_tag"
+            echo "source_commit=$source_commit"
+            echo "expected_sha256=$expected_sha256"
+            echo "pool_mhs=$pool_mhs"
+            echo "accepted=$accepted"
+            echo "rejected=$rejected"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse accidental overwrite
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.spec.outputs.tag }}
+        run: |
+          set -Eeuo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite immutable stable release." >&2
+            exit 1
+          fi
+
+      - name: Download exact pool-confirmed asset
+        env:
+          SOURCE_TAG: ${{ steps.spec.outputs.source_tag }}
+          EXPECTED_SHA256: ${{ steps.spec.outputs.expected_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p dist
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${SOURCE_TAG}"
+          curl --fail --location --retry 5 --retry-all-errors \
+            "$base/PepeW-Miner-HiveOS.tar.gz" \
+            -o dist/PepeW-Miner-HiveOS.tar.gz
+
+          actual="$(sha256sum dist/PepeW-Miner-HiveOS.tar.gz | awk '{print $1}')"
+          echo "expected=$EXPECTED_SHA256"
+          echo "actual=$actual"
+          test "$actual" = "$EXPECTED_SHA256"
+          printf '%s  %s\n' "$actual" 'PepeW-Miner-HiveOS.tar.gz' > dist/PepeW-Miner-HiveOS.tar.gz.sha256
+
+      - name: Verify package identity
+        env:
+          SOURCE_COMMIT: ${{ steps.spec.outputs.source_commit }}
+        run: |
+          set -Eeuo pipefail
+          tar -tzf dist/PepeW-Miner-HiveOS.tar.gz | tee /tmp/package-list.txt
+          grep -Fx 'PepeW-Miner/pepepowminer' /tmp/package-list.txt
+          grep -Fx 'PepeW-Miner/h-manifest.conf' /tmp/package-list.txt
+          grep -Fx 'PepeW-Miner/BUILD_INFO.txt' /tmp/package-list.txt
+
+          mkdir -p /tmp/pepew-release
+          tar -xzf dist/PepeW-Miner-HiveOS.tar.gz -C /tmp/pepew-release
+          test -x /tmp/pepew-release/PepeW-Miner/pepepowminer
+          grep -F "$SOURCE_COMMIT" /tmp/pepew-release/PepeW-Miner/BUILD_INFO.txt
+          cp /tmp/pepew-release/PepeW-Miner/BUILD_INFO.txt dist/BUILD_INFO.txt
+
+      - name: Write stable release notes
+        env:
+          TAG: ${{ steps.spec.outputs.tag }}
+          SOURCE_TAG: ${{ steps.spec.outputs.source_tag }}
+          SOURCE_COMMIT: ${{ steps.spec.outputs.source_commit }}
+          EXPECTED_SHA256: ${{ steps.spec.outputs.expected_sha256 }}
+          POOL_MHS: ${{ steps.spec.outputs.pool_mhs }}
+          ACCEPTED: ${{ steps.spec.outputs.accepted }}
+          REJECTED: ${{ steps.spec.outputs.rejected }}
+        run: |
+          set -Eeuo pipefail
+          cat > dist/RELEASE_NOTES.md <<EOF
+          # PepeW Miner ${TAG} — Tesla V100 stable release
+
+          This stable release promotes the exact immutable SW-CVT HiveOS binary that was already validated on a real mining pool. The binary is not rebuilt or modified during promotion; its SHA-256 is verified before publication.
+
+          ## Verified Tesla V100 result
+
+          - Real-pool average: **${POOL_MHS} MH/s**
+          - Accepted delta: **+${ACCEPTED}**
+          - Rejected delta: **${REJECTED}**
+          - Promotion rule satisfied: real accepted shares are present and rejected shares are zero.
+          - Offline V100 reference for this candidate: **8.818928 MH/s**, 100,000 differential checks with 0 mismatches and 0 spills.
+
+          ## Immutable build identity
+
+          - Source candidate tag: \`${SOURCE_TAG}\`
+          - Source commit: \`${SOURCE_COMMIT}\`
+          - SHA-256: \`${EXPECTED_SHA256}\`
+          - Target GPU: NVIDIA Tesla V100 / Volta sm_70
+          - Package format: HiveOS custom miner
+
+          ## Assets
+
+          - \`PepeW-Miner-HiveOS.tar.gz\` — verified miner package
+          - \`PepeW-Miner-HiveOS.tar.gz.sha256\` — checksum
+          - \`BUILD_INFO.txt\` — embedded build provenance extracted from the verified package
+
+          This release does not change the live test channel automatically.
+          EOF
+
+      - name: Publish stable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.spec.outputs.tag }}
+          TITLE: ${{ steps.spec.outputs.title }}
+          SOURCE_COMMIT: ${{ steps.spec.outputs.source_commit }}
+        run: |
+          set -Eeuo pipefail
+          gh release create "$TAG" \
+            dist/PepeW-Miner-HiveOS.tar.gz \
+            dist/PepeW-Miner-HiveOS.tar.gz.sha256 \
+            dist/BUILD_INFO.txt \
+            --target "$SOURCE_COMMIT" \
+            --title "$TITLE" \
+            --notes-file dist/RELEASE_NOTES.md
+
+          gh release view "$TAG" --json url,tagName,isPrerelease,isDraft,name
