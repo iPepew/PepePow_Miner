@@ -1,4 +1,4 @@
-// Exact two-stage fusion kernels for the proven hotrun8 split path.
+// Exact fusion kernels for the proven hotrun8 path.
 // This file is included inside pepepow's anonymous CUDA namespace after
 // header80_hotrun8.inc, so all exact BLAKE3/HooHash helpers are available.
 
@@ -60,5 +60,42 @@ void hoohash_final_hotrun8_fused_kernel(
         result->nonce = nonce;
         #pragma unroll
         for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
+    }
+}
+
+// Full A+B+C fusion with explicit storage reuse. The original monolithic
+// hotrun8 wrapper kept first_pass[8], mixed[8] and final_hash[8] live around
+// the long HooHash call and ptxas spilled on sm_70. Here first_pass remains
+// immutable only until HooHash completes; immediately afterwards the same
+// eight-word storage is reused for the final BLAKE3 output. This removes both
+// 32-byte/nonce global intermediate boundaries while reducing caller live
+// state from three eight-word arrays to two. Consensus arithmetic is unchanged.
+__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+void header80_hotrun8_fullfusion_reuse_kernel(
+    std::uint32_t first_nonce,
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    DeviceShareResult* __restrict__ result,
+    std::size_t count) {
+    const std::size_t index =
+        static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    const std::uint32_t nonce =
+        first_nonce + static_cast<std::uint32_t>(index);
+    std::uint32_t state_words[8];
+    std::uint32_t mixed[8];
+    blake3_header80_words(nonce, state_words);
+    hoohash_mix_words_hotrun8(
+        matrix, scaled_nibble_table, byte_swap32(nonce), state_words, mixed);
+
+    // state_words is dead as HooHash input at this point. Reuse it rather than
+    // creating a third eight-word final_hash array and extending register life.
+    blake3_32_words(mixed, state_words);
+    if (!hash_words_meet_target(state_words)) return;
+    if (atomicCAS(&result->found, 0U, 1U) == 0U) {
+        result->nonce = nonce;
+        #pragma unroll
+        for (int i = 0; i < 8; ++i) result->hash_words[i] = state_words[i];
     }
 }
