@@ -1,0 +1,128 @@
+name: PepeW-Miner-v2.1 BETA Q20 Coeff Constant E2E Package
+
+on:
+  push:
+    branches: [agent/v21-v100-speculative-q20-coeff-const]
+    paths:
+      - '.github/workflows/v21-speculative-q20-coeff-const-e2e-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - name: Apply Q20 coefficient constant-memory transform
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/benchmark/hoohash_speculative_q20_cuda.cu')
+          s=p.read_text(encoding='utf-8')
+          reps=[
+            ('constexpr std::int64_t kQScale = std::int64_t{1} << kQBits;', 'constexpr std::uint64_t kQScale = std::uint64_t{1} << kQBits;'),
+            ('constexpr std::int64_t kQPeriod = kQScale * 1024;', 'constexpr std::uint64_t kQPeriod = kQScale * 1024ULL;\nconstexpr std::uint64_t kQPeriodMask = kQPeriod - 1ULL;\nstatic_assert((kQPeriod & (kQPeriod - 1ULL)) == 0ULL);'),
+            ('constexpr std::int64_t kQColdThreshold = (kQPeriod * 2) / 100;', 'constexpr std::uint64_t kQColdThreshold = (kQPeriod * 2ULL) / 100ULL;'),
+            ('__device__ __constant__ std::uint32_t c_midstate[8];', '__device__ __constant__ std::uint32_t c_midstate[8];\n__device__ __constant__ std::int32_t c_qcoeff[4096];'),
+            ('const int row=pair*2+rr; std::int64_t qsum=0;', 'const int row=pair*2+rr; std::uint64_t qsum=0;'),
+            ('qsum+=static_cast<std::int64_t>(floor(c*static_cast<double>(kQScale)+0.5));', 'qsum+=static_cast<std::uint64_t>(floor(c*static_cast<double>(kQScale)+0.5));'),
+            ('qsum+=static_cast<std::int64_t>(table[(row*64+col)*16+static_cast<int>(nib)]);', 'qsum+=static_cast<std::uint64_t>(static_cast<std::int64_t>(c_qcoeff[row*64+col])*static_cast<std::int64_t>(nib));'),
+            ('const std::int64_t rem=qsum%kQPeriod;', 'const std::uint64_t rem=qsum & kQPeriodMask;'),
+            ('floors[rr]=static_cast<std::uint64_t>(qsum/kQScale);', 'floors[rr]=qsum >> kQBits;'),
+            ('std::vector<double> flat(4096); std::vector<std::int32_t> qtable(4096*16);', 'std::vector<double> flat(4096); std::vector<std::int32_t> qtable(4096);'),
+            ('for(int r=0;r<64;++r)for(int c=0;c<64;++c){flat[r*64+c]=matrix[r][c];for(int n=0;n<16;++n){const double x=matrix[r][c]*0.0001*static_cast<double>(n)*static_cast<double>(kQScale);qtable[(r*64+c)*16+n]=static_cast<std::int32_t>(std::llround(x));}}', 'for(int r=0;r<64;++r)for(int c=0;c<64;++c){flat[r*64+c]=matrix[r][c];const double x=matrix[r][c]*0.0001*static_cast<double>(kQScale);qtable[r*64+c]=static_cast<std::int32_t>(std::llround(x));}'),
+            ('cuda_check(cudaMemcpyToSymbol(c_midstate,mid,sizeof(mid)),"copy midstate");cuda_check(cudaMemcpyToSymbol(c_tail,tail,sizeof(tail)),"copy tail");', 'cuda_check(cudaMemcpyToSymbol(c_midstate,mid,sizeof(mid)),"copy midstate");cuda_check(cudaMemcpyToSymbol(c_tail,tail,sizeof(tail)),"copy tail");cuda_check(cudaMemcpyToSymbol(c_qcoeff,qtable.data(),qtable.size()*sizeof(std::int32_t)),"copy qcoeff constant");')]
+          for old,new in reps:
+              if old not in s: raise SystemExit(f'missing marker: {old}')
+              s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -F 'c_qcoeff[4096]' native/src/benchmark/hoohash_speculative_q20_cuda.cu
+          ! grep -F 'qsum%kQPeriod' native/src/benchmark/hoohash_speculative_q20_cuda.cu
+      - name: Add isolated target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/CMakeLists.txt'); s=p.read_text()
+          marker='    add_executable(pepepow_cuda_benchmark src/benchmark/cuda_benchmark.cpp)\n'
+          ins='''    add_executable(pepepow_hoohash_speculative_q20_cuda src/benchmark/hoohash_speculative_q20_cuda.cu)\n    target_link_libraries(pepepow_hoohash_speculative_q20_cuda PRIVATE pepepow_core)\n    set_target_properties(pepepow_hoohash_speculative_q20_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}" CUDA_SEPARABLE_COMPILATION OFF)\n    target_compile_options(pepepow_hoohash_speculative_q20_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false> $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v> $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)\n'''
+          if s.count(marker)!=1: raise SystemExit('target marker not unique')
+          p.write_text(s.replace(marker,ins+marker,1))
+          PY
+      - name: Configure and build sm70
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=OFF -DPEPEPOW_CUDA_ARCHITECTURES='70-real' -DPEPEPOW_CUDA_THREADS=704 -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON -DPEPEPOW_CUDA_SW_STATE_MODE=3 '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+          cmake --build build --parallel 4 --target pepepow_hoohash_speculative_q20_cuda 2>&1 | tee /tmp/build.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build/pepepow_hoohash_speculative_q20_cuda | tee /tmp/resources.txt
+          /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepow_hoohash_speculative_q20_cuda > /tmp/candidate.sass
+          ! grep -Eqi '(div\.u64|rem\.u64|__udiv|__umod|__div|__mod)' /tmp/candidate.sass
+          grep -Eq 'REG:127 STACK:176 SHARED:0 LOCAL:0' /tmp/resources.txt
+          grep -Eq 'CONSTANT\[3\]:16572' /tmp/resources.txt
+          inst=$(grep -Ec '^\s*/\*[0-9a-fA-F]+\*/' /tmp/candidate.sass || true)
+          (( inst <= 8008 ))
+          echo "sass_instruction_lines=$inst"
+      - name: Assemble immutable package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p package
+          install -m 0755 build/pepepow_hoohash_speculative_q20_cuda package/
+          cp /tmp/build.log package/q20-coeff-const-build.log
+          cp /tmp/resources.txt package/q20-coeff-const-resources.txt
+          cp /tmp/candidate.sass package/q20-coeff-const.sass
+          cat > package/BUILD_INFO.txt <<EOF
+          product=PepeW-Miner-v2.1 BETA
+          candidate_class=speculative_filtered_hoohash
+          architecture=fixed_point_linear_state_q20_bitmask_coefficient_constant_cuda_e2e
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          cuda_arch=sm_70
+          relaxed_target_default_bits=8
+          recall_gate=0.995
+          throughput_gate_pct=25
+          invalid_submissions_max=0
+          strict_validation_required=true
+          real_pool_allowed=false
+          warm_table_bytes=16384
+          coefficient_storage=constant_memory
+          EOF
+          tar -C package -czf q20-coeff-const-e2e-sm70.tar.gz .
+          sha256sum q20-coeff-const-e2e-sm70.tar.gz > q20-coeff-const-e2e-sm70.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q20-coeff-const-e2e-sm70-${{ github.sha }}
+          path: |
+            q20-coeff-const-e2e-sm70.tar.gz
+            q20-coeff-const-e2e-sm70.tar.gz.sha256
+          retention-days: 14
+      - name: Publish immutable technical asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.1-q20-coeff-const-e2e-sm70-offline-${{ github.sha }}
+          name: PepeW-Miner-v2.1 BETA Q20 Coeff Constant E2E Offline ${{ github.sha }}
+          prerelease: true
+          files: |
+            q20-coeff-const-e2e-sm70.tar.gz
+            q20-coeff-const-e2e-sm70.tar.gz.sha256
