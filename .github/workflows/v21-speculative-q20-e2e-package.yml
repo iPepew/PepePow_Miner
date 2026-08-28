@@ -1,0 +1,121 @@
+name: PepeW-Miner-v2.1 BETA Q20 E2E Offline Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-q20-cuda
+    paths:
+      - 'native/src/benchmark/hoohash_speculative_q20_cuda.cu'
+      - '.github/workflows/v21-speculative-q20-e2e-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Add isolated Q20 E2E benchmark target
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/CMakeLists.txt')
+          s=p.read_text(encoding='utf-8')
+          marker='    add_executable(pepepow_cuda_benchmark src/benchmark/cuda_benchmark.cpp)\n'
+          insert='''    add_executable(pepepow_hoohash_speculative_q20_cuda src/benchmark/hoohash_speculative_q20_cuda.cu)\n    target_link_libraries(pepepow_hoohash_speculative_q20_cuda PRIVATE pepepow_core)\n    set_target_properties(pepepow_hoohash_speculative_q20_cuda PROPERTIES\n        CUDA_STANDARD 20\n        CUDA_STANDARD_REQUIRED ON\n        CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}"\n        CUDA_SEPARABLE_COMPILATION OFF)\n    target_compile_options(pepepow_hoohash_speculative_q20_cuda PRIVATE\n        $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false>\n        $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>\n        $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)\n'''
+          if s.count(marker)!=1:
+              raise SystemExit('benchmark insertion marker not unique')
+          p.write_text(s.replace(marker,insert+marker,1),encoding='utf-8')
+          PY
+
+      - name: Configure sm70 production-shaped build
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES='70-real' \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+
+      - name: Build and apply static resource gate
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target pepepow_hoohash_speculative_q20_cuda 2>&1 | tee /tmp/q20-build.log
+          test -x build/pepepow_hoohash_speculative_q20_cuda
+          grep -q 'Function properties for' /tmp/q20-build.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/q20-build.log
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepow_hoohash_speculative_q20_cuda | tee /tmp/q20-elf.txt
+          grep -F sm_70 /tmp/q20-elf.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build/pepepow_hoohash_speculative_q20_cuda | tee /tmp/q20-resources.txt
+          /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepow_hoohash_speculative_q20_cuda > /tmp/q20.sass
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text=Path('/tmp/q20-build.log').read_text(errors='ignore')
+          regs=[int(x) for x in re.findall(r'Used (\d+) registers',text)]
+          spills=re.findall(r'([1-9]\d*) bytes spill (?:stores|loads)',text)
+          if not regs: raise SystemExit('no ptxas register data')
+          if spills: raise SystemExit(f'spills detected: {spills}')
+          print(f'Q20_E2E_STATIC max_registers={max(regs)} spills=0 sass_instructions={sum(1 for l in Path("/tmp/q20.sass").read_text(errors="ignore").splitlines() if re.search(r"/\\* [0-9a-f]+ \\*/",l))}')
+          PY
+
+      - name: Assemble immutable offline package
+        run: |
+          set -Eeuo pipefail
+          mkdir -p package
+          install -m 0755 build/pepepow_hoohash_speculative_q20_cuda package/
+          cp /tmp/q20-build.log /tmp/q20-resources.txt package/
+          cat > package/BUILD_INFO.txt <<EOF
+          product=PepeW-Miner-v2.1 BETA
+          candidate_class=speculative_filtered_hoohash
+          architecture=fixed_point_linear_state_q20_cuda_e2e
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          cuda_arch=sm_70
+          relaxed_target_default_bits=8
+          recall_gate=0.995
+          throughput_gate_pct=25
+          strict_validation_required=true
+          real_pool_allowed=false
+          EOF
+          tar -C package -czf q20-e2e-sm70.tar.gz .
+          sha256sum q20-e2e-sm70.tar.gz | tee q20-e2e-sm70.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q20-e2e-sm70-${{ github.sha }}
+          path: |
+            q20-e2e-sm70.tar.gz
+            q20-e2e-sm70.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
