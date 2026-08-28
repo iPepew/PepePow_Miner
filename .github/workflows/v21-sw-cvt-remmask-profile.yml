@@ -14,12 +14,11 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     defaults:
       run:
-        shell: bash
+        shell: bash --noprofile --norc -eo pipefail {0}
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
         run: |
-          set -Eeuo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl g++ git ninja-build python3 xz-utils
           CMAKE_VER=3.31.8
@@ -41,7 +40,6 @@ jobs:
           EOF
       - name: Build current pool-confirmed SW CVT predicate
         run: |
-          set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
           p=Path('native/src/cuda/v1/header80_backend_part02.inc'); s=p.read_text()
@@ -57,7 +55,6 @@ jobs:
           git checkout -- native/src/cuda/v1/header80_backend_part02.inc
       - name: Build exact remainder-mask candidate
         run: |
-          set -Eeuo pipefail
           python3 - <<'PY'
           from pathlib import Path
           p=Path('native/src/cuda/v1/header80_backend_part02.inc'); s=p.read_text()
@@ -72,7 +69,6 @@ jobs:
           /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/remmask/pepepow_header80_benchmark >/tmp/remmask.sass
       - name: Static census and package
         run: |
-          set -Eeuo pipefail
           cvt_inst=$(grep -Ec '^\s*/\*[0-9a-f]+\*/' /tmp/cvt.sass || true)
           rem_inst=$(grep -Ec '^\s*/\*[0-9a-f]+\*/' /tmp/remmask.sass || true)
           echo "cvt_total_sass_instructions=$cvt_inst" | tee /tmp/profile.txt
