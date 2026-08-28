@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 defaults:
   run:
@@ -121,3 +121,14 @@ jobs:
             q20-e2e-sm70.tar.gz.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish immutable technical release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.1-q20-e2e-sm70-offline-${{ github.sha }}
+          name: PepeW-Miner-v2.1 BETA Q20 E2E Offline ${{ github.sha }}
+          prerelease: true
+          files: |
+            q20-e2e-sm70.tar.gz
+            q20-e2e-sm70.tar.gz.sha256
+          fail_on_unmatched_files: true
