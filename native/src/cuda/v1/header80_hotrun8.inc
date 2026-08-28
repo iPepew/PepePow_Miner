@@ -1,8 +1,10 @@
-// Exact hot-run width-8 candidate. This file is included inside the anonymous
-// CUDA namespace, before host methods. Consensus arithmetic is unchanged:
-// warm cells are committed in the original order and every state transition
-// is evaluated with update_sw_state(); cold cells use the existing exact
-// safe_nonlinear() path. No approximate result can reach share submission.
+// Exact hot-run width-8 segment-certificate candidate. This file is included
+// inside the anonymous CUDA namespace, before host methods. Consensus arithmetic
+// is unchanged. For warm 8-cell segments we speculatively compute the exact
+// sequential prefix sums, evaluate every exact sw predicate, and commit the
+// segment only when all prefixes remain warm. Any unsafe segment is replayed
+// from its entry state through the original exact cell path, so no approximate
+// value can reach share submission.
 
 __device__ __forceinline__ std::uint32_t hotrun8_nibble(
     const std::uint32_t first_pass[8], int col) {
@@ -37,30 +39,53 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     #pragma unroll 1
     for (int col = 0; col < 64;) {
         if (!sw_state_is_cold(sw) && col <= 56) {
-            // Preserve an eight-cell logical hot run, but materialize only four
-            // contributions at a time. Reusing one 4-value staging window cuts
-            // live state without changing arithmetic order or the exact cold
-            // transition point.
-            int consumed = 0;
-            #pragma unroll 1
-            for (int batch = 0; batch < 2; ++batch) {
-                double contribution[4];
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    const int offset = batch * 4 + i;
-                    const int cell = row_offset + col + offset;
-                    const std::uint32_t nibble = hotrun8_nibble(first_pass, col + offset);
-                    contribution[i] = hotrun8_warm_contribution(
-                        matrix, scaled_nibble_table, cell, nibble);
-                }
+            const double entry_sum = sum;
+            const HooHashSwState entry_sw = sw;
+            double prefix[8];
+            double running = sum;
 
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    sum += contribution[i];
-                    update_sw_state(sw, sum);
-                    ++consumed;
-                    if (sw_state_is_cold(sw)) break;
-                }
+            // Preserve the exact FP64 addition order used by the scalar path.
+            #pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                const int cell = row_offset + col + i;
+                const std::uint32_t nibble = hotrun8_nibble(first_pass, col + i);
+                running += hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble);
+                prefix[i] = running;
+            }
+
+            // Segment certificate: every prefix must stay warm. The predicates
+            // are independent once exact prefix sums exist, removing the
+            // contribution->state->contribution dependency from the common path.
+            bool clean = true;
+            #pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                HooHashSwState probe = entry_sw;
+                update_sw_state(probe, prefix[i]);
+                clean = clean && !sw_state_is_cold(probe);
+            }
+
+            if (clean) {
+                sum = prefix[7];
+                update_sw_state(sw, sum);
+                col += 8;
+                continue;
+            }
+
+            // Strict replay. The speculative warm values are discarded. Replay
+            // from the exact entry sum/state and stop at the first cold state;
+            // subsequent loop iterations execute the unchanged nonlinear path.
+            sum = entry_sum;
+            sw = entry_sw;
+            int consumed = 0;
+            #pragma unroll
+            for (int i = 0; i < 8; ++i) {
+                const int cell = row_offset + col + i;
+                const std::uint32_t nibble = hotrun8_nibble(first_pass, col + i);
+                sum += hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble);
+                update_sw_state(sw, sum);
+                ++consumed;
                 if (sw_state_is_cold(sw)) break;
             }
             col += consumed;
@@ -85,9 +110,6 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     return sum;
 }
 
-// Keep the long HooHash state machine behind a call boundary. Inlining it into
-// the BLAKE3 wrapper extends first_pass/mixed/final_hash lifetimes across all 64
-// rows and made ptxas spill 132 B in each direction on sm_70.
 __device__ __noinline__ void hoohash_mix_words_hotrun8(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
@@ -121,11 +143,6 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
     }
 }
 
-// Split middle-stage probe/candidate. The first BLAKE3 result lives in the
-// existing global work buffer, so the HooHash kernel owns only first_pass +
-// mixed state. This deliberately trades 64 B/nonce of global round-trip for a
-// hard register-lifetime boundary. Consensus order and exact nonlinear math are
-// identical to the monolithic hot-run path.
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
 void hoohash_mix_hotrun8_split_kernel(
     std::uint32_t first_nonce,
