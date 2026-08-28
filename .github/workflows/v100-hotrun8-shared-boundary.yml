@@ -1,0 +1,51 @@
+name: V100 HotRun8 Shared-Boundary SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-shared-boundary
+    paths:
+      - native/tests/hotrun8_shared_boundary_sm70_probe.cu
+      - native/src/cuda/v1/header80_hotrun8.inc
+      - native/src/cuda/v1/header80_hotrun8_fusion.inc
+      - native/src/cuda/v1/header80_backend_part*.inc
+      - .github/workflows/v100-hotrun8-shared-boundary.yml
+  workflow_dispatch:
+
+jobs:
+  resource-sm70:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile shared-boundary probe for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++20 -O3 -arch=sm_70 -lineinfo \
+            -I native/include \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=1 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=0 \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=1 \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=1 \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -Xptxas=-v \
+            -c native/tests/hotrun8_shared_boundary_sm70_probe.cu \
+            -o /tmp/hotrun8-shared-boundary.o 2>&1 | tee /tmp/ptxas.log
+          test -s /tmp/hotrun8-shared-boundary.o
+          grep -F 'header80_hotrun8_shared_boundary_kernel' /tmp/ptxas.log
+          grep -F 'blake3_header80_to_shared' /tmp/ptxas.log
+          ! grep -A8 -F 'header80_hotrun8_shared_boundary_kernel' /tmp/ptxas.log | grep -Eq '[1-9][0-9]* bytes spill (stores|loads)'
+          ! grep -A8 -F 'blake3_header80_to_shared' /tmp/ptxas.log | grep -Eq '[1-9][0-9]* bytes spill (stores|loads)'
+      - name: Upload ptxas log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-shared-boundary-sm70-${{ github.sha }}
+          path: /tmp/ptxas.log
+          if-no-files-found: warn
+          retention-days: 30
