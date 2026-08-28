@@ -1,0 +1,37 @@
+name: V2.1 SW Monotonic Certificate Census
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-sw-monotonic-cert
+    paths:
+      - 'native/src/benchmark/hoohash_monotonic_cert_census.cpp'
+      - 'native/CMakeLists.txt'
+      - '.github/workflows/v21-sw-monotonic-cert-census.yml'
+  workflow_dispatch:
+
+jobs:
+  census:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ git
+      - name: Configure
+        run: cmake -S native -B build -G Ninja -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=OFF
+      - name: Build census
+        run: cmake --build build --target pepepow_hoohash_monotonic_cert_census -j2
+      - name: Run exact census
+        run: |
+          mkdir -p artifacts
+          ./build/pepepow_hoohash_monotonic_cert_census 32768 | tee artifacts/monotonic-cert-census.txt
+          grep -q '^job=hoohash-monotonic-1024-bin-certificate-census$' artifacts/monotonic-cert-census.txt
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sw-monotonic-cert-census-${{ github.sha }}
+          path: artifacts/monotonic-cert-census.txt
+          retention-days: 30
