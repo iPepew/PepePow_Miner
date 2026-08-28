@@ -62,10 +62,15 @@ jobs:
             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=3'
           cmake --build /tmp/shared --target pepepow_header80_benchmark -j2 2>&1 | tee /tmp/shared-build.log
 
-          if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/shared-build.log; then
-            echo 'ERROR: shared-boundary candidate contains spills'
-            exit 1
-          fi
+          # The production translation unit intentionally still contains an
+          # unused monolithic hotrun8 kernel known to spill. Reject only spills
+          # in the two mode3 kernels that the candidate host path launches.
+          grep -F 'header80_hotrun8_shared_boundary_mode3_kernel' /tmp/shared-build.log >/dev/null
+          grep -F 'header80_hotrun8_shared_boundary_prelude_kernel' /tmp/shared-build.log >/dev/null
+          ! grep -A4 -F 'header80_hotrun8_shared_boundary_mode3_kernel' /tmp/shared-build.log | \
+            grep -Eq '[1-9][0-9]* bytes spill (stores|loads)'
+          ! grep -A4 -F 'header80_hotrun8_shared_boundary_prelude_kernel' /tmp/shared-build.log | \
+            grep -Eq '[1-9][0-9]* bytes spill (stores|loads)'
 
       - name: Compare SASS footprint
         shell: bash
@@ -75,7 +80,7 @@ jobs:
           cuobjdump --dump-sass /tmp/shared/pepepow_header80_benchmark > /tmp/shared.sass
 
           python3 - <<'PY'
-          import json,re,pathlib,sys
+          import json,re,pathlib
 
           def sections(path):
               text=pathlib.Path(path).read_text(errors='replace').splitlines()
