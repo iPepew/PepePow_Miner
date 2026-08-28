@@ -1,0 +1,95 @@
+name: V2 Speculative Fixed-Point HooHash Profile
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-fixedpoint-profile
+    paths:
+      - 'native/src/benchmark/hoohash_speculative_fixedpoint_profile.cpp'
+      - '.github/workflows/v21-speculative-fixedpoint-profile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wire profile-only target
+        run: |
+          set -Eeuo pipefail
+          cat >> native/CMakeLists.txt <<'EOF'
+          add_executable(pepepow_hoohash_speculative_fixedpoint_profile src/benchmark/hoohash_speculative_fixedpoint_profile.cpp)
+          target_link_libraries(pepepow_hoohash_speculative_fixedpoint_profile PRIVATE pepepow_core)
+          EOF
+
+      - name: Configure and build hosted profile
+        run: |
+          set -Eeuo pipefail
+          cmake -S native -B build \
+            -DPEPEPOW_ENABLE_CUDA=OFF \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target pepepow_hoohash_speculative_fixedpoint_profile pepepow_core_tests -j2
+
+      - name: Verify strict consensus reference
+        run: |
+          set -Eeuo pipefail
+          ./build/pepepow_core_tests
+
+      - name: Run relaxed-target fixed-point profile
+        run: |
+          set -Eeuo pipefail
+          ./build/pepepow_hoohash_speculative_fixedpoint_profile 131072 8 | tee speculative-fixedpoint-profile.txt
+          grep -q '^candidate_class=speculative_filtered_hoohash$' speculative-fixedpoint-profile.txt
+          grep -q '^strict_hits=512$' speculative-fixedpoint-profile.txt
+          grep -q '^invalid_submissions_after_strict_validation=0$' speculative-fixedpoint-profile.txt
+
+      - name: Classify hosted candidates
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import re
+          text=open('speculative-fixedpoint-profile.txt',encoding='utf-8').read()
+          blocks=text.split('mode=fixed_q')[1:]
+          passing=[]
+          for block in blocks:
+              first, _, body=block.partition('\n')
+              bits=int(first.strip())
+              def value(name, default=''):
+                  m=re.search(rf'^{name}=([^\n]+)', body, re.M)
+                  return m.group(1).strip() if m else default
+              recall=float(value('recall','0'))
+              gain=float(value('cpu_throughput_gain_pct','-999'))
+              fn=int(value('false_negatives','999999'))
+              fp=int(value('false_positives','999999'))
+              invalid=int(value('invalid_submissions_after_strict_validation','1'))
+              equal=float(value('mixed_equal_pct','0'))
+              print(f'CANDIDATE q{bits}: recall={recall:.6f} fn={fn} fp={fp} mixed_equal_pct={equal:.6f} cpu_gain_pct={gain:.3f}')
+              if recall >= 0.995 and invalid == 0:
+                  passing.append((gain, equal, bits, recall, fn, fp))
+          if not passing:
+              print('SPECULATIVE_PROFILE_REJECT=no_fixedpoint_mode_meets_recall_0_995')
+          else:
+              best=max(passing)
+              print(f'SPECULATIVE_PROFILE_RECALL_PASS=q{best[2]} recall={best[3]:.6f} fn={best[4]} fp={best[5]} cpu_gain_pct={best[0]:.3f}')
+              if best[0] >= 25.0:
+                  print('SPECULATIVE_PRECUDA_PASS=recall_and_hosted_throughput')
+              else:
+                  print('SPECULATIVE_PRECUDA_HOLD=recall_pass_but_hosted_gain_below_25pct')
+          PY
+
+      - name: Upload profile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-speculative-fixedpoint-${{ github.run_id }}
+          path: speculative-fixedpoint-profile.txt
+          retention-days: 30
