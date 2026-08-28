@@ -1,0 +1,220 @@
+name: V2.1 HotRun8 Three-Stage Profile Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-three-stage-profile
+    paths:
+      - '.github/workflows/v21-hotrun8-three-stage-profile-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - name: Instrument exact three-stage production path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/cuda/v1/header80_backend_part07.inc')
+          s=p.read_text()
+          old='''#else
+    header80_first_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+#if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8
+    hoohash_mix_hotrun8_split_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_mix_hotrun8_split_kernel launch");
+#else
+    hoohash_mix_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_mix_kernel launch");
+#endif
+    header80_final_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin), work_words,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
+#endif
+'''
+          new='''#else
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE == 2
+    static thread_local cudaEvent_t profile3_begin{};
+    static thread_local cudaEvent_t profile3_after_first{};
+    static thread_local cudaEvent_t profile3_after_hoohash{};
+    static thread_local cudaEvent_t profile3_end{};
+    static thread_local bool profile3_ready = false;
+    if (!profile3_ready) {
+        check_cuda_header80(cudaEventCreate(&profile3_begin), "cudaEventCreate(profile3 begin)");
+        check_cuda_header80(cudaEventCreate(&profile3_after_first), "cudaEventCreate(profile3 after first)");
+        check_cuda_header80(cudaEventCreate(&profile3_after_hoohash), "cudaEventCreate(profile3 after hoohash)");
+        check_cuda_header80(cudaEventCreate(&profile3_end), "cudaEventCreate(profile3 end)");
+        profile3_ready = true;
+    }
+    check_cuda_header80(cudaEventRecord(profile3_begin), "cudaEventRecord(profile3 begin)");
+#endif
+    header80_first_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE == 2
+    check_cuda_header80(cudaEventRecord(profile3_after_first), "cudaEventRecord(profile3 after first)");
+#endif
+#if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8
+    hoohash_mix_hotrun8_split_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_mix_hotrun8_split_kernel launch");
+#else
+    hoohash_mix_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words, count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_mix_kernel launch");
+#endif
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE == 2
+    check_cuda_header80(cudaEventRecord(profile3_after_hoohash), "cudaEventRecord(profile3 after hoohash)");
+#endif
+    header80_final_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin), work_words,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE == 2
+    check_cuda_header80(cudaEventRecord(profile3_end), "cudaEventRecord(profile3 end)");
+    check_cuda_header80(cudaEventSynchronize(profile3_end), "cudaEventSynchronize(profile3 end)");
+    float profile3_first_ms = 0.0F;
+    float profile3_hoohash_ms = 0.0F;
+    float profile3_final_ms = 0.0F;
+    check_cuda_header80(cudaEventElapsedTime(&profile3_first_ms, profile3_begin, profile3_after_first), "cudaEventElapsedTime(profile3 first)");
+    check_cuda_header80(cudaEventElapsedTime(&profile3_hoohash_ms, profile3_after_first, profile3_after_hoohash), "cudaEventElapsedTime(profile3 hoohash)");
+    check_cuda_header80(cudaEventElapsedTime(&profile3_final_ms, profile3_after_hoohash, profile3_end), "cudaEventElapsedTime(profile3 final)");
+    const double profile3_total_ms = static_cast<double>(profile3_first_ms) + static_cast<double>(profile3_hoohash_ms) + static_cast<double>(profile3_final_ms);
+    std::fprintf(stderr,
+                 "PEPEW_STAGE_PROFILE3 count=%zu first_blake3_ms=%.6f hoohash_ms=%.6f final_blake3_ms=%.6f first_fraction=%.6f hoohash_fraction=%.6f final_fraction=%.6f\\n",
+                 count, static_cast<double>(profile3_first_ms), static_cast<double>(profile3_hoohash_ms), static_cast<double>(profile3_final_ms),
+                 profile3_total_ms > 0.0 ? static_cast<double>(profile3_first_ms) / profile3_total_ms : 0.0,
+                 profile3_total_ms > 0.0 ? static_cast<double>(profile3_hoohash_ms) / profile3_total_ms : 0.0,
+                 profile3_total_ms > 0.0 ? static_cast<double>(profile3_final_ms) / profile3_total_ms : 0.0);
+#endif
+#endif
+'''
+          if old not in s:
+              raise SystemExit('three-stage production block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -q 'PEPEW_STAGE_PROFILE3' native/src/cuda/v1/header80_backend_part07.inc
+
+      - name: Build spill-free three-stage profile package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native -B /tmp/profile3 -G Ninja \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=0 -DPEPEPOW_CUDA_STAGE_PROFILE=2'
+          cmake --build /tmp/profile3 --target pepepow_header80_benchmark pepepow_core_tests -j2 2>&1 | tee /tmp/profile3-build.log
+          /tmp/profile3/pepepow_core_tests | tee /tmp/profile3-core-tests.log
+          grep -q 'header80_first_kernel' /tmp/profile3-build.log
+          grep -q 'hoohash_mix_hotrun8_split_kernel' /tmp/profile3-build.log
+          grep -q 'header80_final_kernel' /tmp/profile3-build.log
+          if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/profile3-build.log; then
+            echo 'ERROR: three-stage profiling build contains CUDA spills on sm_70'
+            exit 1
+          fi
+          mkdir -p /tmp/pkg3
+          cp /tmp/profile3/pepepow_header80_benchmark /tmp/pkg3/pepepow_header80_benchmark_hotrun8_three_stage_profile
+          cp /tmp/profile3-build.log /tmp/pkg3/profile3-build.log
+          cp /tmp/profile3-core-tests.log /tmp/pkg3/core-tests.log
+          cat > /tmp/pkg3/build-info.txt <<EOF
+          source_branch=agent/v21-v100-hotrun8-three-stage-profile
+          source_commit=${GITHUB_SHA}
+          cuda_toolkit=12.8.1
+          cuda_arch=sm_70
+          benchmark_path=production-header80-backend
+          architecture=hotrun8-three-stage-profile
+          candidate_split_pipeline=true
+          candidate_hotrun8=true
+          candidate_fusion_mode=0
+          stage_profile=cuda-events-three-stage
+          candidate_spills=0
+          EOF
+          tar -C /tmp/pkg3 -czf /tmp/PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz | tee /tmp/PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz.sha256
+
+      - name: Upload hosted diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-three-stage-profile-build-${{ github.sha }}
+          path: |
+            /tmp/profile3-build.log
+            /tmp/profile3-core-tests.log
+            /tmp/PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish replaceable profiling prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v2.1-hotrun8-three-stage-profile-v100
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${TAG}" 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+              "${api}/releases" \
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 HotRun8 Three-Stage Profile\",\"prerelease\":true}")"
+          fi
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
+          name='PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz'
+          aid="$(python3 -c 'import json,sys; n=sys.argv[1]; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]==n),""))' "$name" <<<"$assets")"
+          [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
+          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
+            --data-binary @/tmp/PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz \
+            "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${name}" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${name}"
