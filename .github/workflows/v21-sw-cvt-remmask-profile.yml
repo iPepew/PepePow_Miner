@@ -28,6 +28,7 @@ jobs:
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
       - name: Prepare common configuration
         run: |
+          cp native/src/cuda/v1/header80_backend_part02.inc /tmp/header80_backend_part02.original.inc
           cat >/tmp/config.sh <<'EOF'
           configure() {
             cmake -S native -B "$1" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
@@ -52,7 +53,7 @@ jobs:
           cmake --build /tmp/cvt --target pepepow_header80_benchmark pepepow_header80_differential -j2 2>&1 | tee /tmp/cvt.log
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/cvt.log
           /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/cvt/pepepow_header80_benchmark >/tmp/cvt.sass
-          git checkout -- native/src/cuda/v1/header80_backend_part02.inc
+          cp /tmp/header80_backend_part02.original.inc native/src/cuda/v1/header80_backend_part02.inc
       - name: Build exact remainder-mask candidate
         run: |
           python3 - <<'PY'
