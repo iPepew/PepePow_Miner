@@ -82,15 +82,50 @@
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
 #elif defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE
+    static thread_local cudaEvent_t stage_profile_begin{};
+    static thread_local cudaEvent_t stage_profile_split{};
+    static thread_local cudaEvent_t stage_profile_end{};
+    static thread_local bool stage_profile_events_ready = false;
+    if (!stage_profile_events_ready) {
+        check_cuda_header80(cudaEventCreate(&stage_profile_begin), "cudaEventCreate(stage begin)");
+        check_cuda_header80(cudaEventCreate(&stage_profile_split), "cudaEventCreate(stage split)");
+        check_cuda_header80(cudaEventCreate(&stage_profile_end), "cudaEventCreate(stage end)");
+        stage_profile_events_ready = true;
+    }
+    check_cuda_header80(cudaEventRecord(stage_profile_begin), "cudaEventRecord(stage begin)");
+#endif
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE
+    check_cuda_header80(cudaEventRecord(stage_profile_split), "cudaEventRecord(stage split)");
+#endif
     hoohash_final_hotrun8_fused_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_fused_kernel launch");
+#if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE
+    check_cuda_header80(cudaEventRecord(stage_profile_end), "cudaEventRecord(stage end)");
+    check_cuda_header80(cudaEventSynchronize(stage_profile_end), "cudaEventSynchronize(stage end)");
+    float first_stage_ms = 0.0F;
+    float fused_stage_ms = 0.0F;
+    check_cuda_header80(
+        cudaEventElapsedTime(&first_stage_ms, stage_profile_begin, stage_profile_split),
+        "cudaEventElapsedTime(first stage)");
+    check_cuda_header80(
+        cudaEventElapsedTime(&fused_stage_ms, stage_profile_split, stage_profile_end),
+        "cudaEventElapsedTime(fused stage)");
+    const double stage_total_ms = static_cast<double>(first_stage_ms) + static_cast<double>(fused_stage_ms);
+    const double first_fraction = stage_total_ms > 0.0 ? static_cast<double>(first_stage_ms) / stage_total_ms : 0.0;
+    const double fused_fraction = stage_total_ms > 0.0 ? static_cast<double>(fused_stage_ms) / stage_total_ms : 0.0;
+    std::fprintf(stderr,
+                 "PEPEW_STAGE_PROFILE count=%zu first_blake3_ms=%.6f hoohash_final_ms=%.6f first_fraction=%.6f fused_fraction=%.6f\n",
+                 count, static_cast<double>(first_stage_ms), static_cast<double>(fused_stage_ms),
+                 first_fraction, fused_fraction);
+#endif
 #else
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
