@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-
 defaults:
   run:
     shell: bash
@@ -50,7 +49,7 @@ jobs:
             ('floors[rr]=static_cast<std::uint64_t>(qsum/kQScale);', 'floors[rr]=qsum >> kQBits;'),
             ('std::vector<double> flat(4096); std::vector<std::int32_t> qtable(4096*16);', 'std::vector<double> flat(4096); std::vector<std::int32_t> qtable(4096);'),
             ('for(int r=0;r<64;++r)for(int c=0;c<64;++c){flat[r*64+c]=matrix[r][c];for(int n=0;n<16;++n){const double x=matrix[r][c]*0.0001*static_cast<double>(n)*static_cast<double>(kQScale);qtable[(r*64+c)*16+n]=static_cast<std::int32_t>(std::llround(x));}}', 'for(int r=0;r<64;++r)for(int c=0;c<64;++c){flat[r*64+c]=matrix[r][c];const double x=matrix[r][c]*0.0001*static_cast<double>(kQScale);qtable[r*64+c]=static_cast<std::int32_t>(std::llround(x));}'),
-            ('qsum+=static_cast<std::uint64_t>(table[(row*64+col)*16+static_cast<int>(nib)]);', 'qsum+=static_cast<std::uint64_t>(static_cast<std::int64_t>(table[row*64+col])*static_cast<std::int64_t>(nib));'),
+            ('qsum+=static_cast<std::int64_t>(table[(row*64+col)*16+static_cast<int>(nib)]);', 'qsum+=static_cast<std::uint64_t>(static_cast<std::int64_t>(table[row*64+col])*static_cast<std::int64_t>(nib));'),
           ]
           for old,new in replacements:
               if old in s:
