@@ -54,12 +54,15 @@ jobs:
           warm_new='qsum+=static_cast<std::uint64_t>(static_cast<std::int64_t>(table[row*64+col])*static_cast<std::int64_t>(nib));'
           if warm_old not in s: raise SystemExit('missing warm lookup marker')
           s=s.replace(warm_old,warm_new,1)
+          q20_fn='__device__ __forceinline__ void q20_mix('
+          q20_pos=s.find(q20_fn)
+          if q20_pos < 0: raise SystemExit('missing q20_mix marker')
           start_marker='            for (int col=0;col<64;++col) {'
-          start=s.find(start_marker)
-          if start < 0: raise SystemExit('missing byte-pair loop start')
+          start=s.find(start_marker,q20_pos)
+          if start < 0: raise SystemExit('missing q20 byte-pair loop start')
           end_marker='                cold=rem<=kQColdThreshold;\n            }'
           end=s.find(end_marker,start)
-          if end < 0: raise SystemExit('missing byte-pair loop end')
+          if end < 0: raise SystemExit('missing q20 byte-pair loop end')
           end += len(end_marker)
           loop_new='''            for (int byte_idx=0;byte_idx<32;++byte_idx) {
                 const std::uint8_t b=byte_at(first,byte_idx);
