@@ -1,0 +1,203 @@
+name: V2.1 SW CVT vs RemMask Offline Benchmark Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-sw-cvt-remmask-profile
+    paths:
+      - '.github/workflows/v21-sw-cvt-remmask-offline-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hosted build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl g++ git ninja-build python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Save strict source and common flags
+        run: |
+          set -Eeuo pipefail
+          cp native/src/cuda/v1/header80_backend_part02.inc /tmp/header80_backend_part02.strict.inc
+          cat > /tmp/common-cmake-flags.txt <<'EOF'
+          -G
+          Ninja
+          -DPEPEPOW_ENABLE_CUDA=ON
+          -DPEPEPOW_BUILD_TESTS=OFF
+          -DPEPEPOW_CUDA_ARCHITECTURES=70-real
+          -DPEPEPOW_CUDA_THREADS=704
+          -DPEPEPOW_CUDA_MIN_BLOCKS=1
+          -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+          -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON
+          -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+          -DPEPEPOW_CUDA_SW_STATE_MODE=3
+          -DPEPEPOW_CUDA_BYTE_UNROLL=1
+          -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+          -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON
+          -DPEPEPOW_CUDA_HOTRUN8=ON
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+          -DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2
+          EOF
+
+      - name: Apply pool-confirmed SW-CVT predicate
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/cuda/v1/header80_backend_part02.inc')
+          s=p.read_text()
+          old='''__device__ __forceinline__ void update_sw_state(
+              HooHashSwState& state, double sum) {
+              state = positive_fraction_div1024_le_002_finite(sum);
+          }
+          #endif'''
+          new='''__device__ __forceinline__ void update_sw_state(
+              HooHashSwState& state, double sum) {
+              const double scaled = sum * 0x1.0p-10;
+              const unsigned long long whole = __double2ull_rd(scaled);
+              state = (scaled - static_cast<double>(whole)) <= 0.02;
+          }
+          #endif'''
+          if s.count(old)!=1: raise SystemExit(f'strict marker count={s.count(old)}')
+          p.write_text(s.replace(old,new,1))
+          PY
+          cp native/src/cuda/v1/header80_backend_part02.inc /tmp/header80_backend_part02.cvt.inc
+
+      - name: Build SW-CVT baseline
+        run: |
+          set -Eeuo pipefail
+          mapfile -t common < /tmp/common-cmake-flags.txt
+          cmake -S native -B /tmp/cvt "${common[@]}"
+          cmake --build /tmp/cvt --target pepepow_header80_benchmark pepepow_header80_differential -j2 2>&1 | tee /tmp/cvt-build.log
+          grep -q 'hoohash_final_hotrun8_fused_kernel' /tmp/cvt-build.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/cvt-build.log
+
+      - name: Apply exact remainder-mask predicate
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/src/cuda/v1/header80_backend_part02.inc')
+          s=p.read_text()
+          old='''__device__ __forceinline__ void update_sw_state(
+              HooHashSwState& state, double sum) {
+              const double scaled = sum * 0x1.0p-10;
+              const unsigned long long whole = __double2ull_rd(scaled);
+              state = (scaled - static_cast<double>(whole)) <= 0.02;
+          }
+          #endif'''
+          new='''__device__ __forceinline__ void update_sw_state(
+              HooHashSwState& state, double sum) {
+              const unsigned long long whole = __double2ull_rd(sum);
+              const unsigned int rem = static_cast<unsigned int>(whole) & 1023U;
+              const double frac = sum - static_cast<double>(whole);
+              state = (rem < 20U) || (rem == 20U && frac <= 0.48);
+          }
+          #endif'''
+          if s.count(old)!=1: raise SystemExit(f'cvt marker count={s.count(old)}')
+          p.write_text(s.replace(old,new,1))
+          PY
+
+      - name: Build and statically gate RemMask candidate
+        run: |
+          set -Eeuo pipefail
+          mapfile -t common < /tmp/common-cmake-flags.txt
+          cmake -S native -B /tmp/remmask "${common[@]}"
+          cmake --build /tmp/remmask --target pepepow_header80_benchmark pepepow_header80_differential -j2 2>&1 | tee /tmp/remmask-build.log
+          grep -q 'hoohash_final_hotrun8_fused_kernel' /tmp/remmask-build.log
+          if grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/remmask-build.log; then
+            echo 'ERROR: RemMask candidate contains CUDA spills on sm_70' >&2
+            exit 1
+          fi
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/cvt/pepepow_header80_benchmark > /tmp/cvt.sass
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/remmask/pepepow_header80_benchmark > /tmp/remmask.sass
+          cvt_insn=$(grep -Ec '^\s*/\*[0-9a-fA-F]+\*/' /tmp/cvt.sass || true)
+          rem_insn=$(grep -Ec '^\s*/\*[0-9a-fA-F]+\*/' /tmp/remmask.sass || true)
+          echo "cvt_sass_instructions=$cvt_insn"
+          echo "remmask_sass_instructions=$rem_insn"
+          echo "instruction_delta=$((rem_insn-cvt_insn))"
+
+      - name: Assemble immutable staged A/B package
+        run: |
+          set -Eeuo pipefail
+          rm -rf /tmp/pkg && mkdir -p /tmp/pkg
+          cp /tmp/cvt/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_exact
+          cp /tmp/remmask/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_sw_cvt_remmask
+          cp /tmp/remmask/pepepow_header80_differential /tmp/pkg/pepepow_header80_differential_sw_cvt_remmask
+          cp /tmp/cvt-build.log /tmp/pkg/exact-build.log
+          cp /tmp/remmask-build.log /tmp/pkg/sw-cvt-remmask-build.log
+          cp /tmp/cvt.sass /tmp/pkg/cvt.sass
+          cp /tmp/remmask.sass /tmp/pkg/remmask.sass
+          cat > /tmp/pkg/build-info.txt <<EOF
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          cuda_toolkit=12.8.1
+          cuda_arch=sm_70
+          benchmark_path=production-header80-backend
+          exact_candidate_pair=true
+          comparison_baseline=pool-confirmed-hotrun8-fusion2-sw-cvt
+          differential_path=production-header80-search-max-target
+          architecture=hotrun8-fusion2-sw-cvt-remmask
+          candidate_split_pipeline=true
+          candidate_hotrun8=true
+          candidate_fusion_mode=2
+          candidate_sw_predicate=exact-remainder-mask
+          candidate_spills=0
+          EOF
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C /tmp/pkg -cf - . | gzip -n > /tmp/PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz
+          sha256sum /tmp/PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz | tee /tmp/PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz.sha256
+
+      - name: Publish replaceable prerelease asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v2.1-sw-cvt-remmask-v100-offline-bench
+          ASSET: PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz
+        run: |
+          set -Eeuo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${TAG}" 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW v2.1 SW-CVT RemMask Offline Bench\",\"prerelease\":true}")"
+          fi
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
+          aid="$(python3 -c 'import json,sys; n=sys.argv[1]; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]==n),""))' "$ASSET" <<<"$assets")"
+          [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
+          curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' --data-binary @"/tmp/${ASSET}" "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${ASSET}" >/dev/null
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
+
+      - name: Upload hosted diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sw-cvt-remmask-offline-package-${{ github.sha }}
+          path: |
+            /tmp/cvt-build.log
+            /tmp/remmask-build.log
+            /tmp/PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
