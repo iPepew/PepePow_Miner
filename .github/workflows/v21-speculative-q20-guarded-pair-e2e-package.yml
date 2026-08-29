@@ -1,0 +1,121 @@
+name: PepeW-Miner-v2.1 BETA Q20 Guarded Pair E2E Offline Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-speculative-q20-guarded-pair
+    paths:
+      - '.github/workflows/v21-speculative-q20-guarded-pair-e2e-package.yml'
+      - 'scripts/apply_q20_guarded_pair.py'
+      - 'native/src/benchmark/hoohash_speculative_q20_cuda.cu'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - name: Apply guarded-pair transform
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/apply_q20_guarded_pair.py
+          grep -F 'const std::uint64_t room=kQPeriodMask-rem0;' native/src/benchmark/hoohash_speculative_q20_cuda.cu
+          grep -F 'if (dsum<=room)' native/src/benchmark/hoohash_speculative_q20_cuda.cu
+          ! grep -F 'qsum%kQPeriod' native/src/benchmark/hoohash_speculative_q20_cuda.cu
+      - name: Configure sm70 production-shaped build
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=OFF \
+            -DPEPEPOW_CUDA_ARCHITECTURES='70-real' \
+            -DPEPEPOW_CUDA_THREADS=704 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+      - name: Build and enforce static gate
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target pepepow_hoohash_speculative_q20_cuda 2>&1 | tee guarded-pair-build.log
+          test -x build/pepepow_hoohash_speculative_q20_cuda
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' guarded-pair-build.log
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepow_hoohash_speculative_q20_cuda | tee guarded-pair-elf.txt
+          grep -F sm_70 guarded-pair-elf.txt
+          /usr/local/cuda/bin/cuobjdump --dump-resource-usage build/pepepow_hoohash_speculative_q20_cuda | tee guarded-pair-resources.txt
+          /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepow_hoohash_speculative_q20_cuda > guarded-pair.sass
+          if grep -Eqi '(div\.u64|rem\.u64|__udiv|__umod|__div|__mod)' guarded-pair.sass; then
+            echo 'STATIC_REJECT=integer_divrem_present'
+            exit 1
+          fi
+          grep -Eq 'REG:127 STACK:176 SHARED:0 LOCAL:0' guarded-pair-resources.txt
+          inst=$(grep -Ec '^\s*/\*[0-9a-fA-F]+\*/' guarded-pair.sass || true)
+          echo "sass_instruction_lines=$inst"
+          test "$inst" -le 8008
+          echo 'Q20_GUARDED_PAIR_E2E_STATIC_PASS=sm70_no_spills_no_int_divrem'
+          echo 'PROMOTION_ALLOWED=false'
+      - name: Assemble immutable offline package
+        run: |
+          set -Eeuo pipefail
+          mkdir -p package
+          install -m 0755 build/pepepow_hoohash_speculative_q20_cuda package/
+          cp guarded-pair-build.log guarded-pair-resources.txt guarded-pair.sass package/
+          cat > package/BUILD_INFO.txt <<EOF
+          product=PepeW-Miner-v2.1 BETA
+          candidate_class=speculative_filtered_hoohash
+          architecture=q20_guarded_pair_state_dependent_batching
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          cuda_arch=sm_70
+          recall_gate=0.995
+          throughput_gate_pct=25
+          invalid_submissions_max=0
+          strict_validation_required=true
+          accepted_share_required=true
+          real_pool_allowed=false
+          v100_compute_idle_required=true
+          EOF
+          tar -C package -czf q20-guarded-pair-e2e-sm70.tar.gz .
+          sha256sum q20-guarded-pair-e2e-sm70.tar.gz | tee q20-guarded-pair-e2e-sm70.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q20-guarded-pair-e2e-sm70-${{ github.sha }}
+          path: |
+            q20-guarded-pair-e2e-sm70.tar.gz
+            q20-guarded-pair-e2e-sm70.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish immutable technical release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.1-q20-guarded-pair-e2e-sm70-offline-${{ github.sha }}
+          name: PepeW-Miner-v2.1 BETA Q20 Guarded Pair E2E Offline ${{ github.sha }}
+          prerelease: true
+          files: |
+            q20-guarded-pair-e2e-sm70.tar.gz
+            q20-guarded-pair-e2e-sm70.tar.gz.sha256
+          fail_on_unmatched_files: true
