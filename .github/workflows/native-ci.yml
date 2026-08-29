@@ -48,3 +48,12 @@ jobs:
       - name: Nonlinear census 256 nonces
         if: runner.os == 'Linux'
         run: native/build/pepepow_nonlinear_census 256 | tee native/build/nonlinear-census.json
+
+      - name: Speculative exp phase LUT recall/throughput sweep
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for bins in 1024 4096 16384; do
+            native/build/pepepow_speculative_exp_phase 8192 "$bins" 15 | tee "native/build/spec-exp-phase-${bins}.json"
+          done
