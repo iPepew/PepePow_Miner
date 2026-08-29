@@ -1,0 +1,68 @@
+name: PepeW-Miner-v2.1 BETA Nonlinear Census Hosted
+
+on:
+  push:
+    branches: [agent/v21-v100-nonlinear-census]
+    paths:
+      - 'native/src/benchmark/hoohash_nonlinear_census.cpp'
+      - '.github/workflows/v21-nonlinear-census-hosted.yml'
+  workflow_dispatch:
+
+jobs:
+  census:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential ninja-build python3-pip
+          python3 -m pip install --user 'cmake==3.31.6'
+      - name: Add isolated census target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/CMakeLists.txt')
+          s=p.read_text()
+          marker='add_executable(pepepow_benchmark src/benchmark/benchmark.cpp)\n'
+          ins='add_executable(pepepow_hoohash_nonlinear_census src/benchmark/hoohash_nonlinear_census.cpp)\ntarget_link_libraries(pepepow_hoohash_nonlinear_census PRIVATE pepepow_core)\n\n'
+          if marker not in s:
+              raise SystemExit('benchmark marker missing')
+          p.write_text(s.replace(marker,ins+marker,1))
+          PY
+      - name: Configure and build strict-reference census
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          cmake -S native -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=OFF
+          cmake --build build --parallel 4 --target pepepow_hoohash_nonlinear_census
+      - name: Run representative fixed-job census
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./build/pepepow_hoohash_nonlinear_census 4096 | tee nonlinear-census.txt
+          grep -F 'profile=exact_v21_nonlinear_census' nonlinear-census.txt
+          grep -F 'nonces=4096' nonlinear-census.txt
+          python3 - <<'PY'
+          import pathlib
+          d={}
+          for line in pathlib.Path('nonlinear-census.txt').read_text().splitlines():
+              if '=' in line:
+                  k,v=line.split('=',1); d[k]=v
+          required=['cold_pct','warm_pct','medium_pct','intermediate_pct','high_pct','transform_add_pct','transform_sub_pct','transform_mul_pct','transform_div_pct','nonfinite_first','nonfinite_retry_iterations','x_all_min','x_all_max','y_all_min','y_all_max']
+          missing=[k for k in required if k not in d]
+          if missing: raise SystemExit('missing census fields: '+','.join(missing))
+          print('dominant_nonlinear=' + max(('medium','intermediate','high'), key=lambda k: float(d[k+'_pct'])))
+          print('dominant_transform=' + max(('add','sub','mul','div'), key=lambda k: float(d['transform_'+k+'_pct'])))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-v21-nonlinear-census-${{ github.sha }}
+          path: nonlinear-census.txt
+          retention-days: 30
