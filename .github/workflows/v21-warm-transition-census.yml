@@ -1,0 +1,42 @@
+name: V2 Q20 Warm Transition Census
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-warm-transition-census
+  workflow_dispatch:
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure hosted CPU profile
+        working-directory: native
+        run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build profile and core tests
+        working-directory: native
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --target pepepow_hoohash_warm_transition_census pepepow_core_tests -j2 2>&1 | tee warm-transition-build.log
+      - name: Run core tests
+        working-directory: native
+        run: ./build/pepepow_core_tests
+      - name: Run representative fixed-job Q20 transition census
+        working-directory: native
+        run: ./build/pepepow_hoohash_warm_transition_census 4096 | tee warm-transition-census.txt
+      - name: Enforce hosted-only policy
+        run: |
+          grep -F 'v100_allowed=false' native/warm-transition-census.txt
+          echo 'V100_ALLOWED=false'
+          echo 'PURPOSE=warm_transition_cost_attribution'
+      - name: Upload profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-warm-transition-census-${{ github.sha }}
+          path: |
+            native/warm-transition-build.log
+            native/warm-transition-census.txt
+          if-no-files-found: error
+          retention-days: 14
