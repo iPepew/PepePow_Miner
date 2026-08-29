@@ -29,10 +29,10 @@ jobs:
           from pathlib import Path
           p=Path('native/CMakeLists.txt')
           s=p.read_text()
-          marker='add_executable(pepepow_benchmark src/benchmark/benchmark.cpp)\n'
+          marker='if(PEPEPOW_BUILD_TESTS)\n'
           ins='add_executable(pepepow_hoohash_nonlinear_census src/benchmark/hoohash_nonlinear_census.cpp)\ntarget_link_libraries(pepepow_hoohash_nonlinear_census PRIVATE pepepow_core)\n\n'
           if marker not in s:
-              raise SystemExit('benchmark marker missing')
+              raise SystemExit('tests block marker missing')
           p.write_text(s.replace(marker,ins+marker,1))
           PY
       - name: Configure and build strict-reference census
