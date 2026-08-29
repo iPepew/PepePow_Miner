@@ -113,4 +113,11 @@ if(PEPEPOW_BUILD_TESTS)
     add_executable(pepepow_nonlinear_census src/benchmark/nonlinear_census.cpp)
     target_link_libraries(pepepow_nonlinear_census PRIVATE pepepow_core)
     add_test(NAME pepepow_nonlinear_census_smoke COMMAND pepepow_nonlinear_census 8)
+
+    # Offline-only speculative/filtered harness. The fast path replaces only
+    # the profiled-dominant exp(sin+cos) branch with a phase LUT. Every fast
+    # hit is compared to and filtered by the strict reference before it can be
+    # counted as a validated submission. This target is never linked into the miner.
+    add_executable(pepepow_speculative_exp_phase src/benchmark/speculative_exp_phase.cpp)
+    target_link_libraries(pepepow_speculative_exp_phase PRIVATE pepepow_core)
 endif()
