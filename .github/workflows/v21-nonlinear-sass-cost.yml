@@ -1,0 +1,91 @@
+name: PepeW-Miner-v2.1 BETA Nonlinear SASS Cost Attribution
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-nonlinear-sass-cost
+    paths:
+      - '.github/workflows/v21-nonlinear-sass-cost.yml'
+      - 'native/src/benchmark/hoohash_nonlinear_sass_probe.cu'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sass-cost:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install analysis tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 binutils
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Compile isolated nonlinear probes for sm70
+        run: |
+          set -Eeuo pipefail
+          src=native/src/benchmark/hoohash_nonlinear_sass_probe.cu
+          for kind in exp_sincos sin2 invsqrt; do
+            case "$kind" in
+              exp_sincos) k=0 ;;
+              sin2) k=1 ;;
+              invsqrt) k=2 ;;
+            esac
+            /usr/local/cuda/bin/nvcc -std=c++20 -O3 --fmad=false -lineinfo -arch=sm_70 -DPROBE_KIND=$k -cubin "$src" -o "$kind.cubin" -Xptxas=-v 2>&1 | tee "$kind.ptxas.txt"
+            /usr/local/cuda/bin/cuobjdump --dump-resource-usage "$kind.cubin" > "$kind.resources.txt"
+            /usr/local/cuda/bin/cuobjdump --dump-sass "$kind.cubin" > "$kind.sass"
+          done
+
+      - name: Attribute static instruction cost
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,re
+          kinds=['exp_sincos','sin2','invsqrt']
+          out={}
+          for kind in kinds:
+              text=Path(f'{kind}.sass').read_text(errors='replace')
+              inst=[ln for ln in text.splitlines() if re.match(r'^\s*/\*[0-9a-fA-F]+\*/',ln)]
+              def n(pattern):
+                  rx=re.compile(pattern,re.I)
+                  return sum(bool(rx.search(x)) for x in inst)
+              out[kind]={
+                  'sass_instruction_lines':len(inst),
+                  'calls':n(r'\bCALL\b'),
+                  'mufu':n(r'\bMUFU\b'),
+                  'double_ops':n(r'\b(DADD|DMUL|DFMA|DSETP|DSET|RRO)\b'),
+                  'sqrt_rcp':n(r'\b(SQRT|RSQ|RCP)\b'),
+                  'branches':n(r'\b(BRA|BRX|JMP)\b'),
+              }
+          base=min(v['sass_instruction_lines'] for v in out.values()) or 1
+          for v in out.values(): v['relative_to_smallest']=round(v['sass_instruction_lines']/base,4)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          Path('nonlinear-sass-cost.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
+          PY
+          cat nonlinear-sass-cost.json
+          echo 'V100_ALLOWED=false'
+          echo 'PURPOSE=static_cost_attribution_only'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nonlinear-sass-cost-${{ github.sha }}
+          path: |
+            *.ptxas.txt
+            *.resources.txt
+            *.sass
+            nonlinear-sass-cost.json
+          if-no-files-found: error
+          retention-days: 14
