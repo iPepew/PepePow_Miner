@@ -1,4 +1,4 @@
-name: V2.1 HotRun8 Body Profile Package
+name: V2.1 HotRun8 Body Profile Local Package
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/v21-hotrun8-body-profile-package.yml'
       - 'scripts/instrument_hotrun8_body_profile.py'
+      - 'scripts/instrument_hotrun8_body_profile_local.py'
   workflow_dispatch:
 
 permissions:
@@ -35,12 +36,13 @@ jobs:
           tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
           ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
 
-      - name: Instrument exact sparse HooHash body profile
+      - name: Instrument exact sparse HooHash body profile with local accumulation
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/instrument_hotrun8_body_profile.py
+          python3 scripts/instrument_hotrun8_body_profile_local.py
           grep -q 'PEPEW_BODY_PROFILE' native/src/cuda/v1/header80_backend_part07.inc
+          grep -q 'lp_warm' native/src/cuda/v1/header80_hotrun8.inc
           grep -q 'g_body_profile_total_cycles' native/src/cuda/v1/header80_hotrun8.inc
 
       - name: Build and static resource gate
@@ -67,13 +69,12 @@ jobs:
           cmake --build /tmp/bodyprof --target pepepow_header80_benchmark pepepow_core_tests -j2 2>&1 | tee /tmp/bodyprof-build.log
           /tmp/bodyprof/pepepow_core_tests | tee /tmp/bodyprof-core-tests.log
           if grep -Eq '[1-9][0-9]* bytes spill stores|[1-9][0-9]* bytes spill loads' /tmp/bodyprof-build.log; then
-            echo 'ERROR: body profiler contains CUDA spills on sm_70'
+            echo 'ERROR: local body profiler contains CUDA spills on sm_70'
             exit 1
           fi
-          reg_line="$(grep -F 'hoohash_mix_hotrun8_split_kernel' /tmp/bodyprof-build.log | tail -1 || true)"
-          echo "resource_line=${reg_line}"
+          grep -A2 -F 'hoohash_mix_hotrun8_split_kernel' /tmp/bodyprof-build.log | tail -3 | tee /tmp/bodyprof-resource.txt
           mkdir -p /tmp/bodypkg
-          cp /tmp/bodyprof/pepepow_header80_benchmark /tmp/bodypkg/pepepow_header80_benchmark_hotrun8_body_profile
+          cp /tmp/bodyprof/pepepow_header80_benchmark /tmp/bodypkg/pepepow_header80_benchmark_hotrun8_body_profile_local
           cp /tmp/bodyprof-build.log /tmp/bodypkg/body-profile-build.log
           cp /tmp/bodyprof-core-tests.log /tmp/bodypkg/core-tests.log
           cat > /tmp/bodypkg/build-info.txt <<EOF
@@ -81,27 +82,29 @@ jobs:
           source_commit=${GITHUB_SHA}
           cuda_toolkit=12.8.1
           cuda_arch=sm_70
-          architecture=hotrun8-sparse-body-profile
+          architecture=hotrun8-sparse-body-profile-local
           sample_predicate=first_pass0_low12_zero
           sample_rate_nominal=1/4096
+          accumulation=thread-local-one-flush-per-sampled-nonce
           exact_path=true
           candidate_split_pipeline=true
           candidate_hotrun8=true
           candidate_spills=0
           pool_submission=false
           EOF
-          tar -C /tmp/bodypkg -czf /tmp/PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz .
-          sha256sum /tmp/PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz | tee /tmp/PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz.sha256
+          tar -C /tmp/bodypkg -czf /tmp/PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz | tee /tmp/PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz.sha256
 
       - name: Upload hosted diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hotrun8-body-profile-build-${{ github.sha }}
+          name: hotrun8-body-profile-local-build-${{ github.sha }}
           path: |
             /tmp/bodyprof-build.log
             /tmp/bodyprof-core-tests.log
-            /tmp/PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz.sha256
+            /tmp/bodyprof-resource.txt
+            /tmp/PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz.sha256
           if-no-files-found: warn
           retention-days: 30
 
@@ -109,7 +112,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v2.1-hotrun8-body-profile-v100
+          TAG: v2.1-hotrun8-body-profile-local-v100
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
@@ -118,14 +121,14 @@ jobs:
           if [[ -z "$release_json" ]]; then
             release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' \
               "${api}/releases" \
-              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA HotRun8 Body Profile\",\"prerelease\":true}")"
+              -d "{\"tag_name\":\"${TAG}\",\"target_commitish\":\"${GITHUB_SHA}\",\"name\":\"PepeW-Miner-v2.1 BETA HotRun8 Body Profile Local\",\"prerelease\":true}")"
           fi
           rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
           assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
-          name='PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz'
+          name='PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz'
           aid="$(python3 -c 'import json,sys; n=sys.argv[1]; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]==n),""))' "$name" <<<"$assets")"
           [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
           curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/gzip' \
-            --data-binary @/tmp/PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz \
+            --data-binary @/tmp/PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz \
             "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${name}" >/dev/null
           echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${name}"
