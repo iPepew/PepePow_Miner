@@ -138,6 +138,8 @@ add_executable(pepepow_hoohash_nonlinear_census src/benchmark/hoohash_nonlinear_
 target_link_libraries(pepepow_hoohash_nonlinear_census PRIVATE pepepow_core)
 add_executable(pepepow_hoohash_speculative_correlation src/benchmark/hoohash_speculative_correlation.cpp)
 target_link_libraries(pepepow_hoohash_speculative_correlation PRIVATE pepepow_core)
+add_executable(pepepow_hoohash_warm_transition_census src/benchmark/hoohash_warm_transition_census.cpp)
+target_link_libraries(pepepow_hoohash_warm_transition_census PRIVATE pepepow_core)
 
 add_executable(pepepowminer src/app/main.cpp)
 target_link_libraries(pepepowminer PRIVATE pepepow_core)
