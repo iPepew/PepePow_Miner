@@ -106,4 +106,11 @@ if(PEPEPOW_BUILD_TESTS)
     add_executable(pepepow_core_tests tests/core_tests.cpp)
     target_link_libraries(pepepow_core_tests PRIVATE pepepow_core)
     add_test(NAME pepepow_core_tests COMMAND pepepow_core_tests)
+
+    # Offline-only profiler. It duplicates the exact HooHash nonlinear path,
+    # verifies every profiled mixed hash against the strict reference, and
+    # emits branch/range census JSON. It is never linked into the miner binary.
+    add_executable(pepepow_nonlinear_census src/benchmark/nonlinear_census.cpp)
+    target_link_libraries(pepepow_nonlinear_census PRIVATE pepepow_core)
+    add_test(NAME pepepow_nonlinear_census_smoke COMMAND pepepow_nonlinear_census 8)
 endif()

@@ -44,3 +44,7 @@ jobs:
 
       - name: Test
         run: ctest --test-dir native/build -C ${{ matrix.build_type }} --output-on-failure
+
+      - name: Nonlinear census 256 nonces
+        if: runner.os == 'Linux'
+        run: native/build/pepepow_nonlinear_census 256 | tee native/build/nonlinear-census.json
