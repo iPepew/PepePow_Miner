@@ -68,3 +68,16 @@ new_loop = """            #pragma unroll 1
 """
 s = s[:loop] + new_loop + s[end:]
 p.write_text(s, encoding='utf-8')
+
+cm = Path('native/CMakeLists.txt')
+cs = cm.read_text(encoding='utf-8')
+marker = '    add_executable(pepepow_cuda_benchmark src/benchmark/cuda_benchmark.cpp)\n'
+insert = (
+    '    add_executable(pepepow_hoohash_speculative_q20_cuda src/benchmark/hoohash_speculative_q20_cuda.cu)\n'
+    '    target_link_libraries(pepepow_hoohash_speculative_q20_cuda PRIVATE pepepow_core)\n'
+    '    set_target_properties(pepepow_hoohash_speculative_q20_cuda PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_ARCHITECTURES "${PEPEPOW_CUDA_ARCHITECTURES}" CUDA_SEPARABLE_COMPILATION OFF)\n'
+    '    target_compile_options(pepepow_hoohash_speculative_q20_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--fmad=false> $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v> $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>)\n'
+)
+if cs.count(marker) != 1:
+    raise SystemExit('CMake target marker not unique')
+cm.write_text(cs.replace(marker, insert + marker, 1), encoding='utf-8')
