@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git gh ca-certificates curl python3 xz-utils
           CMAKE_VER=3.31.8
           curl -fL --retry 3 --retry-delay 2 "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" -o /tmp/cmake.tar.gz
           mkdir -p /opt/cmake
