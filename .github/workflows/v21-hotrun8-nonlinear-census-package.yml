@@ -107,15 +107,15 @@ jobs:
           release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${tag}" 2>/dev/null || true)"
           if [[ -z "$release_json" ]]; then
             payload="$(python3 - "$tag" "$GITHUB_SHA" <<'PY'
-import json,sys
-print(json.dumps({
-    "tag_name": sys.argv[1],
-    "target_commitish": sys.argv[2],
-    "name": "PepeW v2.1 HotRun8 Nonlinear Census V100",
-    "prerelease": True
-}))
-PY
-)"
+          import json,sys
+          print(json.dumps({
+              "tag_name": sys.argv[1],
+              "target_commitish": sys.argv[2],
+              "name": "PepeW v2.1 HotRun8 Nonlinear Census V100",
+              "prerelease": True
+          }))
+          PY
+          )"
             release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "$payload")"
           fi
           rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
@@ -130,24 +130,24 @@ PY
           asset_sha="$(sha256sum "/tmp/${ASSET}" | awk '{print $1}')"
           mkdir -p results
           python3 - "$tag" "$asset_sha" "$GITHUB_SHA" "$ASSET" <<'PY'
-import json,sys
-from pathlib import Path
-tag,asset_sha,source_sha,asset=sys.argv[1:5]
-data={
-    "status":"HOSTED_PACKAGE_PASS",
-    "label":"hotrun8-nonlinear-census",
-    "tag":tag,
-    "asset_name":asset,
-    "asset_url":f"https://github.com/iPepew/PepePow_Miner/releases/download/{tag}/{asset}",
-    "asset_sha256":asset_sha,
-    "source_commit":source_sha,
-    "cuda_arch":"sm_70",
-    "zero_spills":True,
-    "core_correctness":True,
-    "pool_submission":False
-}
-Path("results/nonlinear-census-latest.json").write_text(json.dumps(data,indent=2)+"\n")
-PY
+          import json,sys
+          from pathlib import Path
+          tag,asset_sha,source_sha,asset=sys.argv[1:5]
+          data={
+              "status":"HOSTED_PACKAGE_PASS",
+              "label":"hotrun8-nonlinear-census",
+              "tag":tag,
+              "asset_name":asset,
+              "asset_url":f"https://github.com/iPepew/PepePow_Miner/releases/download/{tag}/{asset}",
+              "asset_sha256":asset_sha,
+              "source_commit":source_sha,
+              "cuda_arch":"sm_70",
+              "zero_spills":True,
+              "core_correctness":True,
+              "pool_submission":False
+          }
+          Path("results/nonlinear-census-latest.json").write_text(json.dumps(data,indent=2)+"\n")
+          PY
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add results/nonlinear-census-latest.json
