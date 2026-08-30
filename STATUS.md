@@ -18,29 +18,31 @@
 
 ## Текущий этап
 
-Основной активный путь — профилирование доминирующей работы внутри строки матрицы exact HotRun8 HooHash в ветке `agent/v21-v100-hotrun8-residual-profile`, PR #53.
+Основной активный путь — profiling-driven декомпозиция доминирующего matrix-row dataflow exact HotRun8 HooHash в ветке `agent/v21-v100-hotrun8-residual-profile`, PR #53, перед выбором нового speculative/filtered fast-path.
 
-Exclusive V100 coarse residual census `33294578728` завершён успешно на 2 000 000 nonce и 452 sparse samples. Диагностический хешрейт составил 4.616 MH/s и не считается mining baseline. Измерено: warm/scaled-table load 2.5628%, linear accumulation 1.3337%, `sw` 9.1945%, cold path 16.4033%, pair/final reduction 0.2703%, residual 70.2355%. Полный matrix-row budget занимает 99.5862% sampled body cycles. Главное новое измерение: `row_unclassified` занимает 70.0919% всего sampled budget, тогда как `outer_unclassified` только 0.1435%. Cold-cell fraction — 7.1348%.
+Exclusive V100 coarse residual census `33294578728` ранее дал: полный matrix-row budget 99.5862% sampled body cycles, `row_unclassified` 70.0919%, `outer_unclassified` 0.1435%. Это исключило внешний pair/orchestration path как самостоятельную цель и локализовало основной резерв внутри строки матрицы.
 
-Следовательно, внешний pair/orchestration path практически исключён как самостоятельная цель. Основной неисследованный резерв находится внутри matrix-row dataflow; именно он имеет достаточный теоретический Amdahl-потолок, чтобы оправдать дальнейший speculative/filtered поиск.
+Следующий exclusive V100 row coarse census `33296568418` завершён `PASS_DIAGNOSTIC` на 2 000 000 nonce и 452 sparse samples. Диагностический throughput составил 5.949 MH/s и не считается mining baseline. Измерено: полный sampled row/body budget 6 058 764 464 cycles; warm 8-cell batch segments 1 252 202 365 cycles = 20.6676%; прочая matrix-row работа 4 806 562 099 cycles = 79.3324%. Зафиксировано 237 718 warm groups, в среднем 525.925 группы на sampled nonce.
 
-Для следующего слоя создан low-overhead row coarse profiler. Hosted package run `33294695657` завершён успешно: authoritative HooHash vector и 4 live consensus vectors совпали, share-target boundaries совпали; `sm_70` `hoohash_mix_hotrun8_split_kernel` использует 50 регистров, 0 barriers, 112 байт stack frame и 0 spill stores/loads. Пакет SHA-256: `619d03fec3e47591003c8f0db76bb6a8e67f6ec40600c40945e73716b20e3d67`.
+Это важный архитектурный отсев: даже идеальное устранение всей стоимости warm-batch path имеет теоретический Amdahl-потолок около +26.1% относительно измеренного row budget и на практике оставляет слишком малый запас над требуемым pre-pool gate +25%. Поэтому новый кандидат не строится как очередная blind warm-LUT/precompute замена. Основной дальнейший поиск направлен на 79.33% `other` внутри matrix-row.
 
-Добавлен immutable release handoff для row profiler, commit `cf7904731be0900ca9f5906091923260017078e0`; hosted release run `33296553168` выполняется. В приватном Lab добавлен отдельный consumer commit `87679e3ca1919e8f118225211ee700c535dc8fb7`; exclusive V100 run `33296568418` уже выполняется под общей concurrency-группой `pepew-v100-exclusive` и ожидает exact SHA asset при необходимости. Runner использует постоянный cache по SHA и не должен повторно скачивать/распаковывать неизменный пакет.
+В commit `2cc4cd1603195e8cd50b063dd304aa6482e75731` добавлен новый low-distortion sparse row-detail profiler. Он независимо измеряет: warm contribution preparation, warm commit (`sum` + exact `sw` update), scalar cold work, scalar warm-tail work и остаточный row budget. Exact arithmetic, state transitions, consensus, target и Stratum не изменяются; глобальные счётчики сбрасываются один раз на запуск и обновляются только одним финальным flush на sampled nonce.
 
-Row coarse profiler измеряет полную стоимость warm 8-cell batch относительно общего HooHash body без per-cell timers. Это следующий диагностический шаг перед более детальной декомпозицией matrix-row и перед выбором первого нового speculative/filtered кандидата. Consensus arithmetic и Stratum path не изменены, pool submission в profiler отсутствует.
+В commit `342fd137562628903026c406d3ed59b4c34364fb` добавлен hosted package/static gate для row-detail profiler. Workflow run `33298902358` запущен и сейчас выполняется. До допуска на V100 обязательны: authoritative/core correctness PASS, `sm_70`, отсутствие CUDA spills и проверка resource footprint. V100 одновременно не запускается; следующий hardware diagnostic будет только через общую exclusive-группу `pepew-v100-exclusive` после hosted PASS.
 
-## Политика кандидатов
+## Политика speculative/filtered кандидатов
 
-Exact-кандидаты продолжают использовать прежние строгие проверки. Для speculative/filtered HooHash используется отдельная политика: relaxed offline target, измерение `strict_hits`, `fast_hits`, true positives, false negatives, false positives, recall и throughput. Любой fast hit перед pool submission обязан быть пересчитан exact strict GPU/CPU validator; недействительные кандидаты в пул не отправляются. Начальный gate recall — не ниже 99.5%, приоритетный throughput gate до real-pool — не ниже +25%, при обязательных нулевых invalid submissions после strict validation.
+Exact-кандидаты продолжают использовать прежние строгие проверки. Для speculative/filtered HooHash действует отдельная политика: relaxed offline target, измерение `strict_hits`, `fast_hits`, true positives, false negatives, false positives, recall и throughput. Любой fast hit перед pool submission обязан быть пересчитан exact strict GPU/CPU validator; недействительные кандидаты в пул не отправляются.
 
-Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ранее отсечены по закону Амдала. Новые block-size, threads/min-blocks, synchronization, task-queue и blind single-function LUT варианты без нового profiling evidence не создаются. Следующий fast-path будет выбран по измеренному matrix-row split.
+Начальный gate recall — не ниже 99.5%; приоритетный throughput gate до real-pool — не ниже +25%; invalid submissions после strict validation должны оставаться равны нулю. False positives допускаются только при дешёвой фильтрации, false negatives измеряются явно. Consensus и Stratum не меняются.
+
+Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ранее отсечены по закону Амдала. Новые block-size, threads/min-blocks, synchronization, task-queue и blind single-function LUT варианты без нового profiling evidence не создаются.
 
 ## Последний verdict
 
-`RESIDUAL_CENSUS_PASS / ROW_HOSTED_STATIC_PASS / ROW_V100_CENSUS_IN_PROGRESS`.
+`ROW_COARSE_V100_PASS_DIAGNOSTIC / ROW_DETAIL_HOSTED_IN_PROGRESS`.
 
-Correctness regression не обнаружен. Защищённый baseline не изменён. Последний завершённый аппаратный результат является диагностическим PASS, а не performance promotion.
+Correctness regression не обнаружен. Защищённый baseline не изменён. Row coarse result является диагностическим PASS, а не performance promotion.
 
 ## Действия пользователя
 
