@@ -6,7 +6,7 @@ on:
       - agent/v21-v100-hotrun8-residual-profile
     paths:
       - '.github/workflows/v21-hotrun8-residual-profile-package.yml'
-      - 'scripts/instrument_hotrun8_residual_profile.py'
+      - 'scripts/instrument_hotrun8_body_profile_residual.py'
       - 'scripts/instrument_hotrun8_body_profile_local.py'
   workflow_dispatch:
 
@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/instrument_hotrun8_residual_profile.py
+          python3 scripts/instrument_hotrun8_body_profile_residual.py
           grep -q 'g_body_profile_row_cycles' native/src/cuda/v1/header80_hotrun8.inc
           grep -q 'g_body_profile_pair_outer_cycles' native/src/cuda/v1/header80_hotrun8.inc
           grep -q 'row_unclassified_cycles' native/src/cuda/v1/header80_backend_part07.inc
