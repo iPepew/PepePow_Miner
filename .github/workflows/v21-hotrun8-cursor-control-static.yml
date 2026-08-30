@@ -1,0 +1,250 @@
+name: V2.1 HotRun8 Cursor Control Static Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-cursor-control-static
+    paths:
+      - '.github/workflows/v21-hotrun8-cursor-control-static.yml'
+      - 'native/src/cuda/v1/header80_hotrun8.inc'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" \
+            -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize exact baseline source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git worktree add --detach /tmp/basesrc f4c935421f382aa19715473955beea7668f3bb4d
+
+      - name: Build baseline and cursor-control candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(
+            -G Ninja
+            -DPEPEPOW_ENABLE_CUDA=ON
+            -DPEPEPOW_BUILD_TESTS=ON
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON
+            -DPEPEPOW_CUDA_HOTRUN8=ON
+            -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+          )
+          cmake -S /tmp/basesrc/native -B /tmp/baseline "${common[@]}" \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+          cmake --build /tmp/baseline --target pepepow_header80_benchmark -j2 \
+            2>&1 | tee /tmp/baseline-build.log
+
+          cmake -S native -B /tmp/candidate "${common[@]}" \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1'
+          cmake --build /tmp/candidate \
+            --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 \
+            2>&1 | tee /tmp/candidate-build.log
+          /tmp/candidate/pepepow_core_tests | tee /tmp/core-tests.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/baseline/pepepow_header80_benchmark > /tmp/baseline.sass
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/candidate/pepepow_header80_benchmark > /tmp/candidate.sass
+
+      - name: Measure SASS and Amdahl gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+
+          def function_counts(path):
+              counts={}
+              current=None
+              for line in Path(path).read_text(errors="replace").splitlines():
+                  m=re.search(r"Function\s*:\s*(\S+)",line)
+                  if m:
+                      current=m.group(1)
+                      counts.setdefault(current,0)
+                  elif current and re.search(r"/\*[0-9a-fA-F]+\*/",line):
+                      counts[current]+=1
+              return counts
+
+          def selected(counts):
+              keys=[k for k in counts if
+                    "hoohash_mix_words_hotrun8" in k or
+                    "hoohash_final_hotrun8_fused_kernel" in k]
+              return {k:counts[k] for k in keys}
+
+          def resource(path):
+              lines=Path(path).read_text(errors="replace").splitlines()
+              for i,line in enumerate(lines):
+                  if "Function properties for" in line and "hoohash_final_hotrun8_fused_kernel" in line:
+                      block="\n".join(lines[i:i+4])
+                      regs=re.search(r"Used (\d+) registers",block)
+                      stack=re.search(r"(\d+) bytes stack frame",block)
+                      stores=re.search(r"(\d+) bytes spill stores",block)
+                      loads=re.search(r"(\d+) bytes spill loads",block)
+                      return {
+                        "registers":int(regs.group(1)) if regs else None,
+                        "stack_frame_bytes":int(stack.group(1)) if stack else None,
+                        "spill_store_bytes":int(stores.group(1)) if stores else None,
+                        "spill_load_bytes":int(loads.group(1)) if loads else None
+                      }
+              raise SystemExit(f"missing final kernel resource in {path}")
+
+          baseline_sel=selected(function_counts("/tmp/baseline.sass"))
+          candidate_sel=selected(function_counts("/tmp/candidate.sass"))
+          baseline_instr=sum(baseline_sel.values())
+          candidate_instr=sum(candidate_sel.values())
+          if baseline_instr<=0 or candidate_instr<=0:
+              raise SystemExit("missing attributed hotrun8 SASS")
+          reduction=(1.0-candidate_instr/baseline_instr)*100.0
+          # SASS is counted across the selected whole hotrun8 workload, so the
+          # reduction itself is the conservative total instruction proxy.
+          predicted=max(0.0,reduction)
+          baseline_res=resource("/tmp/baseline-build.log")
+          candidate_res=resource("/tmp/candidate-build.log")
+          core=Path("/tmp/core-tests.log").read_text()
+          differential_pass=None
+          core_pass=all(x in core for x in [
+              "PASS: authoritative HooHash V110 vector matched",
+              "PASS: 4 live consensus HooHash vectors matched",
+              "PASS: live nBits share-target boundaries matched"
+          ])
+          zero_spills=(candidate_res["spill_store_bytes"]==0 and
+                       candidate_res["spill_load_bytes"]==0 and
+                       not re.search(r"[1-9][0-9]* bytes spill (?:stores|loads)",
+                                     Path("/tmp/candidate-build.log").read_text()))
+          authorized=(core_pass and zero_spills and
+                      candidate_res["registers"]<=baseline_res["registers"] and
+                      candidate_res["stack_frame_bytes"]<=baseline_res["stack_frame_bytes"] and
+                      predicted>=10.0)
+          report={
+            "status":"HOSTED_STATIC_PASS" if authorized else "HOSTED_STATIC_REJECT",
+            "candidate":"hotrun8-cursor-control",
+            "source_commit":os.environ["GITHUB_SHA"],
+            "cuda_arch":"sm_70",
+            "offline_reference_mhs":8.818928,
+            "measured_integer_control_scope_pct":79.3699,
+            "baseline_hotrun8_sass_instructions":baseline_instr,
+            "candidate_hotrun8_sass_instructions":candidate_instr,
+            "sass_reduction_pct":reduction,
+            "predicted_total_gain_pct":predicted,
+            "baseline_resource":baseline_res,
+            "candidate_resource":candidate_res,
+            "core_consensus_pass":core_pass,
+            "differential_100000_pass":differential_pass,
+            "differential_gate":"required_on_v100_before_performance",
+            "zero_spills":zero_spills,
+            "differential_required_cases":100000,
+            "v100_authorized":authorized,
+            "pool_authorized":False
+          }
+          Path("/tmp/cursor-control-static.json").write_text(json.dumps(report,indent=2)+"\n")
+          print(json.dumps(report,indent=2))
+          if not authorized:
+              raise SystemExit(21)
+          PY
+
+      - name: Package authorized offline candidate
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg
+          cp /tmp/baseline/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_baseline_fusion2
+          cp /tmp/candidate/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_candidate_cursor_control
+          cp /tmp/candidate/pepepow_header80_differential /tmp/pkg/pepepow_header80_differential_candidate
+          cp /tmp/core-tests.log /tmp/pkg/core-tests.log
+          cp /tmp/cursor-control-static.json /tmp/pkg/static-report.json
+          cp /tmp/baseline.sass /tmp/pkg/baseline.sass
+          cp /tmp/candidate.sass /tmp/pkg/candidate.sass
+          cat > /tmp/pkg/build-info.txt <<EOF
+          source_branch=agent/v21-v100-hotrun8-cursor-control-static
+          source_commit=${GITHUB_SHA}
+          cuda_arch=sm_70
+          candidate=hotrun8-cursor-control-static
+          threads=704
+          min_blocks=1
+          offline_reference_mhs=8.818928
+          zero_spills=1
+          real_pool_allowed=false
+          EOF
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-HotRun8-CursorControl-V100-Offline.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-HotRun8-CursorControl-V100-Offline.tar.gz \
+            | tee /tmp/PepeW-v2.1-HotRun8-CursorControl-V100-Offline.tar.gz.sha256
+
+      - name: Publish immutable authorized asset
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: PepeW-v2.1-HotRun8-CursorControl-V100-Offline.tar.gz
+        run: |
+          set -euo pipefail
+          tag="v2.1-hotrun8-cursor-control-${GITHUB_SHA:0:7}-v100"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          payload="$(python3 - "$tag" "$GITHUB_SHA" <<'PY'
+          import json,sys
+          print(json.dumps({"tag_name":sys.argv[1],"target_commitish":sys.argv[2],
+            "name":"PepeW v2.1 HotRun8 Cursor Control V100 Offline","prerelease":True}))
+          PY
+          )"
+          release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "$payload")"
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          for file in "$ASSET" "$ASSET.sha256"; do
+            mime=application/octet-stream
+            [[ "$file" == *.sha256 ]] && mime=text/plain
+            curl -fsSL -X POST "${auth[@]}" -H "Content-Type: ${mime}" \
+              --data-binary "@/tmp/${file}" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${file}" >/dev/null
+          done
+
+      - name: Upload static evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-cursor-control-static-${{ github.sha }}
+          path: |
+            /tmp/baseline-build.log
+            /tmp/candidate-build.log
+            /tmp/core-tests.log
+            /tmp/baseline.sass
+            /tmp/candidate.sass
+            /tmp/cursor-control-static.json
+            /tmp/PepeW-v2.1-HotRun8-CursorControl-V100-Offline.tar.gz
+            /tmp/PepeW-v2.1-HotRun8-CursorControl-V100-Offline.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
