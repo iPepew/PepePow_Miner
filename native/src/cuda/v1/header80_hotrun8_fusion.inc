@@ -44,7 +44,17 @@ void hoohash_final_hotrun8_fused_kernel(
     if (index >= count) return;
 
     const std::size_t base = index * 8U;
+#if PEPEPOW_CUDA_HOTRUN8_SHARED_FIRSTPASS
+    // Foztor's measured V100 path uses approximately 36 B of dynamic shared
+    // state per nonce. Stage PepeW's exact 32-byte first pass in shared memory
+    // to shorten local/register lifetimes while preserving every HooHash
+    // operation and its original order.
+    extern __shared__ std::uint32_t hotrun8_shared_words[];
+    std::uint32_t* first_pass =
+        hotrun8_shared_words + static_cast<std::size_t>(threadIdx.x) * 8U;
+#else
     std::uint32_t first_pass[8];
+#endif
     std::uint32_t mixed[8];
     std::uint32_t final_hash[8];
     #pragma unroll
