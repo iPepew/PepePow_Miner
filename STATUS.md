@@ -18,27 +18,29 @@
 
 ## Текущий этап
 
-Основной активный путь — диагностическая декомпозиция остаточного бюджета циклов внутри exact HotRun8 HooHash body в ветке `agent/v21-v100-hotrun8-residual-profile`, PR #53.
+Основной активный путь — профилирование доминирующей работы внутри строки матрицы exact HotRun8 HooHash в ветке `agent/v21-v100-hotrun8-residual-profile`, PR #53.
 
-Последний низкоискажающий V100 census показал: warm/scaled-table load 2.5320%, linear accumulation 1.4642%, `sw` 8.9602%, cold path 16.4606%, pair/final reduction 0.2848%, residual 70.2982%. Новый coarse profiler разделяет residual на initialization/setup, matrix-row budget, pair-level outer work, row-unclassified и outer-unclassified.
+Exclusive V100 coarse residual census `33294578728` завершён успешно на 2 000 000 nonce и 452 sparse samples. Диагностический хешрейт составил 4.616 MH/s и не считается mining baseline. Измерено: warm/scaled-table load 2.5628%, linear accumulation 1.3337%, `sw` 9.1945%, cold path 16.4033%, pair/final reduction 0.2703%, residual 70.2355%. Полный matrix-row budget занимает 99.5862% sampled body cycles. Главное новое измерение: `row_unclassified` занимает 70.0919% всего sampled budget, тогда как `outer_unclassified` только 0.1435%. Cold-cell fraction — 7.1348%.
 
-Hosted package run `33290158133` завершён успешно. Exact consensus vectors прошли проверку; сборка `sm_70` для `hoohash_mix_hotrun8_split_kernel` использует 70 регистров, 0 barriers, 112 байт stack frame и 0 spill stores/loads. Значит диагностический кандидат прошёл correctness и static resource gate.
+Следовательно, внешний pair/orchestration path практически исключён как самостоятельная цель. Основной неисследованный резерв находится внутри matrix-row dataflow; именно он имеет достаточный теоретический Amdahl-потолок, чтобы оправдать дальнейший speculative/filtered поиск.
 
-Первый immutable release handoff run `33291942596` завершился инфраструктурной ошибкой на шаге публикации: в CUDA container отсутствовала команда `gh`, поэтому prerelease asset не был создан. Следующий Lab run `33291970147` вследствие этого не запускал benchmark binary и завершился после повторяющихся HTTP 404 при ожидании SHA asset. Это не performance REJECT и не correctness REJECT; V100 вычислительный тест фактически не состоялся.
+Для следующего слоя создан low-overhead row coarse profiler. Hosted package run `33294695657` завершён успешно: authoritative HooHash vector и 4 live consensus vectors совпали, share-target boundaries совпали; `sm_70` `hoohash_mix_hotrun8_split_kernel` использует 50 регистров, 0 barriers, 112 байт stack frame и 0 spill stores/loads. Пакет SHA-256: `619d03fec3e47591003c8f0db76bb6a8e67f6ec40600c40945e73716b20e3d67`.
 
-Причина исправлена в release workflow: установлен GitHub CLI `gh`, добавлены явные проверки `command -v gh` и `gh --version` до сборки/публикации. Текущий head исправления — `093c8142f24bf15b6cd68f3233245f0a239f225d`; push этого workflow запускает новый hosted release handoff. После появления immutable asset следующий V100 residual census должен выполняться только через `pepew-v100-exclusive` и использовать SHA-кэш на self-hosted runner.
+Добавлен immutable release handoff для row profiler, commit `cf7904731be0900ca9f5906091923260017078e0`; hosted release run `33296553168` выполняется. В приватном Lab добавлен отдельный consumer commit `87679e3ca1919e8f118225211ee700c535dc8fb7`; exclusive V100 run `33296568418` уже выполняется под общей concurrency-группой `pepew-v100-exclusive` и ожидает exact SHA asset при необходимости. Runner использует постоянный cache по SHA и не должен повторно скачивать/распаковывать неизменный пакет.
+
+Row coarse profiler измеряет полную стоимость warm 8-cell batch относительно общего HooHash body без per-cell timers. Это следующий диагностический шаг перед более детальной декомпозицией matrix-row и перед выбором первого нового speculative/filtered кандидата. Consensus arithmetic и Stratum path не изменены, pool submission в profiler отсутствует.
 
 ## Политика кандидатов
 
 Exact-кандидаты продолжают использовать прежние строгие проверки. Для speculative/filtered HooHash используется отдельная политика: relaxed offline target, измерение `strict_hits`, `fast_hits`, true positives, false negatives, false positives, recall и throughput. Любой fast hit перед pool submission обязан быть пересчитан exact strict GPU/CPU validator; недействительные кандидаты в пул не отправляются. Начальный gate recall — не ниже 99.5%, приоритетный throughput gate до real-pool — не ниже +25%, при обязательных нулевых invalid submissions после strict validation.
 
-Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ранее отсечены по закону Амдала. Новые LUT, block-size, synchronization и task-queue варианты без нового profiling evidence не создаются. Следующий speculative fast-path выбирается только после измеренного coarse residual split.
+Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ранее отсечены по закону Амдала. Новые block-size, threads/min-blocks, synchronization, task-queue и blind single-function LUT варианты без нового profiling evidence не создаются. Следующий fast-path будет выбран по измеренному matrix-row split.
 
 ## Последний verdict
 
-`HOSTED_STATIC_PASS / RELEASE_HANDOFF_INFRA_REJECT / FIX_PUSHED`.
+`RESIDUAL_CENSUS_PASS / ROW_HOSTED_STATIC_PASS / ROW_V100_CENSUS_IN_PROGRESS`.
 
-Последняя ошибка относится только к инфраструктуре передачи immutable диагностического пакета. Performance verdict нового fast-кандидата ещё не выставлялся, correctness regression не обнаружен, защищённый baseline не изменён.
+Correctness regression не обнаружен. Защищённый baseline не изменён. Последний завершённый аппаратный результат является диагностическим PASS, а не performance promotion.
 
 ## Действия пользователя
 
