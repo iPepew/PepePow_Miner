@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   package:
@@ -92,6 +92,70 @@ jobs:
           EOF
           tar -C /tmp/nlcpkg -czf /tmp/PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz .
           sha256sum /tmp/PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz | tee /tmp/PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz.sha256
+
+      - name: Publish immutable diagnostic prerelease and manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA:0:7}"
+          tag="v2.1-hotrun8-nonlinear-census-${short}-v100"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          release_json="$(curl -fsSL "${auth[@]}" "${api}/releases/tags/${tag}" 2>/dev/null || true)"
+          if [[ -z "$release_json" ]]; then
+            payload="$(python3 - "$tag" "$GITHUB_SHA" <<'PY'
+import json,sys
+print(json.dumps({
+    "tag_name": sys.argv[1],
+    "target_commitish": sys.argv[2],
+    "name": "PepeW v2.1 HotRun8 Nonlinear Census V100",
+    "prerelease": True
+}))
+PY
+)"
+            release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "$payload")"
+          fi
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          assets="$(curl -fsSL "${auth[@]}" "${api}/releases/${rid}/assets")"
+          for file in "$ASSET" "$ASSET.sha256"; do
+            aid="$(python3 -c 'import json,sys; n=sys.argv[1]; print(next((x["id"] for x in json.load(sys.stdin) if x["name"]==n),""))' "$file" <<<"$assets")"
+            [[ -z "$aid" ]] || curl -fsSL -X DELETE "${auth[@]}" "${api}/releases/assets/${aid}" >/dev/null
+            mime=application/octet-stream
+            [[ "$file" == *.sha256 ]] && mime=text/plain
+            curl -fsSL -X POST "${auth[@]}" -H "Content-Type: ${mime}" --data-binary "@/tmp/${file}"               "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${file}" >/dev/null
+          done
+          asset_sha="$(sha256sum "/tmp/${ASSET}" | awk '{print $1}')"
+          mkdir -p results
+          python3 - "$tag" "$asset_sha" "$GITHUB_SHA" "$ASSET" <<'PY'
+import json,sys
+from pathlib import Path
+tag,asset_sha,source_sha,asset=sys.argv[1:5]
+data={
+    "status":"HOSTED_PACKAGE_PASS",
+    "label":"hotrun8-nonlinear-census",
+    "tag":tag,
+    "asset_name":asset,
+    "asset_url":f"https://github.com/iPepew/PepePow_Miner/releases/download/{tag}/{asset}",
+    "asset_sha256":asset_sha,
+    "source_commit":source_sha,
+    "cuda_arch":"sm_70",
+    "zero_spills":True,
+    "core_correctness":True,
+    "pool_submission":False
+}
+Path("results/nonlinear-census-latest.json").write_text(json.dumps(data,indent=2)+"\n")
+PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add results/nonlinear-census-latest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "results: publish nonlinear census diagnostic manifest"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+          echo "asset=https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${ASSET}"
 
       - name: Upload hosted diagnostics
         if: always()
