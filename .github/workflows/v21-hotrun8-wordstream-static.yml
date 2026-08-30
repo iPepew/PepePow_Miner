@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json,re
+          import json,os,re
           from pathlib import Path
 
           def function_counts(path):
@@ -144,7 +144,7 @@ jobs:
           report={
             "status":"HOSTED_STATIC_PASS" if authorized else "HOSTED_STATIC_REJECT",
             "candidate":"hotrun8-wordstream",
-            "source_commit":"${GITHUB_SHA}",
+            "source_commit":os.environ["GITHUB_SHA"],
             "cuda_arch":"sm_70",
             "offline_reference_mhs":8.818928,
             "row_residual_scope_pct":57.2148,
