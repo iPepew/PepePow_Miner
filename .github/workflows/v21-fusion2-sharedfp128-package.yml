@@ -21,8 +21,6 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
-      - uses: actions/checkout@v4
-
       - name: Install hosted build tools
         shell: bash
         run: |
@@ -36,6 +34,8 @@ jobs:
           mkdir -p /opt/cmake
           tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
           ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - uses: actions/checkout@v4
 
       - name: Build verified fusion2 baseline and bounded shared-state candidate
         shell: bash
