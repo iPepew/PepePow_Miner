@@ -129,18 +129,43 @@ __device__ __forceinline__ void blake3_header80_words(
 
 __device__ __forceinline__ void blake3_32_words(
     const std::uint32_t input[8], std::uint32_t output[8]) {
-    std::uint32_t cv[8];
-    std::uint32_t block[16];
-    std::uint32_t compressed[16];
+    // Specialized exact 32-byte root compression. The generic helper keeps
+    // cv[8], block[16], compressed[16], and v[16] live together. Here the IV
+    // and zero message tail are folded directly into v and only the first
+    // eight output words are materialized, reducing final-kernel lifetime
+    // without changing any BLAKE3 round or word order.
+    std::uint32_t message[8];
+    std::uint32_t v[16];
     #pragma unroll
-    for (int i = 0; i < 8; ++i) cv[i] = kHeader80Iv[i];
+    for (int i = 0; i < 8; ++i) {
+        message[i] = input[i];
+        v[i] = kHeader80Iv[i];
+    }
     #pragma unroll
-    for (int i = 0; i < 8; ++i) block[i] = input[i];
+    for (int i = 0; i < 4; ++i) v[8 + i] = kHeader80Iv[i];
+    v[12] = 0U;
+    v[13] = 0U;
+    v[14] = 32U;
+    v[15] = kChunkStart | kChunkEnd | kRoot;
+
     #pragma unroll
-    for (int i = 8; i < 16; ++i) block[i] = 0;
-    compress_words(cv, block, 32, kChunkStart | kChunkEnd | kRoot, compressed);
+    for (int round = 0; round < 7; ++round) {
+        const std::uint8_t* schedule = kHeader80Schedule[round];
+        #define PEPEPOW_M32(index) \
+            ((schedule[index] < 8U) ? message[schedule[index]] : 0U)
+        g(v[0],v[4],v[8],v[12],PEPEPOW_M32(0),PEPEPOW_M32(1));
+        g(v[1],v[5],v[9],v[13],PEPEPOW_M32(2),PEPEPOW_M32(3));
+        g(v[2],v[6],v[10],v[14],PEPEPOW_M32(4),PEPEPOW_M32(5));
+        g(v[3],v[7],v[11],v[15],PEPEPOW_M32(6),PEPEPOW_M32(7));
+        g(v[0],v[5],v[10],v[15],PEPEPOW_M32(8),PEPEPOW_M32(9));
+        g(v[1],v[6],v[11],v[12],PEPEPOW_M32(10),PEPEPOW_M32(11));
+        g(v[2],v[7],v[8],v[13],PEPEPOW_M32(12),PEPEPOW_M32(13));
+        g(v[3],v[4],v[9],v[14],PEPEPOW_M32(14),PEPEPOW_M32(15));
+        #undef PEPEPOW_M32
+    }
+
     #pragma unroll
-    for (int i = 0; i < 8; ++i) output[i] = compressed[i];
+    for (int i = 0; i < 8; ++i) output[i] = v[i] ^ v[i + 8];
 }
 
 __device__ __forceinline__ double positive_fraction(double value) {
