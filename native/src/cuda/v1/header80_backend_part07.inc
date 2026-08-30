@@ -101,7 +101,14 @@
 #if defined(PEPEPOW_CUDA_STAGE_PROFILE) && PEPEPOW_CUDA_STAGE_PROFILE
     check_cuda_header80(cudaEventRecord(stage_profile_split), "cudaEventRecord(stage split)");
 #endif
-    hoohash_final_hotrun8_fused_kernel<<<blocks, threads>>>(
+#if PEPEPOW_CUDA_HOTRUN8_SHARED_FIRSTPASS
+    constexpr std::size_t hotrun8_dynamic_shared_bytes =
+        static_cast<std::size_t>(PEPEPOW_CUDA_THREADS) * 8U * sizeof(std::uint32_t);
+#else
+    constexpr std::size_t hotrun8_dynamic_shared_bytes = 0U;
+#endif
+    hoohash_final_hotrun8_fused_kernel<<<
+        blocks, threads, hotrun8_dynamic_shared_bytes>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_), work_words,
