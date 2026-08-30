@@ -24,13 +24,14 @@ if anchor not in s:
     raise SystemExit('local reduce counter anchor not found')
 s = s.replace(anchor, extra, 1)
 
-# Time only the initialization after sampling decision is available. This is a
-# nonce-level coarse bucket and adds two clock64 reads per sampled nonce.
-old = '''    const bool profile_sample = (first_pass[0] & 0x0fffU) == 0U;\n    const unsigned long long profile_total0 = profile_sample ? clock64() : 0ULL;\n#else\n'''
-new = '''    const bool profile_sample = (first_pass[0] & 0x0fffU) == 0U;\n    const unsigned long long profile_total0 = profile_sample ? clock64() : 0ULL;\n    const unsigned long long profile_init0 = profile_sample ? clock64() : 0ULL;\n#else\n'''
-if old not in s:
-    raise SystemExit('sampling setup anchor not found')
-s = s.replace(old, new, 1)
+# Time initialization after the sampling decision. The local-profiler transform
+# inserts local counters immediately after profile_total0, so anchor only on
+# the stable total-clock line instead of assuming #else follows it.
+anchor = '    const unsigned long long profile_total0 = profile_sample ? clock64() : 0ULL;\n'
+extra = anchor + '    const unsigned long long profile_init0 = profile_sample ? clock64() : 0ULL;\n'
+if anchor not in s:
+    raise SystemExit('profile total setup anchor not found')
+s = s.replace(anchor, extra, 1)
 
 old = '''    #pragma unroll 1\n    for (int pair = 0; pair < 32; ++pair) {\n        const double even_sum = matrix_row_hotrun8(\n'''
 new = '''#if defined(PEPEPOW_CUDA_BODY_PROFILE) && PEPEPOW_CUDA_BODY_PROFILE\n    if (profile_sample) lp_init += clock64() - profile_init0;\n#endif\n    #pragma unroll 1\n    for (int pair = 0; pair < 32; ++pair) {\n#if defined(PEPEPOW_CUDA_BODY_PROFILE) && PEPEPOW_CUDA_BODY_PROFILE\n        const unsigned long long profile_row0 = profile_sample ? clock64() : 0ULL;\n#endif\n        const double even_sum = matrix_row_hotrun8(\n'''
