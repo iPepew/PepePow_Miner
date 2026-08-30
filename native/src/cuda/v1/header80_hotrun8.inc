@@ -85,6 +85,94 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     return sum;
 }
 
+__device__ __forceinline__ std::uint32_t hotrun8_word_nibble(
+    std::uint32_t packed_word, int lane) {
+    const unsigned int shift =
+        static_cast<unsigned int>((lane >> 1) * 8 + ((lane & 1) == 0 ? 4 : 0));
+    return (packed_word >> shift) & 0x0fU;
+}
+
+// Exact row architecture with a single first_pass word load per eight cells.
+// The baseline path dynamically reselects a word/byte for every nibble. Here
+// the outer loop carries the packed word across one logical hot run, while
+// every FP64 accumulation and sw transition remains in original cell order.
+__device__ __forceinline__ double matrix_row_hotrun8_word_stream(
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    int row, const std::uint32_t first_pass[8], double hash_mod_fp64,
+    double nonce_mod, HooHashSwState& sw) {
+    double sum = 0.0;
+    const int row_offset = row * 64;
+
+    #pragma unroll 1
+    for (int word_index = 0; word_index < 8; ++word_index) {
+        const std::uint32_t packed_word = first_pass[word_index];
+        const int cell_base = row_offset + word_index * 8;
+        int lane = 0;
+
+        if (!sw_state_is_cold(sw)) {
+            #pragma unroll 1
+            for (int batch = 0; batch < 2; ++batch) {
+                double contribution[4];
+                #pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    const int current = batch * 4 + i;
+                    const std::uint32_t nibble =
+                        hotrun8_word_nibble(packed_word, current);
+                    contribution[i] = hotrun8_warm_contribution(
+                        matrix, scaled_nibble_table,
+                        cell_base + current, nibble);
+                }
+
+                #pragma unroll
+                for (int i = 0; i < 4; ++i) {
+                    sum += contribution[i];
+                    update_sw_state(sw, sum);
+                    ++lane;
+                    if (sw_state_is_cold(sw)) break;
+                }
+                if (sw_state_is_cold(sw)) break;
+            }
+        }
+
+        #pragma unroll 1
+        for (; lane < 8; ++lane) {
+            const int cell = cell_base + lane;
+            const std::uint32_t nibble =
+                hotrun8_word_nibble(packed_word, lane);
+            if (sw_state_is_cold(sw)) {
+                if (nibble != 0U) {
+                    const double value = nibble_to_double(nibble);
+                    const double x =
+                        matrix[cell] * hash_mod_fp64 * value + nonce_mod;
+                    sum += safe_nonlinear(x) * value * 1234.0;
+                }
+            } else {
+                sum += hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble);
+            }
+            update_sw_state(sw, sum);
+        }
+    }
+    return sum;
+}
+
+__device__ __forceinline__ double matrix_row_hotrun8_active(
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    int row, const std::uint32_t first_pass[8], double hash_mod_fp64,
+    double nonce_mod, HooHashSwState& sw) {
+#if PEPEPOW_CUDA_HOTRUN8_WORD_STREAM
+    return matrix_row_hotrun8_word_stream(
+        matrix, scaled_nibble_table, row, first_pass,
+        hash_mod_fp64, nonce_mod, sw);
+#else
+    return matrix_row_hotrun8(
+        matrix, scaled_nibble_table, row, first_pass,
+        hash_mod_fp64, nonce_mod, sw);
+#endif
+}
+
 // Keep the long HooHash state machine behind a call boundary. Inlining it into
 // the BLAKE3 wrapper extends first_pass/mixed/final_hash lifetimes across all 64
 // rows and made ptxas spill 132 B in each direction on sm_70.
@@ -106,10 +194,10 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
 
     #pragma unroll 1
     for (int pair = 0; pair < 32; ++pair) {
-        const double even_sum = matrix_row_hotrun8(
+        const double even_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2, first_pass,
             hash_mod_fp64, nonce_mod, sw);
-        const double odd_sum = matrix_row_hotrun8(
+        const double odd_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2 + 1, first_pass,
             hash_mod_fp64, nonce_mod, sw);
         const std::uint64_t combined =
