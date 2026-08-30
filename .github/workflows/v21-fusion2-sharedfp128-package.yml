@@ -145,6 +145,8 @@ jobs:
               "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${file}" >/dev/null
           done
           asset_sha="$(sha256sum "/tmp/${ASSET}" | awk '{print $1}')"
+          cd "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           mkdir -p results
           python3 - "$tag" "$asset_sha" "$GITHUB_SHA" "$ASSET" <<'PY'
           import json,sys
