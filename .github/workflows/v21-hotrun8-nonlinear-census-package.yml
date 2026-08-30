@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/v21-hotrun8-nonlinear-census-package.yml'
       - 'scripts/instrument_hotrun8_nonlinear_census.py'
+      - 'scripts/fix_nonlinear_census_host_decode.py'
   workflow_dispatch:
 
 permissions:
@@ -38,8 +39,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/instrument_hotrun8_nonlinear_census.py
+          python3 scripts/fix_nonlinear_census_host_decode.py
           grep -n 'g_nlc_calls' native/src/cuda/v1/header80_hotrun8.inc
           grep -n 'g_nlc_samples' native/src/cuda/v1/header80_backend_part07.inc
+          grep -n 'nlc_host_signed_from_ordered' native/src/cuda/v1/header80_backend_part07.inc
 
       - name: Build, consensus and static resource gate
         shell: bash
