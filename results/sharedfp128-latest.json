@@ -1,0 +1,15 @@
+{
+  "status": "HOSTED_STATIC_PASS",
+  "label": "fusion2-sharedfp128",
+  "tag": "v2.1-fusion2-sharedfp128-81320e0-v100",
+  "asset_url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-81320e0-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+  "asset_sha256": "e2fa602a7cf9835da6542f8273897bd0f7c881c86c73527de0e9e20d19179646",
+  "source_commit": "81320e04de4759a7b76a2d6fecedbf5ea42410df",
+  "cuda_arch": "sm_70",
+  "core_correctness": true,
+  "zero_spills": true,
+  "register_gate_max": 64,
+  "offline_baseline_mhs": 8.818928,
+  "predicted_total_gain_pct": 45.45,
+  "pool_submission": false
+}
