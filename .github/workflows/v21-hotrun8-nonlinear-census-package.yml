@@ -38,8 +38,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/instrument_hotrun8_nonlinear_census.py
-          grep -q 'PEPEW_CUDA_NONLINEAR_CENSUS' native/src/cuda/v1/header80_hotrun8.inc
-          grep -q 'PEPEW_NONLINEAR_CENSUS' native/src/cuda/v1/header80_backend_part07.inc
+          grep -n 'g_nlc_calls' native/src/cuda/v1/header80_hotrun8.inc
+          grep -n 'g_nlc_samples' native/src/cuda/v1/header80_backend_part07.inc
 
       - name: Build, consensus and static resource gate
         shell: bash
