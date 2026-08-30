@@ -39,6 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git worktree add --detach /tmp/basesrc f4c935421f382aa19715473955beea7668f3bb4d
 
       - name: Build baseline and warm2 candidate
