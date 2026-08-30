@@ -58,6 +58,9 @@ namespace {
 #ifndef PEPEPOW_CUDA_SW_STATE_MODE
 #define PEPEPOW_CUDA_SW_STATE_MODE 0
 #endif
+#ifndef PEPEPOW_CUDA_HOTRUN8_WORD_STREAM
+#define PEPEPOW_CUDA_HOTRUN8_WORD_STREAM 0
+#endif
 
 constexpr std::size_t kHashSize = 32;
 constexpr std::size_t kMatrixElements = 64 * 64;
