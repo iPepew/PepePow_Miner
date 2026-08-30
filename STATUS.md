@@ -20,21 +20,23 @@
 
 Основной активный путь — диагностическая декомпозиция остаточного бюджета циклов внутри exact HotRun8 HooHash body в ветке `agent/v21-v100-hotrun8-residual-profile`, PR #53.
 
-Последний низкоискажающий V100 census показал: warm/scaled-table load 2.5320%, linear accumulation 1.4642%, `sw` 8.9602%, cold path 16.4606%, pair/final reduction 0.2848%, residual 70.2982%. Новый coarse profiler должен разделить residual на initialization/setup, matrix-row budget, pair-level outer work, row-unclassified и outer-unclassified.
+Последний низкоискажающий V100 census показал: warm/scaled-table load 2.5320%, linear accumulation 1.4642%, `sw` 8.9602%, cold path 16.4606%, pair/final reduction 0.2848%, residual 70.2982%. Новый coarse profiler разделяет residual на initialization/setup, matrix-row budget, pair-level outer work, row-unclassified и outer-unclassified.
 
-Hosted packaging дважды был остановлен до V100 из-за дефектов диагностической обвязки, а не из-за производительности или корректности HooHash: сначала неверное имя profiling script, затем устаревший текстовый anchor после thread-local преобразования. Anchor исправлен в commit `91fd7730269bd403759329fd7a04bfb6b6c5ae9e`; exact arithmetic и consensus path не менялись.
+Hosted package run `33290158133` завершён успешно. Exact consensus vectors прошли проверку; сборка `sm_70` для `hoohash_mix_hotrun8_split_kernel` использует 70 регистров, 0 barriers, 112 байт stack frame и 0 spill stores/loads. Значит диагностический кандидат прошёл correctness и static resource gate и допущен к одному V100 census.
 
-Текущий hosted run: `33290158133`, состояние — выполняется. До его полного PASS, включая correctness и static resource gate со строгим отсутствием spills на `sm_70`, V100 diagnostic run не запускается.
+Для безопасной передачи на приватный runner добавлен immutable v2.1 diagnostic release handoff. Hosted release run `33291942596` выполняется. В приватном `PepePow_Lab` добавлен workflow `V100 HotRun8 Residual Profile`, run `33291970147`, использующий `pepew-v100-exclusive`, проверку SHA и кэш benchmark asset по SHA. Workflow не содержит pool submission или Stratum path и не изменяет baseline.
 
 ## Политика кандидатов
 
 Exact-кандидаты продолжают использовать прежние строгие проверки. Для speculative/filtered HooHash используется отдельная политика: relaxed offline target, измерение `strict_hits`, `fast_hits`, true positives, false negatives, false positives, recall и throughput. Любой fast hit перед pool submission обязан быть пересчитан exact strict GPU/CPU validator; недействительные кандидаты в пул не отправляются. Начальный gate recall — не ниже 99.5%, приоритетный throughput gate до real-pool — не ниже +25%, при обязательных нулевых invalid submissions после strict validation.
 
-Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ранее отсечены по закону Амдала. Новые LUT, block-size, synchronization и task-queue варианты без нового profiling evidence не создаются.
+Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ранее отсечены по закону Амдала. Новые LUT, block-size, synchronization и task-queue варианты без нового profiling evidence не создаются. Следующий speculative fast-path выбирается только после измеренного coarse residual split.
 
 ## Последний verdict
 
-`HOSTED_DIAGNOSTIC_IN_PROGRESS` после исправления profiling anchor. Предыдущие два падения — `INFRASTRUCTURE/INSTRUMENTATION REJECT`, не performance reject.
+`HOSTED_STATIC_PASS / V100_RESIDUAL_CENSUS_IN_PROGRESS`.
+
+Последние инфраструктурные исправления profiling script и anchor подтверждены успешным hosted package run. Performance verdict нового fast-кандидата ещё не выставлялся.
 
 ## Действия пользователя
 
