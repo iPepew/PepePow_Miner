@@ -19,6 +19,10 @@
 namespace pepepow {
 namespace {
 
+#ifndef PEPEPOW_CUDA_HOTRUN8_SHARED_FIRSTPASS
+#define PEPEPOW_CUDA_HOTRUN8_SHARED_FIRSTPASS 0
+#endif
+
 #ifndef PEPEPOW_CUDA_THREADS
 #define PEPEPOW_CUDA_THREADS 64
 #endif
