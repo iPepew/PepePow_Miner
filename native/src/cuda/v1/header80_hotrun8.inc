@@ -104,54 +104,69 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
     double sum = 0.0;
     const int row_offset = row * 64;
 
+    // Carry one packed word across eight exact cell transitions. Within each
+    // word, keep warm and cold state in separate segments so the compiler does
+    // not materialize both paths at every cell. A two-value warm preload window
+    // preserves memory-level parallelism while every FP64 add and sw update
+    // remains in consensus order.
     #pragma unroll 1
     for (int word_index = 0; word_index < 8; ++word_index) {
         const std::uint32_t packed_word = first_pass[word_index];
         const int cell_base = row_offset + word_index * 8;
         int lane = 0;
 
-        if (!sw_state_is_cold(sw)) {
-            #pragma unroll 1
-            for (int batch = 0; batch < 2; ++batch) {
-                double contribution[4];
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    const int current = batch * 4 + i;
+        #pragma unroll 1
+        while (lane < 8) {
+            if (sw_state_is_cold(sw)) {
+                // Cold cells remain scalar because safe_nonlinear() and the
+                // following sw transition determine the next state.
+                #pragma unroll 1
+                do {
+                    const int cell = cell_base + lane;
                     const std::uint32_t nibble =
-                        hotrun8_word_nibble(packed_word, current);
-                    contribution[i] = hotrun8_warm_contribution(
-                        matrix, scaled_nibble_table,
-                        cell_base + current, nibble);
-                }
-
-                #pragma unroll
-                for (int i = 0; i < 4; ++i) {
-                    sum += contribution[i];
+                        hotrun8_word_nibble(packed_word, lane);
+                    if (nibble != 0U) {
+                        const double value = nibble_to_double(nibble);
+                        const double x =
+                            matrix[cell] * hash_mod_fp64 * value + nonce_mod;
+                        sum += safe_nonlinear(x) * value * 1234.0;
+                    }
                     update_sw_state(sw, sum);
                     ++lane;
-                    if (sw_state_is_cold(sw)) break;
-                }
-                if (sw_state_is_cold(sw)) break;
+                } while (lane < 8 && sw_state_is_cold(sw));
+                continue;
             }
-        }
 
-        #pragma unroll 1
-        for (; lane < 8; ++lane) {
-            const int cell = cell_base + lane;
-            const std::uint32_t nibble =
-                hotrun8_word_nibble(packed_word, lane);
-            if (sw_state_is_cold(sw)) {
-                if (nibble != 0U) {
-                    const double value = nibble_to_double(nibble);
-                    const double x =
-                        matrix[cell] * hash_mod_fp64 * value + nonce_mod;
-                    sum += safe_nonlinear(x) * value * 1234.0;
+            // Warm segment: preload at most two adjacent contributions, then
+            // commit them in the original order and stop immediately if the
+            // exact sw predicate enters the cold state.
+            #pragma unroll 1
+            do {
+                const int lane0 = lane;
+                const std::uint32_t nibble0 =
+                    hotrun8_word_nibble(packed_word, lane0);
+                const double contribution0 = hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell_base + lane0, nibble0);
+
+                const bool have_second = lane0 + 1 < 8;
+                double contribution1 = 0.0;
+                if (have_second) {
+                    const std::uint32_t nibble1 =
+                        hotrun8_word_nibble(packed_word, lane0 + 1);
+                    contribution1 = hotrun8_warm_contribution(
+                        matrix, scaled_nibble_table,
+                        cell_base + lane0 + 1, nibble1);
                 }
-            } else {
-                sum += hotrun8_warm_contribution(
-                    matrix, scaled_nibble_table, cell, nibble);
-            }
-            update_sw_state(sw, sum);
+
+                sum += contribution0;
+                update_sw_state(sw, sum);
+                ++lane;
+                if (sw_state_is_cold(sw) || !have_second) break;
+
+                sum += contribution1;
+                update_sw_state(sw, sum);
+                ++lane;
+            } while (lane < 8 && !sw_state_is_cold(sw));
         }
     }
     return sum;
