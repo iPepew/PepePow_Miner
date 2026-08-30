@@ -22,9 +22,11 @@
 
 Последний низкоискажающий V100 census показал: warm/scaled-table load 2.5320%, linear accumulation 1.4642%, `sw` 8.9602%, cold path 16.4606%, pair/final reduction 0.2848%, residual 70.2982%. Новый coarse profiler разделяет residual на initialization/setup, matrix-row budget, pair-level outer work, row-unclassified и outer-unclassified.
 
-Hosted package run `33290158133` завершён успешно. Exact consensus vectors прошли проверку; сборка `sm_70` для `hoohash_mix_hotrun8_split_kernel` использует 70 регистров, 0 barriers, 112 байт stack frame и 0 spill stores/loads. Значит диагностический кандидат прошёл correctness и static resource gate и допущен к одному V100 census.
+Hosted package run `33290158133` завершён успешно. Exact consensus vectors прошли проверку; сборка `sm_70` для `hoohash_mix_hotrun8_split_kernel` использует 70 регистров, 0 barriers, 112 байт stack frame и 0 spill stores/loads. Значит диагностический кандидат прошёл correctness и static resource gate.
 
-Для безопасной передачи на приватный runner добавлен immutable v2.1 diagnostic release handoff. Hosted release run `33291942596` выполняется. В приватном `PepePow_Lab` добавлен workflow `V100 HotRun8 Residual Profile`, run `33291970147`, использующий `pepew-v100-exclusive`, проверку SHA и кэш benchmark asset по SHA. Workflow не содержит pool submission или Stratum path и не изменяет baseline.
+Первый immutable release handoff run `33291942596` завершился инфраструктурной ошибкой на шаге публикации: в CUDA container отсутствовала команда `gh`, поэтому prerelease asset не был создан. Следующий Lab run `33291970147` вследствие этого не запускал benchmark binary и завершился после повторяющихся HTTP 404 при ожидании SHA asset. Это не performance REJECT и не correctness REJECT; V100 вычислительный тест фактически не состоялся.
+
+Причина исправлена в release workflow: установлен GitHub CLI `gh`, добавлены явные проверки `command -v gh` и `gh --version` до сборки/публикации. Текущий head исправления — `093c8142f24bf15b6cd68f3233245f0a239f225d`; push этого workflow запускает новый hosted release handoff. После появления immutable asset следующий V100 residual census должен выполняться только через `pepew-v100-exclusive` и использовать SHA-кэш на self-hosted runner.
 
 ## Политика кандидатов
 
@@ -34,9 +36,9 @@ Standalone nonlinear LUT/FastSolver и standalone BLAKE3/orchestration ране�
 
 ## Последний verdict
 
-`HOSTED_STATIC_PASS / V100_RESIDUAL_CENSUS_IN_PROGRESS`.
+`HOSTED_STATIC_PASS / RELEASE_HANDOFF_INFRA_REJECT / FIX_PUSHED`.
 
-Последние инфраструктурные исправления profiling script и anchor подтверждены успешным hosted package run. Performance verdict нового fast-кандидата ещё не выставлялся.
+Последняя ошибка относится только к инфраструктуре передачи immutable диагностического пакета. Performance verdict нового fast-кандидата ещё не выставлялся, correctness regression не обнаружен, защищённый baseline не изменён.
 
 ## Действия пользователя
 
