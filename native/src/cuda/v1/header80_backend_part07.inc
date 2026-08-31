@@ -92,11 +92,19 @@
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_fused_kernel launch");
 #else
-    header80_first_kernel<<<blocks, threads>>>(
+    constexpr unsigned int blake_threads =
+        static_cast<unsigned int>(PEPEPOW_CUDA_BLAKE_THREADS);
+    constexpr unsigned int hoohash_threads =
+        static_cast<unsigned int>(PEPEPOW_CUDA_HOOHASH_THREADS);
+    const unsigned int blake_blocks =
+        static_cast<unsigned int>((count + blake_threads - 1U) / blake_threads);
+    const unsigned int hoohash_blocks =
+        static_cast<unsigned int>((count + hoohash_threads - 1U) / hoohash_threads);
+    header80_first_kernel<<<blake_blocks, blake_threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
 #if defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8
-    hoohash_mix_hotrun8_split_kernel<<<blocks, threads>>>(
+    hoohash_mix_hotrun8_split_kernel<<<hoohash_blocks, hoohash_threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_), work_words, count);
@@ -108,7 +116,7 @@
         static_cast<const double*>(device_scaled_nibble_), work_words, count);
     check_cuda_header80(cudaGetLastError(), "hoohash_mix_kernel launch");
 #endif
-    header80_final_kernel<<<blocks, threads>>>(
+    header80_final_kernel<<<blake_blocks, blake_threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
