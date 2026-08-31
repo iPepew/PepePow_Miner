@@ -126,7 +126,7 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
 // mixed state. This deliberately trades 64 B/nonce of global round-trip for a
 // hard register-lifetime boundary. Consensus order and exact nonlinear math are
 // identical to the monolithic hot-run path.
-__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+__global__ __launch_bounds__(PEPEPOW_CUDA_HOOHASH_THREADS, PEPEPOW_CUDA_HOOHASH_MIN_BLOCKS)
 void hoohash_mix_hotrun8_split_kernel(
     std::uint32_t first_nonce,
     const double* __restrict__ matrix,
