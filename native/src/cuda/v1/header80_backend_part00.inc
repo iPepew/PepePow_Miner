@@ -58,6 +58,9 @@ namespace {
 #ifndef PEPEPOW_CUDA_COLD_OUTLINE
 #define PEPEPOW_CUDA_COLD_OUTLINE 0
 #endif
+#ifndef PEPEPOW_CUDA_HOTRUN8_WORD_STREAM
+#define PEPEPOW_CUDA_HOTRUN8_WORD_STREAM 0
+#endif
 #ifndef PEPEPOW_CUDA_SW_STATE_MODE
 #define PEPEPOW_CUDA_SW_STATE_MODE 0
 #endif
@@ -115,66 +118,3 @@ void check_cuda_header80(cudaError_t status, const char* operation) {
 }
 
 constexpr std::uint32_t host_rotr32(std::uint32_t value, int bits) noexcept {
-    return (value >> bits) | (value << (32 - bits));
-}
-
-void host_g(
-    std::uint32_t& a, std::uint32_t& b, std::uint32_t& c, std::uint32_t& d,
-    std::uint32_t mx, std::uint32_t my) noexcept {
-    a = a + b + mx;
-    d = host_rotr32(d ^ a, 16);
-    c += d;
-    b = host_rotr32(b ^ c, 12);
-    a = a + b + my;
-    d = host_rotr32(d ^ a, 8);
-    c += d;
-    b = host_rotr32(b ^ c, 7);
-}
-
-std::uint32_t host_load_le32(const std::uint8_t* p) noexcept {
-    return static_cast<std::uint32_t>(p[0]) |
-           (static_cast<std::uint32_t>(p[1]) << 8U) |
-           (static_cast<std::uint32_t>(p[2]) << 16U) |
-           (static_cast<std::uint32_t>(p[3]) << 24U);
-}
-
-std::uint32_t host_load_be32(const std::uint8_t* p) noexcept {
-    return (static_cast<std::uint32_t>(p[0]) << 24U) |
-           (static_cast<std::uint32_t>(p[1]) << 16U) |
-           (static_cast<std::uint32_t>(p[2]) << 8U) |
-           static_cast<std::uint32_t>(p[3]);
-}
-
-void host_compress(
-    const std::uint32_t cv[8], const std::uint32_t block[16],
-    std::uint32_t block_len, std::uint32_t flags, std::uint32_t out[16]) noexcept {
-    std::uint32_t v[16];
-    for (int i = 0; i < 8; ++i) v[i] = cv[i];
-    for (int i = 0; i < 4; ++i) v[8 + i] = kHostIv[static_cast<std::size_t>(i)];
-    v[12] = 0;
-    v[13] = 0;
-    v[14] = block_len;
-    v[15] = flags;
-
-    for (int round = 0; round < 7; ++round) {
-        const std::uint8_t* s = kHostSchedule[round];
-        host_g(v[0],v[4],v[8],v[12],block[s[0]],block[s[1]]);
-        host_g(v[1],v[5],v[9],v[13],block[s[2]],block[s[3]]);
-        host_g(v[2],v[6],v[10],v[14],block[s[4]],block[s[5]]);
-        host_g(v[3],v[7],v[11],v[15],block[s[6]],block[s[7]]);
-        host_g(v[0],v[5],v[10],v[15],block[s[8]],block[s[9]]);
-        host_g(v[1],v[6],v[11],v[12],block[s[10]],block[s[11]]);
-        host_g(v[2],v[7],v[8],v[13],block[s[12]],block[s[13]]);
-        host_g(v[3],v[4],v[9],v[14],block[s[14]],block[s[15]]);
-    }
-
-    for (int i = 0; i < 8; ++i) {
-        out[i] = v[i] ^ v[i + 8];
-        out[i + 8] = v[i + 8] ^ cv[i];
-    }
-}
-
-std::array<std::uint32_t, 8> first_block_midstate(const Header80& header) noexcept {
-    std::uint32_t block[16]{};
-    std::uint32_t compressed[16]{};
-    for (int i = 0; i < 16; ++i) block[i] = host_load_le32(header.data() + i * 4);
