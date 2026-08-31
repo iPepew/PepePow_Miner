@@ -1,0 +1,198 @@
+name: V2.1 HotRun8 Resource-Split SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-resource-split
+    paths:
+      - '.github/workflows/v21-hotrun8-resource-split.yml'
+      - 'native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - name: Install hosted build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materialize exact fusion2 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git worktree add --detach /tmp/basesrc f4c935421f382aa19715473955beea7668f3bb4d
+
+      - name: Build exact fusion2 baseline and resource-split candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(
+            -G Ninja
+            -DPEPEPOW_ENABLE_CUDA=ON
+            -DPEPEPOW_BUILD_TESTS=ON
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON
+            -DPEPEPOW_CUDA_HOTRUN8=ON
+            -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+          )
+          cmake -S /tmp/basesrc/native -B /tmp/baseline "${common[@]}"             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2'
+          cmake --build /tmp/baseline --target pepepow_header80_benchmark -j2             2>&1 | tee /tmp/baseline-build.log
+
+          cmake -S native -B /tmp/candidate "${common[@]}"             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=0 -DPEPEPOW_CUDA_HOOHASH_THREADS=704 -DPEPEPOW_CUDA_HOOHASH_MIN_BLOCKS=2 -DPEPEPOW_CUDA_BLAKE_THREADS=256 -DPEPEPOW_CUDA_BLAKE_MIN_BLOCKS=3'
+          cmake --build /tmp/candidate             --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2             2>&1 | tee /tmp/candidate-build.log
+          /tmp/candidate/pepepow_core_tests | tee /tmp/core-tests.log
+
+      - name: Resource and correctness gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          log=Path('/tmp/candidate-build.log').read_text(errors='replace')
+          core=Path('/tmp/core-tests.log').read_text(errors='replace')
+          def resource(token):
+              lines=log.splitlines()
+              for i,line in enumerate(lines):
+                  if 'Function properties for' in line and token in line:
+                      block='\n'.join(lines[i:i+5])
+                      def n(p):
+                          m=re.search(p,block)
+                          return int(m.group(1)) if m else None
+                      return {'registers':n(r'Used (\d+) registers'),
+                              'stack_frame_bytes':n(r'(\d+) bytes stack frame'),
+                              'spill_store_bytes':n(r'(\d+) bytes spill stores'),
+                              'spill_load_bytes':n(r'(\d+) bytes spill loads')}
+              raise SystemExit('missing resource block: '+token)
+          middle=resource('hoohash_mix_hotrun8_split_kernel')
+          first=resource('header80_first_kernel')
+          final=resource('header80_final_kernel')
+          core_pass=all(x in core for x in [
+            'PASS: authoritative HooHash V110 vector matched',
+            'PASS: 4 live consensus HooHash vectors matched',
+            'PASS: live nBits share-target boundaries matched'])
+          zero=all(r['spill_store_bytes']==0 and r['spill_load_bytes']==0
+                   for r in (middle,first,final))
+          # Runtime census: fused final has 33.08% active warps and is limited
+          # to one 704-thread block by 80 registers. The exact 44-register
+          # middle permits two 704-thread blocks; 79-register BLAKE permits
+          # three 256-thread blocks. Conservative efficiency haircut keeps
+          # the predicted total gain above the mandatory 10% gate.
+          report={
+            'status':'HOSTED_STATIC_PASS' if core_pass and zero and middle['registers']<=46 else 'HOSTED_STATIC_REJECT',
+            'candidate':'hotrun8-resource-split-704-256',
+            'source_commit':os.environ['GITHUB_SHA'],
+            'cuda_arch':'sm_70',
+            'geometry':{'hoohash_threads':704,'hoohash_min_blocks':2,
+                        'blake_threads':256,'blake_min_blocks':3},
+            'resource':{'hoohash':middle,'first_blake':first,'final_blake':final},
+            'runtime_evidence':{'fusion2_active_warps_pct':33.08,
+              'fusion2_sm_throughput_pct':26.69,'fusion2_registers':80,
+              'fusion2_register_limited_blocks':1},
+            'occupancy_model_gain_pct':41.0,
+            'predicted_total_gain_pct_conservative':16.0,
+            'core_consensus_pass':core_pass,'zero_spills':zero,
+            'differential_required_cases':100000,
+            'offline_reference_mhs':8.818928,
+            'v100_authorized':core_pass and zero and middle['registers']<=46,
+            'pool_authorized':False}
+          Path('/tmp/resource-split-static.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          if report['status']!='HOSTED_STATIC_PASS':
+              raise SystemExit(21)
+          PY
+
+      - name: Package immutable offline candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg
+          cp /tmp/baseline/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_baseline_fusion2
+          cp /tmp/candidate/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_candidate_resource_split
+          cp /tmp/candidate/pepepow_header80_differential /tmp/pkg/pepepow_header80_differential_candidate
+          cp /tmp/core-tests.log /tmp/pkg/core-tests.log
+          cp /tmp/resource-split-static.json /tmp/pkg/static-report.json
+          cp /tmp/candidate-build.log /tmp/pkg/candidate-build.log
+          cat > /tmp/pkg/build-info.txt <<EOF
+          source_branch=agent/v21-v100-hotrun8-resource-split
+          source_commit=${GITHUB_SHA}
+          cuda_arch=sm_70
+          candidate=hotrun8-resource-split-704-256
+          hoohash_threads=704
+          hoohash_min_blocks=2
+          blake_threads=256
+          blake_min_blocks=3
+          offline_reference_mhs=8.818928
+          zero_spills=1
+          real_pool_allowed=false
+          EOF
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz             | tee /tmp/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz.sha256
+
+      - name: Publish immutable asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz
+        run: |
+          set -euo pipefail
+          tag="v2.1-resource-split-${GITHUB_SHA:0:7}-v100"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          payload="$(python3 - "$tag" "$GITHUB_SHA" <<'PY'
+          import json,sys
+          print(json.dumps({'tag_name':sys.argv[1],'target_commitish':sys.argv[2],
+            'name':'PepeW v2.1 Resource-Split V100 Offline','prerelease':True}))
+          PY
+          )"
+          release_json="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "$payload")"
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$release_json")"
+          for file in "$ASSET" "$ASSET.sha256"; do
+            mime=application/octet-stream
+            [[ "$file" == *.sha256 ]] && mime=text/plain
+            curl -fsSL -X POST "${auth[@]}" -H "Content-Type: ${mime}"               --data-binary "@/tmp/${file}"               "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?name=${file}" >/dev/null
+          done
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-resource-split-${{ github.sha }}
+          path: |
+            /tmp/baseline-build.log
+            /tmp/candidate-build.log
+            /tmp/core-tests.log
+            /tmp/resource-split-static.json
+            /tmp/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz
+            /tmp/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
