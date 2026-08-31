@@ -63,7 +63,7 @@ __device__ __forceinline__ void hoohash_mix_words(
     }
 }
 
-__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+__global__ __launch_bounds__(PEPEPOW_CUDA_BLAKE_THREADS, PEPEPOW_CUDA_BLAKE_MIN_BLOCKS)
 void header80_first_kernel(
     std::uint32_t first_nonce,
     std::uint32_t* __restrict__ work_words,
@@ -99,7 +99,7 @@ void hoohash_mix_kernel(
     for (int i = 0; i < 8; ++i) output[i] = mixed[i];
 }
 
-__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+__global__ __launch_bounds__(PEPEPOW_CUDA_BLAKE_THREADS, PEPEPOW_CUDA_BLAKE_MIN_BLOCKS)
 void header80_final_kernel(
     std::uint32_t first_nonce,
     const std::uint32_t* __restrict__ work_words,
