@@ -61,7 +61,11 @@
     return {one_region, two};
 }
 
+#if PEPEPOW_CUDA_COLD_OUTLINE
+__device__ __noinline__ double nonlinear(double x) {
+#else
 __device__ __forceinline__ double nonlinear(double x) {
+#endif
     const double one_base = x * kTransformMultiplier * 0.125;
     const HooHashSelectorParts selector = decode_selector_parts(one_base);
     const double two = selector.two;
