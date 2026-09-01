@@ -118,8 +118,59 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
         #pragma unroll 1
         while (lane < 8) {
             if (sw_state_is_cold(sw)) {
-                // Cold cells remain scalar because safe_nonlinear() and the
-                // following sw transition determine the next state.
+#if PEPEPOW_CUDA_COLD_NEXT_OVERLAP
+                // Exact two-cell software pipeline. The next cell's DFMA input
+                // and warm contribution are independent of the current sum/sw
+                // state, so prepare both before the current nonlinear call.
+                // After the exact CVT predicate resolves, consume only the
+                // matching prepared value. FP64 additions and sw updates stay
+                // in original cell order; discarded preparation has no side
+                // effects because the matrix/table are immutable.
+                const int lane0 = lane;
+                const int cell0 = cell_base + lane0;
+                const std::uint32_t nibble0 =
+                    hotrun8_word_nibble(packed_word, lane0);
+                if (nibble0 == 0U) {
+                    update_sw_state(sw, sum);
+                    ++lane;
+                    continue;
+                }
+
+                const double value0 = nibble_to_double(nibble0);
+                const double x0 =
+                    matrix[cell0] * hash_mod_fp64 * value0 + nonce_mod;
+                const bool have_next = lane0 + 1 < 8;
+                std::uint32_t nibble1 = 0U;
+                double value1 = 0.0;
+                double x1 = 0.0;
+                double warm1 = 0.0;
+                if (have_next) {
+                    nibble1 = hotrun8_word_nibble(packed_word, lane0 + 1);
+                    value1 = nibble_to_double(nibble1);
+                    if (nibble1 != 0U) {
+                        x1 = matrix[cell0 + 1] * hash_mod_fp64 * value1 +
+                             nonce_mod;
+                    }
+                    warm1 = hotrun8_warm_contribution(
+                        matrix, scaled_nibble_table, cell0 + 1, nibble1);
+                }
+
+                sum += safe_nonlinear(x0) * value0 * 1234.0;
+                update_sw_state(sw, sum);
+                ++lane;
+                if (!have_next) continue;
+
+                if (sw_state_is_cold(sw)) {
+                    if (nibble1 != 0U) {
+                        sum += safe_nonlinear(x1) * value1 * 1234.0;
+                    }
+                } else {
+                    sum += warm1;
+                }
+                update_sw_state(sw, sum);
+                ++lane;
+#else
+                // Baseline exact scalar cold segment.
                 #pragma unroll 1
                 do {
                     const int cell = cell_base + lane;
@@ -134,6 +185,7 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                     update_sw_state(sw, sum);
                     ++lane;
                 } while (lane < 8 && sw_state_is_cold(sw));
+#endif
                 continue;
             }
 
