@@ -188,6 +188,123 @@ __device__ __forceinline__ double matrix_row_hotrun8_active(
 #endif
 }
 
+#if defined(PEPEPOW_CUDA_DUAL_NONCE_ILP) && PEPEPOW_CUDA_DUAL_NONCE_ILP
+// Lockstep exact row evaluator for two independent nonces. Each nonce keeps
+// the original cell order and its own sw state; alternating the independent
+// chains gives ptxas instructions to issue while the other chain waits on
+// FP64/CVT/nonlinear latency.
+__device__ __forceinline__ void matrix_row_hotrun8_dual(
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    int row,
+    const std::uint32_t first0[8], double hash_mod0, double nonce_mod0,
+    HooHashSwState& sw0,
+    const std::uint32_t first1[8], double hash_mod1, double nonce_mod1,
+    HooHashSwState& sw1,
+    double& sum0, double& sum1) {
+    sum0 = 0.0;
+    sum1 = 0.0;
+    const int row_offset = row * 64;
+
+    #pragma unroll 1
+    for (int word_index = 0; word_index < 8; ++word_index) {
+        const std::uint32_t packed0 = first0[word_index];
+        const std::uint32_t packed1 = first1[word_index];
+        const int cell_base = row_offset + word_index * 8;
+
+        #pragma unroll 1
+        for (int lane = 0; lane < 8; ++lane) {
+            const int cell = cell_base + lane;
+            const std::uint32_t nibble0 =
+                hotrun8_word_nibble(packed0, lane);
+            const std::uint32_t nibble1 =
+                hotrun8_word_nibble(packed1, lane);
+
+            if (sw_state_is_cold(sw0)) {
+                if (nibble0 != 0U) {
+                    const double value0 = nibble_to_double(nibble0);
+                    const double x0 =
+                        matrix[cell] * hash_mod0 * value0 + nonce_mod0;
+                    sum0 += safe_nonlinear(x0) * value0 * 1234.0;
+                }
+            } else {
+                sum0 += hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble0);
+            }
+            update_sw_state(sw0, sum0);
+
+            if (sw_state_is_cold(sw1)) {
+                if (nibble1 != 0U) {
+                    const double value1 = nibble_to_double(nibble1);
+                    const double x1 =
+                        matrix[cell] * hash_mod1 * value1 + nonce_mod1;
+                    sum1 += safe_nonlinear(x1) * value1 * 1234.0;
+                }
+            } else {
+                sum1 += hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble1);
+            }
+            update_sw_state(sw1, sum1);
+        }
+    }
+}
+
+__device__ __noinline__ void hoohash_mix_words_hotrun8_dual(
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    std::uint32_t mix_nonce0, const std::uint32_t first0[8],
+    std::uint32_t mixed0[8],
+    std::uint32_t mix_nonce1, const std::uint32_t first1[8],
+    std::uint32_t mixed1[8]) {
+    std::uint32_t hash_xor0 = 0U;
+    std::uint32_t hash_xor1 = 0U;
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        hash_xor0 ^= first0[i];
+        hash_xor1 ^= first1[i];
+        mixed0[i] = first0[i];
+        mixed1[i] = first1[i];
+    }
+
+    const double hash_mod0 =
+        u32_to_double_exact(byte_swap32(hash_xor0));
+    const double hash_mod1 =
+        u32_to_double_exact(byte_swap32(hash_xor1));
+    const double nonce_mod0 = u32_to_double_exact(mix_nonce0 & 0xffU);
+    const double nonce_mod1 = u32_to_double_exact(mix_nonce1 & 0xffU);
+    HooHashSwState sw0 = initial_sw_state();
+    HooHashSwState sw1 = initial_sw_state();
+
+    #pragma unroll 1
+    for (int pair = 0; pair < 32; ++pair) {
+        double even0, even1, odd0, odd1;
+        matrix_row_hotrun8_dual(
+            matrix, scaled_nibble_table, pair * 2,
+            first0, hash_mod0, nonce_mod0, sw0,
+            first1, hash_mod1, nonce_mod1, sw1,
+            even0, even1);
+        matrix_row_hotrun8_dual(
+            matrix, scaled_nibble_table, pair * 2 + 1,
+            first0, hash_mod0, nonce_mod0, sw0,
+            first1, hash_mod1, nonce_mod1, sw1,
+            odd0, odd1);
+
+        const std::uint64_t combined0 =
+            positive_double_to_u64_rz(even0) +
+            positive_double_to_u64_rz(odd0);
+        const std::uint64_t combined1 =
+            positive_double_to_u64_rz(even1) +
+            positive_double_to_u64_rz(odd1);
+        const std::uint32_t shift =
+            static_cast<std::uint32_t>((pair & 3) * 8);
+        mixed0[pair >> 2] ^=
+            static_cast<std::uint32_t>(combined0 & 0xffU) << shift;
+        mixed1[pair >> 2] ^=
+            static_cast<std::uint32_t>(combined1 & 0xffU) << shift;
+    }
+}
+#endif
+
 // Keep the long HooHash state machine behind a call boundary. Inlining it into
 // the BLAKE3 wrapper extends first_pass/mixed/final_hash lifetimes across all 64
 // rows and made ptxas spill 132 B in each direction on sm_70.
