@@ -1,0 +1,184 @@
+name: V2.1 HotRun8 Dual-Nonce ILP352 Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-hotrun8-dual-nonce-ilp352
+    paths:
+      - '.github/workflows/v21-hotrun8-dual-nonce-ilp352.yml'
+      - 'native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - name: Install hosted tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Materialize promoted baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git worktree add --detach /tmp/basesrc 6977f2651d365baae36a0f6a029e30332ab37eed
+      - name: Build baseline and dual-nonce candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_common=(-G Ninja -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc)
+          cmake -S /tmp/basesrc/native -B /tmp/base "${base_common[@]}" \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1'
+          cmake --build /tmp/base --target pepepow_header80_benchmark -j2 2>&1 | tee /tmp/base.log
+
+          cand_common=("${base_common[@]}")
+          cand_common[3]=-DPEPEPOW_CUDA_THREADS=352
+          cmake -S native -B /tmp/cand "${cand_common[@]}" \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_DUAL_NONCE_ILP=1'
+          cmake --build /tmp/cand --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 2>&1 | tee /tmp/cand.log
+          /tmp/cand/pepepow_core_tests | tee /tmp/core.log
+          cuobjdump --dump-sass /tmp/base/pepepow_header80_benchmark > /tmp/base.sass
+          cuobjdump --dump-sass /tmp/cand/pepepow_header80_benchmark > /tmp/cand.sass
+      - name: ILP forecast and correctness gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,re
+          from pathlib import Path
+          def counts(path):
+              d={}; cur=None
+              for line in Path(path).read_text(errors='replace').splitlines():
+                  m=re.search(r'Function\s*:\s*(\S+)',line)
+                  if m: cur=m.group(1); d.setdefault(cur,0)
+                  elif cur and re.search(r'/\*[0-9a-fA-F]+\*/',line): d[cur]+=1
+              return d
+          def selected(d, dual):
+              needles=(('hoohash_mix_words_hotrun8_dual','hoohash_final_hotrun8_fused_kernel')
+                       if dual else ('hoohash_mix_words_hotrun8','hoohash_final_hotrun8_fused_kernel'))
+              return {k:v for k,v in d.items() if any(n in k for n in needles)
+                      and (dual or 'dual' not in k)}
+          def resource(log):
+              ls=Path(log).read_text(errors='replace').splitlines()
+              for i,line in enumerate(ls):
+                  if 'Function properties for' in line and 'hoohash_final_hotrun8_fused_kernel' in line:
+                      b='\n'.join(ls[i:i+6])
+                      def n(p):
+                          m=re.search(p,b); return int(m.group(1)) if m else 0
+                      return {'registers':n(r'Used (\d+) registers'),
+                        'stack_frame_bytes':n(r'(\d+) bytes stack frame'),
+                        'spill_store_bytes':n(r'(\d+) bytes spill stores'),
+                        'spill_load_bytes':n(r'(\d+) bytes spill loads')}
+              raise SystemExit('missing fusion2 resource')
+          bh=selected(counts('/tmp/base.sass'),False)
+          ch=selected(counts('/tmp/cand.sass'),True)
+          baseline=sum(bh.values())
+          candidate_total=sum(ch.values())
+          candidate_per_nonce=candidate_total/2.0
+          overhead=max(0.0,candidate_per_nonce/baseline-1.0)
+          wait_share=2.88/8.16
+          hidden_wait_fraction=0.50
+          predicted=(1/((1-wait_share*hidden_wait_fraction)*(1+overhead))-1)*100
+          br=resource('/tmp/base.log'); cr=resource('/tmp/cand.log')
+          core=Path('/tmp/core.log').read_text()
+          cp=all(x in core for x in ['PASS: authoritative HooHash V110 vector matched',
+            'PASS: 4 live consensus HooHash vectors matched',
+            'PASS: live nBits share-target boundaries matched'])
+          zero=cr['spill_store_bytes']==0 and cr['spill_load_bytes']==0
+          register_fit=cr['registers']<=186
+          authorized=cp and zero and register_fit and predicted>=10.0
+          report={'status':'HOSTED_STATIC_PASS' if authorized else 'HOSTED_STATIC_REJECT',
+            'candidate':'hotrun8-dual-nonce-ilp352','source_commit':os.environ['GITHUB_SHA'],
+            'cuda_arch':'sm_70','threads_per_block':352,'nonces_per_thread':2,
+            'effective_nonce_streams_per_block':704,
+            'baseline_hot_sass':baseline,'candidate_hot_sass_total':candidate_total,
+            'candidate_hot_sass_per_nonce':candidate_per_nonce,
+            'per_nonce_instruction_overhead_pct':overhead*100,
+            'baseline_resource':br,'candidate_resource':cr,
+            'register_limit_for_352_threads':186,
+            'core_consensus_pass':cp,'zero_spills':zero,'register_fit':register_fit,
+            'runtime_wait_per_issue':2.88,'warp_latency_per_issue':8.16,
+            'assumed_wait_overlap_fraction':hidden_wait_fraction,
+            'predicted_total_gain_pct':predicted,
+            'offline_reference_mhs':9.184,'v100_authorized':authorized,
+            'pool_authorized':False,'stable_live_changed':False}
+          Path('/tmp/report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          if not authorized: raise SystemExit(21)
+          PY
+      - name: Package immutable candidate
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg
+          cp /tmp/base/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_baseline_control_cvt
+          cp /tmp/cand/pepepow_header80_benchmark /tmp/pkg/pepepow_header80_benchmark_candidate_dual_nonce_ilp352
+          cp /tmp/cand/pepepow_header80_differential /tmp/pkg/pepepow_header80_differential_candidate
+          cp /tmp/report.json /tmp/pkg/static-report.json
+          cp /tmp/core.log /tmp/pkg/core-tests.log
+          printf 'source_commit=%s\ncuda_arch=sm_70\ncandidate=hotrun8-dual-nonce-ilp352\nzero_spills=1\noffline_reference_mhs=9.184\nreal_pool_allowed=false\n' "$GITHUB_SHA" > /tmp/pkg/build-info.txt
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz | tee /tmp/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz.sha256
+      - name: Publish immutable candidate
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v2.1-dual-nonce-ilp352-${GITHUB_SHA:0:7}-v100"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          auth=(-H "Authorization: Bearer ${GH_TOKEN}" -H 'X-GitHub-Api-Version: 2022-11-28')
+          payload="$(python3 - "$tag" "$GITHUB_SHA" <<'PY'
+          import json,sys
+          print(json.dumps({'tag_name':sys.argv[1],'target_commitish':sys.argv[2],
+            'name':'PepeW v2.1 Dual-Nonce ILP352 V100 Offline','prerelease':True}))
+          PY
+          )"
+          rel="$(curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/json' "${api}/releases" -d "$payload")"
+          rid="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$rel")"
+          for file in PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz.sha256; do
+            curl -fsSL -X POST "${auth[@]}" -H 'Content-Type: application/octet-stream' --data-binary "@/tmp/$file" \
+              "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/$rid/assets?name=$file" >/dev/null
+          done
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-dual-nonce-ilp352-${{ github.sha }}
+          path: |
+            /tmp/base.log
+            /tmp/cand.log
+            /tmp/core.log
+            /tmp/base.sass
+            /tmp/cand.sass
+            /tmp/report.json
+            /tmp/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz
+            /tmp/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
