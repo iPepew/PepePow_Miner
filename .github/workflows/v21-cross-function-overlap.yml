@@ -1,0 +1,168 @@
+name: V2.1 Cross-Function Cold/CVT Overlap Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-cross-function-overlap
+    paths:
+      - '.github/workflows/v21-cross-function-overlap.yml'
+      - 'native/src/cuda/v1/header80_backend_part00.inc'
+      - 'native/src/cuda/v1/header80_hotrun8.inc'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  hosted-static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates python3 cmake
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - uses: actions/checkout@v4
+      - name: Build promoted baseline and overlap candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(-G Ninja -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc)
+          leader='-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1'
+          cmake -S native -B /tmp/base "${common[@]}" "-DCMAKE_CUDA_FLAGS=${leader}"
+          cmake --build /tmp/base --target pepepow_header80_benchmark -j2 2>&1 | tee /tmp/base.log
+          cmake -S native -B /tmp/cand "${common[@]}" "-DCMAKE_CUDA_FLAGS=${leader} -DPEPEPOW_CUDA_COLD_NEXT_OVERLAP=1"
+          cmake --build /tmp/cand --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 2>&1 | tee /tmp/cand.log
+          /tmp/cand/pepepow_core_tests | tee /tmp/core.log
+          cuobjdump --dump-sass /tmp/base/pepepow_header80_benchmark > /tmp/base.sass
+          cuobjdump --dump-sass /tmp/cand/pepepow_header80_benchmark > /tmp/cand.sass
+      - name: Verify exactness and resource envelope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re
+          from pathlib import Path
+
+          def resources(log):
+              lines=Path(log).read_text(errors='replace').splitlines()
+              for i,line in enumerate(lines):
+                  if 'Function properties for' in line and 'hoohash_final_hotrun8_fused_kernel' in line:
+                      block='\n'.join(lines[i:i+6])
+                      def num(pattern):
+                          m=re.search(pattern,block)
+                          return int(m.group(1)) if m else None
+                      return {
+                        'registers':num(r'Used (\d+) registers'),
+                        'stack_frame_bytes':num(r'(\d+) bytes stack frame'),
+                        'spill_store_bytes':num(r'(\d+) bytes spill stores'),
+                        'spill_load_bytes':num(r'(\d+) bytes spill loads')}
+              raise SystemExit('missing fusion2 resource record')
+
+          def hot_count(path):
+              current=None; counts={}
+              for line in Path(path).read_text(errors='replace').splitlines():
+                  m=re.search(r'Function\s*:\s*(\S+)',line)
+                  if m:
+                      current=m.group(1); counts.setdefault(current,0)
+                  elif current and re.search(r'/\*[0-9a-fA-F]+\*/',line):
+                      counts[current]+=1
+              return sum(v for k,v in counts.items()
+                if 'hoohash_mix_words_hotrun8' in k or
+                   'hoohash_final_hotrun8_fused_kernel' in k)
+
+          base=resources('/tmp/base.log')
+          cand=resources('/tmp/cand.log')
+          base_sass=hot_count('/tmp/base.sass')
+          cand_sass=hot_count('/tmp/cand.sass')
+          core=Path('/tmp/core.log').read_text(errors='replace')
+          consensus=all(x in core for x in [
+            'PASS: authoritative HooHash V110 vector matched',
+            'PASS: 4 live consensus HooHash vectors matched',
+            'PASS: live nBits share-target boundaries matched'])
+          zero_spills=(cand['spill_store_bytes']==0 and cand['spill_load_bytes']==0)
+          resource_ok=(cand['registers'] is not None and cand['registers'] <= 80
+                       and cand['stack_frame_bytes'] is not None
+                       and cand['stack_frame_bytes'] <= 176)
+          sass_growth_pct=(cand_sass/base_sass-1.0)*100.0
+          footprint_ok=sass_growth_pct <= 8.0
+
+          # Promoted Nsight census: 8.16 warp-latency units, 2.88 wait units.
+          # A 10% throughput gain requires latency <= 8.16/1.10, therefore the
+          # candidate must remove/overlap at least 25.76% of measured wait.
+          latency=8.16
+          wait=2.88
+          required_delta=latency-latency/1.10
+          required_wait_overlap_pct=required_delta/wait*100.0
+          diagnostic_ok=consensus and zero_spills and resource_ok and footprint_ok
+          report={
+            'status':'HOSTED_DIAGNOSTIC_PASS' if diagnostic_ok else 'HOSTED_REJECT',
+            'candidate':'hotrun8-cross-function-cold-cvt-overlap',
+            'source_commit':os.environ['GITHUB_SHA'],
+            'cuda_arch':'sm_70',
+            'baseline_resource':base,
+            'candidate_resource':cand,
+            'baseline_hot_sass':base_sass,
+            'candidate_hot_sass':cand_sass,
+            'hot_sass_growth_pct':sass_growth_pct,
+            'core_consensus_pass':consensus,
+            'zero_spills':zero_spills,
+            'resource_envelope_pass':resource_ok,
+            'measured_promoted_warp_latency':latency,
+            'measured_promoted_wait':wait,
+            'required_wait_overlap_for_10pct_gain_pct':required_wait_overlap_pct,
+            'v100_profile_authorized':diagnostic_ok,
+            'v100_performance_authorized':False,
+            'real_pool_authorized':False,
+            'next_gate':'Nsight SourceCounters/warp-state A/B must measure enough overlap to forecast >=10% total gain before performance test'
+          }
+          Path('/tmp/report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          if not diagnostic_ok:
+              raise SystemExit(21)
+          PY
+      - name: Publish immutable profiling asset
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg
+          cp /tmp/base/pepepow_header80_benchmark /tmp/pkg/baseline
+          cp /tmp/cand/pepepow_header80_benchmark /tmp/pkg/candidate
+          cp /tmp/cand/pepepow_header80_differential /tmp/pkg/differential
+          cp /tmp/report.json /tmp/pkg/static-report.json
+          cp /tmp/core.log /tmp/pkg/core-tests.log
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C /tmp/pkg -cf - . | gzip -n > /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz
+          sha256sum /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz | tee /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz.sha256
+          tag="v2.1-cross-function-overlap-${GITHUB_SHA:0:7}"
+          gh release create "$tag" /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz.sha256             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease             --title "PepeW V100 Cross-Function Overlap Profile"             --notes "Profiling-only exact candidate. Pool and performance promotion remain disabled until Nsight A/B forecasts at least +10%."
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-function-overlap-${{ github.sha }}
+          path: |
+            /tmp/base.log
+            /tmp/cand.log
+            /tmp/core.log
+            /tmp/base.sass
+            /tmp/cand.sass
+            /tmp/report.json
+            /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz
+            /tmp/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
