@@ -41,7 +41,12 @@ __device__ __forceinline__ bool sw_state_is_cold(HooHashSwState state) {
 }
 __device__ __forceinline__ void update_sw_state(
     HooHashSwState& state, double sum) {
-    state = positive_fraction_div1024_le_002_finite(sum);
+    // Exact for the positive finite HooHash row-sum range: scaling by 2^-10,
+    // round-down conversion, and the integer-to-double conversion preserve the
+    // consensus predicate while avoiding the generic fractional-bit decoder.
+    const double scaled = sum * 0x1.0p-10;
+    const unsigned long long whole = __double2ull_rd(scaled);
+    state = (scaled - static_cast<double>(whole)) <= 0.02;
 }
 #endif
 
