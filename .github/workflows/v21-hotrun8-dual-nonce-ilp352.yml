@@ -56,7 +56,7 @@ jobs:
           cmake --build /tmp/base --target pepepow_header80_benchmark -j2 2>&1 | tee /tmp/base.log
 
           cand_common=("${base_common[@]}")
-          cand_common[3]=-DPEPEPOW_CUDA_THREADS=352
+          cand_common[5]=-DPEPEPOW_CUDA_THREADS=352
           cmake -S native -B /tmp/cand "${cand_common[@]}" \
             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_DUAL_NONCE_ILP=1'
           cmake --build /tmp/cand --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 2>&1 | tee /tmp/cand.log
