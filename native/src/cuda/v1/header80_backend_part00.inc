@@ -62,6 +62,11 @@ namespace {
 // Candidate selector: combined packed cursor/control dataflow.
 #define PEPEPOW_CUDA_HOTRUN8_WORD_STREAM 0
 #endif
+#ifndef PEPEPOW_CUDA_COLD_NEXT_OVERLAP
+// Bounded cross-function candidate: prepare the next cell's independent
+// cold DFMA input and warm load while the current nonlinear/CVT chain runs.
+#define PEPEPOW_CUDA_COLD_NEXT_OVERLAP 0
+#endif
 #ifndef PEPEPOW_CUDA_SW_STATE_MODE
 #define PEPEPOW_CUDA_SW_STATE_MODE 0
 #endif
