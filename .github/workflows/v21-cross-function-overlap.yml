@@ -25,7 +25,9 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates python3 cmake
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates python3 python3-pip
+          python3 -m pip install --no-cache-dir "cmake==3.31.6"
+          cmake --version | grep -F '3.31.6'
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
       - uses: actions/checkout@v4
       - name: Build promoted baseline and overlap candidate
