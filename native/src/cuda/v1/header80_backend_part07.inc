@@ -36,6 +36,12 @@
 
     constexpr unsigned int threads = static_cast<unsigned int>(PEPEPOW_CUDA_THREADS);
     const unsigned int blocks = static_cast<unsigned int>((count + threads - 1U) / threads);
+#if defined(PEPEPOW_CUDA_DUAL_NONCE_ILP) && PEPEPOW_CUDA_DUAL_NONCE_ILP
+    const unsigned int fusion2_blocks = static_cast<unsigned int>(
+        (count + 2U * threads - 1U) / (2U * threads));
+#else
+    const unsigned int fusion2_blocks = blocks;
+#endif
 
 #if PEPEPOW_CUDA_SPLIT_PIPELINE
     if (device_work_ == nullptr || device_work_capacity_ < count) {
@@ -85,7 +91,7 @@
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
-    hoohash_final_hotrun8_fused_kernel<<<blocks, threads>>>(
+    hoohash_final_hotrun8_fused_kernel<<<fusion2_blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_), work_words,
