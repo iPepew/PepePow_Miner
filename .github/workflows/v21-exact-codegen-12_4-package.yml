@@ -104,7 +104,7 @@ jobs:
           tar --sort=name --owner=0 --group=0 --numeric-owner -C /tmp/pkg -cf - . | gzip -n > /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz
           sha256sum /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz > /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256
           tag="v2.1-exact-codegen-cuda12.4-${GITHUB_SHA:0:7}"
-          gh release create "$tag" /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256 +            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease +            --title 'PepeW Exact Codegen CUDA 12.4 V100 Diagnostic' +            --notes 'Unchanged exact promoted kernel source. Diagnostic only; performance and real-pool promotion are forbidden.'
+          gh release create "$tag" /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title 'PepeW Exact Codegen CUDA 12.4 V100 Diagnostic' --notes 'Unchanged exact promoted kernel source. Diagnostic only; performance and real-pool promotion are forbidden.'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
