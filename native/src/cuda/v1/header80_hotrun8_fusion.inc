@@ -128,6 +128,9 @@ void hoohash_final_hotrun8_resident_kernel(
     hoohash_mix_words_hotrun8_resident(
         matrix, scaled_nibble_table, byte_swap32(nonce), first_pass, mixed);
 
+#if defined(PEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION) && PEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION
+    blake3_32_check_and_publish(mixed, nonce, result);
+#else
     std::uint32_t final_hash[8];
     blake3_32_words(mixed, final_hash);
     if (!hash_words_meet_target(final_hash)) return;
@@ -136,5 +139,6 @@ void hoohash_final_hotrun8_resident_kernel(
         #pragma unroll
         for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
     }
+#endif
 }
 #endif
