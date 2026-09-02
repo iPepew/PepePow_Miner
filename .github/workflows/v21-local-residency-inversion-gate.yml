@@ -3,9 +3,9 @@ name: V2.1 Exact Local Residency Inversion Gate
 on:
   push:
     branches:
-      - agent/v21-v100-final-blake-state-inversion
+      - agent/v21-v100-local-residency-inversion
     paths:
-      - '.github/workflows/v21-final-blake-state-inversion-gate.yml'
+      - '.github/workflows/v21-local-residency-inversion-gate.yml'
       - 'native/**'
   workflow_dispatch:
 
