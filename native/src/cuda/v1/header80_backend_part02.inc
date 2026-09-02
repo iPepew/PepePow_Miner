@@ -148,6 +148,57 @@ __device__ __forceinline__ void blake3_32_words(
     for (int i = 0; i < 8; ++i) output[i] = compressed[i];
 }
 
+#if defined(PEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION) && PEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION
+// Exact 32-byte BLAKE3 path for the overwhelmingly common target-reject case.
+// It removes cv/block/compressed/final_hash array overlap: the 16-word
+// compression state is compared and, only for a winning share, published
+// directly. Message words 8..15 are protocol-defined zeroes.
+__device__ __forceinline__ std::uint32_t blake3_32_message_word(
+    const std::uint32_t* __restrict__ input, std::uint32_t index) {
+    return index < 8U ? input[index] : 0U;
+}
+
+__device__ __forceinline__ void blake3_32_check_and_publish(
+    const std::uint32_t* __restrict__ input, std::uint32_t nonce,
+    DeviceShareResult* __restrict__ result) {
+    std::uint32_t v[16];
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) v[i] = kHeader80Iv[i];
+    #pragma unroll
+    for (int i = 0; i < 4; ++i) v[8 + i] = kHeader80Iv[i];
+    v[12] = 0U;
+    v[13] = 0U;
+    v[14] = 32U;
+    v[15] = kChunkStart | kChunkEnd | kRoot;
+
+    #pragma unroll
+    for (int round = 0; round < 7; ++round) {
+        const std::uint8_t* s = kHeader80Schedule[round];
+        g(v[0],v[4],v[8],v[12],blake3_32_message_word(input,s[0]),blake3_32_message_word(input,s[1]));
+        g(v[1],v[5],v[9],v[13],blake3_32_message_word(input,s[2]),blake3_32_message_word(input,s[3]));
+        g(v[2],v[6],v[10],v[14],blake3_32_message_word(input,s[4]),blake3_32_message_word(input,s[5]));
+        g(v[3],v[7],v[11],v[15],blake3_32_message_word(input,s[6]),blake3_32_message_word(input,s[7]));
+        g(v[0],v[5],v[10],v[15],blake3_32_message_word(input,s[8]),blake3_32_message_word(input,s[9]));
+        g(v[1],v[6],v[11],v[12],blake3_32_message_word(input,s[10]),blake3_32_message_word(input,s[11]));
+        g(v[2],v[7],v[8],v[13],blake3_32_message_word(input,s[12]),blake3_32_message_word(input,s[13]));
+        g(v[3],v[4],v[9],v[14],blake3_32_message_word(input,s[14]),blake3_32_message_word(input,s[15]));
+    }
+
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        const std::uint32_t hash_be = byte_swap32(v[i] ^ v[i + 8]);
+        const std::uint32_t target_be = kHeader80TargetWords[i];
+        if (hash_be < target_be) break;
+        if (hash_be > target_be) return;
+    }
+    if (atomicCAS(&result->found, 0U, 1U) == 0U) {
+        result->nonce = nonce;
+        #pragma unroll
+        for (int i = 0; i < 8; ++i) result->hash_words[i] = v[i] ^ v[i + 8];
+    }
+}
+#endif
+
 __device__ __forceinline__ double positive_fraction(double value) {
 #if PEPEPOW_CUDA_EXACT_BIT_CONVERSIONS
     return positive_fraction_bits(value);
