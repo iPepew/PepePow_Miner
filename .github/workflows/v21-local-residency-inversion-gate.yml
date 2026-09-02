@@ -3,9 +3,9 @@ name: V2.1 Exact Local Residency Inversion Gate
 on:
   push:
     branches:
-      - agent/v21-v100-local-residency-inversion
+      - agent/v21-v100-final-blake-state-inversion
     paths:
-      - '.github/workflows/v21-local-residency-inversion-gate.yml'
+      - '.github/workflows/v21-final-blake-state-inversion-gate.yml'
       - 'native/**'
   workflow_dispatch:
 
@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S native -B /tmp/cand -G Ninja             -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON             -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=128             -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON             -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1             -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON             -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1'
+          cmake -S native -B /tmp/cand -G Ninja             -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON             -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=128             -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON             -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1             -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON             -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION=1'
           cmake --build /tmp/cand --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 2>&1 | tee /tmp/cand.log
           /tmp/cand/pepepow_core_tests | tee /tmp/core.log
           cuobjdump --dump-sass /tmp/cand/pepepow_header80_benchmark > /tmp/cand.sass
@@ -98,7 +98,7 @@ jobs:
           admission=structural and predicted_mhs>=10.1024
           report={
               'status':'HOSTED_STATIC_PASS_DIAGNOSTIC_ALLOWED' if admission else 'HOSTED_STATIC_REJECT',
-              'candidate':'hotrun8-exact-local-residency-inversion-v1',
+              'candidate':'hotrun8-exact-final-blake-state-compression-v1',
               'source_commit':os.environ['GITHUB_SHA'],'cuda_arch':'sm_70',
               'threads_per_block':threads,'resource':resource,
               'hot_sass':hot_sass,'hot_functions':hot,
@@ -127,9 +127,9 @@ jobs:
           cp /tmp/cand/pepepow_header80_differential /tmp/pkg/
           cp /tmp/report.json /tmp/pkg/static-report.json
           cp /tmp/core.log /tmp/pkg/core-tests.log
-          printf 'source_commit=%s\ncuda_arch=sm_70\ncandidate=hotrun8-exact-local-residency-inversion-v1\nthreads=128\nreal_pool_allowed=false\n' "$GITHUB_SHA" > /tmp/pkg/build-info.txt
-          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz .
-          sha256sum /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz | tee /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz.sha256
+          printf 'source_commit=%s\ncuda_arch=sm_70\ncandidate=hotrun8-exact-final-blake-state-compression-v1\nthreads=128\nreal_pool_allowed=false\n' "$GITHUB_SHA" > /tmp/pkg/build-info.txt
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz | tee /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz.sha256
       - name: Publish immutable diagnostic candidate
         if: success()
         shell: bash
@@ -137,19 +137,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="v2.1-local-residency-${GITHUB_SHA:0:7}-v100"
-          gh release create "$tag" /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz.sha256 --target "$GITHUB_SHA" --title "PepeW v2.1 Local Residency V100 Diagnostic" --prerelease
+          tag="v2.1-final-blake-state-${GITHUB_SHA:0:7}-v100"
+          gh release create "$tag" /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz.sha256 --target "$GITHUB_SHA" --title "PepeW v2.1 Local Residency V100 Diagnostic" --prerelease
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hotrun8-local-residency-${{ github.sha }}
+          name: hotrun8-final-blake-state-${{ github.sha }}
           path: |
             /tmp/cand.log
             /tmp/core.log
             /tmp/cand.sass
             /tmp/report.json
-            /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz
-            /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz.sha256
+            /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz
+            /tmp/PepeW-v2.1-FinalBlakeState-V100-Diagnostic.tar.gz.sha256
           if-no-files-found: warn
           retention-days: 30
