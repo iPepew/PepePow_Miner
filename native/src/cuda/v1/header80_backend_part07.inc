@@ -43,7 +43,13 @@
             check_cuda_header80(cudaFree(device_work_), "cudaFree(header80 work resize)");
         }
         check_cuda_header80(
-            cudaMalloc(&device_work_, count * 8U * sizeof(std::uint32_t)),
+            cudaMalloc(&device_work_, count *
+#if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
+                       16U *
+#else
+                       8U *
+#endif
+                       sizeof(std::uint32_t)),
             "cudaMalloc(header80 split work)");
         device_work_capacity_ = count;
     }
@@ -56,8 +62,14 @@
             "cudaFuncSetCacheConfig(first+hoohash hotrun8 fusion)");
   #elif defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
         check_cuda_header80(
+#if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
+            cudaFuncSetCacheConfig(hoohash_final_hotrun8_resident_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(hoohash+final hotrun8 resident)"
+#else
             cudaFuncSetCacheConfig(hoohash_final_hotrun8_fused_kernel, cudaFuncCachePreferL1),
-            "cudaFuncSetCacheConfig(hoohash+final hotrun8 fusion)");
+            "cudaFuncSetCacheConfig(hoohash+final hotrun8 fusion)"
+#endif
+        );
   #else
         check_cuda_header80(
             cudaFuncSetCacheConfig(hoohash_mix_hotrun8_split_kernel, cudaFuncCachePreferL1),
@@ -85,12 +97,22 @@
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+#if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
+    hoohash_final_hotrun8_resident_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words,
+        work_words + count * 8U,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_resident_kernel launch");
+#else
     hoohash_final_hotrun8_fused_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
         static_cast<const double*>(device_scaled_nibble_), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_fused_kernel launch");
+#endif
 #else
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
