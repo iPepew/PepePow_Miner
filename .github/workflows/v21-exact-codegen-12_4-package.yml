@@ -1,0 +1,117 @@
+name: V2.1 Exact CUDA 12.4 Diagnostic Package
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-exact-codegen-matrix
+    paths:
+      - '.github/workflows/v21-exact-codegen-12_4-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    container:
+      image: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    steps:
+      - name: Install deterministic tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git gh ca-certificates python3 python3-pip
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          nvcc --version
+      - uses: actions/checkout@v4
+      - name: Build selected unchanged-source binary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          find native/src/cuda -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/kernel-source.before.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/CMakeLists.txt'); s=p.read_text()
+          old='if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)'
+          if s.count(old)!=1: raise SystemExit('unexpected build-system version gate')
+          p.write_text(s.replace(old,'if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.3)',1))
+          PY
+          find native/src/cuda -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/kernel-source.after.sha256
+          cmp /tmp/kernel-source.before.sha256 /tmp/kernel-source.after.sha256
+          common=(-G Ninja -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc)
+          leader='-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1'
+          cmake -S native -B /tmp/build "${common[@]}" "-DCMAKE_CUDA_FLAGS=${leader}"
+          cmake --build /tmp/build --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 2>&1 | tee /tmp/build.log
+          /tmp/build/pepepow_core_tests | tee /tmp/core.log
+          cuobjdump --dump-sass /tmp/build/pepepow_header80_benchmark > /tmp/hot.sass
+      - name: Recheck immutable admission
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          ls=Path('/tmp/build.log').read_text(errors='replace').splitlines()
+          resource=None
+          for i,line in enumerate(ls):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_fused_kernel' in line:
+                  b='\n'.join(ls[i:i+7])
+                  def n(p):
+                      m=re.search(p,b); return int(m.group(1)) if m else None
+                  resource={'registers':n(r'Used (\d+) registers'),'stack_frame_bytes':n(r'(\d+) bytes stack frame'),
+                    'spill_store_bytes':n(r'(\d+) bytes spill stores'),'spill_load_bytes':n(r'(\d+) bytes spill loads')}
+                  break
+          counts={}; current=None
+          for line in Path('/tmp/hot.sass').read_text(errors='replace').splitlines():
+              m=re.search(r'Function\s*:\s*(\S+)',line)
+              if m: current=m.group(1); counts.setdefault(current,0)
+              elif current and re.search(r'/\*[0-9a-fA-F]+\*/',line): counts[current]+=1
+          hot=sum(v for k,v in counts.items() if 'hoohash_mix_words_hotrun8' in k or 'hoohash_final_hotrun8_fused_kernel' in k)
+          core=Path('/tmp/core.log').read_text(errors='replace')
+          consensus=all(x in core for x in ['PASS: authoritative HooHash V110 vector matched',
+            'PASS: 4 live consensus HooHash vectors matched','PASS: live nBits share-target boundaries matched'])
+          passed=(consensus and hot==2200 and resource=={'registers':80,'stack_frame_bytes':176,'spill_store_bytes':0,'spill_load_bytes':0})
+          report={'status':'PASS_DIAGNOSTIC_PACKAGE' if passed else 'REJECT','candidate':'hotrun8-exact-codegen-cuda12.4',
+            'promoted_kernel_source_commit':'adadf7fe804958319b3c69c9581363cd1ade1cdd','build_commit':__import__('os').environ['GITHUB_SHA'],
+            'cuda':'12.4.1','cuda_arch':'sm_70','kernel_source_unchanged':True,'core_consensus_pass':consensus,
+            'hot_sass':hot,'resource':resource,'v100_diagnostic_allowed':passed,
+            'v100_performance_allowed':False,'real_pool_allowed':False}
+          Path('/tmp/report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          if not passed: raise SystemExit(21)
+          PY
+      - name: Package and publish immutable diagnostic
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/pkg
+          cp /tmp/build/pepepow_header80_benchmark /tmp/pkg/candidate
+          cp /tmp/build/pepepow_header80_differential /tmp/pkg/differential
+          cp /tmp/report.json /tmp/pkg/static-report.json
+          cp /tmp/kernel-source.after.sha256 /tmp/pkg/kernel-source.sha256
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C /tmp/pkg -cf - . | gzip -n > /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz
+          sha256sum /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz > /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256
+          tag="v2.1-exact-codegen-cuda12.4-${GITHUB_SHA:0:7}"
+          gh release create "$tag" /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256 +            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease +            --title 'PepeW Exact Codegen CUDA 12.4 V100 Diagnostic' +            --notes 'Unchanged exact promoted kernel source. Diagnostic only; performance and real-pool promotion are forbidden.'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: exact-codegen-cuda12.4-diagnostic-${{ github.sha }}
+          path: |
+            /tmp/report.json
+            /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz
+            /tmp/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
