@@ -1,0 +1,194 @@
+name: V2.1 Exact CUDA Codegen Scheduler Matrix
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-exact-codegen-matrix
+    paths:
+      - '.github/workflows/v21-exact-codegen-matrix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    name: CUDA ${{ matrix.cuda }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        cuda: ['12.3.2', '12.4.1', '12.6.3', '12.8.1']
+    container:
+      image: nvidia/cuda:${{ matrix.cuda }}-devel-ubuntu22.04
+    steps:
+      - name: Install deterministic build tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates python3 python3-pip
+          python3 -m pip install --no-cache-dir 'cmake==3.31.6'
+          nvcc --version
+          nvcc --list-gpu-code | grep -F sm_70
+      - uses: actions/checkout@v4
+      - name: Build unchanged promoted exact source
+        shell: bash
+        env:
+          CUDA_LABEL: ${{ matrix.cuda }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/codegen-${CUDA_LABEL}
+          find native/src/cuda -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/kernel-source.before.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('native/CMakeLists.txt')
+          s=p.read_text()
+          old='if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)'
+          new='if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.3)'
+          if s.count(old)!=1: raise SystemExit('unexpected CUDA minimum-version gate')
+          p.write_text(s.replace(old,new,1))
+          PY
+          find native/src/cuda -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/kernel-source.after.sha256
+          cmp /tmp/kernel-source.before.sha256 /tmp/kernel-source.after.sha256
+          common=(-G Ninja -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=704
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc)
+          leader='-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1'
+          cmake -S native -B /tmp/build "${common[@]}" "-DCMAKE_CUDA_FLAGS=${leader}"
+          cmake --build /tmp/build --target pepepow_header80_benchmark pepepow_core_tests -j2 2>&1 | tee /tmp/build.log
+          /tmp/build/pepepow_core_tests | tee /tmp/core.log
+          cuobjdump --dump-sass /tmp/build/pepepow_header80_benchmark > /tmp/hot.sass
+      - name: Extract exact static schedule envelope
+        shell: bash
+        env:
+          CUDA_LABEL: ${{ matrix.cuda }}
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import collections,json,os,re
+          from pathlib import Path
+          lines=Path('/tmp/build.log').read_text(errors='replace').splitlines()
+          resource=None
+          for i,line in enumerate(lines):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_fused_kernel' in line:
+                  b='\n'.join(lines[i:i+7])
+                  def n(p):
+                      m=re.search(p,b); return int(m.group(1)) if m else None
+                  resource={'registers':n(r'Used (\d+) registers'),
+                    'stack_frame_bytes':n(r'(\d+) bytes stack frame'),
+                    'spill_store_bytes':n(r'(\d+) bytes spill stores'),
+                    'spill_load_bytes':n(r'(\d+) bytes spill loads')}
+                  break
+          if resource is None: raise SystemExit('missing promoted fusion2 resource record')
+          current=None; counts=collections.Counter(); opcodes=collections.Counter()
+          for line in Path('/tmp/hot.sass').read_text(errors='replace').splitlines():
+              m=re.search(r'Function\s*:\s*(\S+)',line)
+              if m: current=m.group(1); continue
+              if not current or not ('hoohash_mix_words_hotrun8' in current or 'hoohash_final_hotrun8_fused_kernel' in current): continue
+              m=re.search(r'/\*[0-9a-fA-F]+\*/\s+([^;]+);',line)
+              if not m: continue
+              counts[current]+=1
+              op=m.group(1).strip().split()[0].split('.')[0]
+              opcodes[op]+=1
+          core=Path('/tmp/core.log').read_text(errors='replace')
+          consensus=all(x in core for x in [
+            'PASS: authoritative HooHash V110 vector matched',
+            'PASS: 4 live consensus HooHash vectors matched',
+            'PASS: live nBits share-target boundaries matched'])
+          hot=sum(counts.values())
+          structural=(consensus and resource['spill_store_bytes']==0 and resource['spill_load_bytes']==0
+            and resource['registers']<=80 and resource['stack_frame_bytes']<=176 and hot<=2200)
+          report={'status':'STRUCTURAL_PASS' if structural else 'STRUCTURAL_REJECT',
+            'cuda':os.environ['CUDA_LABEL'],'source_commit':os.environ['GITHUB_SHA'],
+            'kernel_source_unchanged':True,'cuda_arch':'sm_70','core_consensus_pass':consensus,
+            'resource':resource,'hot_sass':hot,'hot_functions':dict(counts),
+            'top_opcodes':dict(opcodes.most_common(40)),
+            'v100_diagnostic_allowed':structural,'v100_performance_allowed':False,
+            'real_pool_allowed':False}
+          out=Path('/tmp/codegen-'+os.environ['CUDA_LABEL'])
+          (out/'report.json').write_text(json.dumps(report,indent=2)+'\n')
+          (out/'hot.sass').write_text(Path('/tmp/hot.sass').read_text(errors='replace'))
+          (out/'kernel-source.sha256').write_text(Path('/tmp/kernel-source.after.sha256').read_text())
+          print(json.dumps(report,indent=2))
+          PY
+      - name: Upload compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-codegen-${{ matrix.cuda }}
+          path: /tmp/codegen-${{ matrix.cuda }}/
+          if-no-files-found: warn
+          retention-days: 30
+
+  decide:
+    needs: compile
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: exact-codegen-*
+          path: /tmp/matrix
+      - name: Select at most one diagnostic candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib
+          root=pathlib.Path('/tmp/matrix')
+          reports=[]
+          for p in root.glob('*/report.json'):
+              reports.append(json.loads(p.read_text()))
+          baseline=next((r for r in reports if r['cuda']=='12.8.1'),None)
+          eligible=[r for r in reports if r['status']=='STRUCTURAL_PASS']
+          for r in eligible:
+              p=root/('exact-codegen-'+r['cuda'])/'hot.sass'
+              r['sass_sha256']=hashlib.sha256(p.read_bytes()).hexdigest()
+              r['schedule_differs_from_cuda_12_8']=False
+          if baseline:
+              bp=root/'exact-codegen-12.8.1'/'hot.sass'
+              bsha=hashlib.sha256(bp.read_bytes()).hexdigest()
+              for r in eligible: r['schedule_differs_from_cuda_12_8']=r['sass_sha256']!=bsha
+          alternatives=[r for r in eligible if r['cuda']!='12.8.1' and r['schedule_differs_from_cuda_12_8']]
+          alternatives.sort(key=lambda r:(r['hot_sass'],r['resource']['registers'],r['resource']['stack_frame_bytes'],r['cuda']))
+          selected=alternatives[0] if alternatives else None
+          report={'status':'DIAGNOSTIC_CANDIDATE_SELECTED' if selected else 'NO_QUALIFYING_CODEGEN',
+            'label':'hotrun8-exact-codegen-scheduler-matrix-v1','source_commit':'adadf7fe804958319b3c69c9581363cd1ade1cdd',
+            'results':reports,'selected_cuda':selected['cuda'] if selected else None,
+            'candidate_slots_used':1 if selected else 0,
+            'admission':{'hot_sass_max':2200,'registers_max':80,'stack_bytes_max':176,
+              'zero_spills':True,'measured_wait_max':2.14,'measured_no_instruction_max':1.07,
+              'predicted_offline_mhs_min':10.1024},
+            'v100_diagnostic_allowed':bool(selected),'v100_performance_allowed':False,
+            'real_pool_allowed':False,
+            'next_gate':'One exclusive Nsight diagnostic must measure wait/no_instruction for the selected unchanged-source binary; performance remains forbidden until forecast >=10%.' if selected else 'Open a qualitatively different architecture scope.'}
+          pathlib.Path('/tmp/decision.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exact-codegen-matrix-decision
+          path: /tmp/decision.json
+          retention-days: 30
+      - name: Publish decision
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs=require('fs');
+            const path='results/analysis/exact-codegen-scheduler-matrix.json';
+            const text=fs.readFileSync('/tmp/decision.json','utf8');
+            JSON.parse(text);
+            let sha;
+            try { sha=(await github.rest.repos.getContent({...context.repo,path,ref:context.ref.replace('refs/heads/','')})).data.sha; }
+            catch(e) { if(e.status!==404) throw e; }
+            await github.rest.repos.createOrUpdateFileContents({...context.repo,path,
+              branch:context.ref.replace('refs/heads/',''),sha,
+              message:`analysis: publish exact codegen matrix ${context.runId}`,
+              content:Buffer.from(text).toString('base64')});
