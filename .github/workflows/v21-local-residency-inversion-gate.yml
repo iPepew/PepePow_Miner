@@ -1,0 +1,155 @@
+name: V2.1 Exact Local Residency Inversion Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-local-residency-inversion
+    paths:
+      - '.github/workflows/v21-local-residency-inversion-gate.yml'
+      - 'native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - name: Install hosted tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ninja-build g++ git ca-certificates curl python3 xz-utils
+          CMAKE_VER=3.31.8
+          curl -fL --retry 3 --retry-delay 2 "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-linux-x86_64.tar.gz" -o /tmp/cmake.tar.gz
+          mkdir -p /opt/cmake
+          tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
+          ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+      - uses: actions/checkout@v4
+      - name: Build exact resident candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S native -B /tmp/cand -G Ninja             -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON             -DPEPEPOW_CUDA_ARCHITECTURES=70-real -DPEPEPOW_CUDA_THREADS=128             -DPEPEPOW_CUDA_MIN_BLOCKS=1 -DPEPEPOW_CUDA_SCALED_MATRIX=OFF             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON -DPEPEPOW_CUDA_ASSUME_FINITE=ON             -DPEPEPOW_CUDA_SW_STATE_MODE=3 -DPEPEPOW_CUDA_BYTE_UNROLL=1             -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON -DPEPEPOW_CUDA_HOTRUN8=ON             -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON -DCMAKE_BUILD_TYPE=Release             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1'
+          cmake --build /tmp/cand --target pepepow_header80_benchmark pepepow_header80_differential pepepow_core_tests -j2 2>&1 | tee /tmp/cand.log
+          /tmp/cand/pepepow_core_tests | tee /tmp/core.log
+          cuobjdump --dump-sass /tmp/cand/pepepow_header80_benchmark > /tmp/cand.sass
+      - name: Resource and admission gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, math, os, re
+          from pathlib import Path
+
+          log=Path('/tmp/cand.log').read_text(errors='replace')
+          core=Path('/tmp/core.log').read_text(errors='replace')
+          sass=Path('/tmp/cand.sass').read_text(errors='replace').splitlines()
+          block=None
+          for i,line in enumerate(log.splitlines()):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_resident_kernel' in line:
+                  block='\n'.join(log.splitlines()[i:i+7])
+                  break
+          if block is None:
+              raise SystemExit('missing resident kernel resource census')
+          def val(pattern):
+              m=re.search(pattern,block)
+              return int(m.group(1)) if m else 0
+          resource={
+              'registers':val(r'Used (\d+) registers'),
+              'stack_frame_bytes':val(r'(\d+) bytes stack frame'),
+              'spill_store_bytes':val(r'(\d+) bytes spill stores'),
+              'spill_load_bytes':val(r'(\d+) bytes spill loads')
+          }
+          functions={}; current=None
+          for line in sass:
+              m=re.search(r'Function\s*:\s*(\S+)',line)
+              if m:
+                  current=m.group(1); functions.setdefault(current,0)
+              elif current and re.search(r'/\*[0-9a-fA-F]+\*/',line):
+                  functions[current]+=1
+          hot={k:v for k,v in functions.items() if
+               'hoohash_mix_words_hotrun8_resident' in k or
+               'hoohash_final_hotrun8_resident_kernel' in k}
+          hot_sass=sum(hot.values())
+          consensus=all(x in core for x in [
+              'PASS: authoritative HooHash V110 vector matched',
+              'PASS: 4 live consensus HooHash vectors matched',
+              'PASS: live nBits share-target boundaries matched'])
+          zero_spills=resource['spill_store_bytes']==0 and resource['spill_load_bytes']==0
+          threads=128
+          regs=max(resource['registers'],1)
+          blocks_by_regs=65536//(regs*threads)
+          active_threads=min(2048,16*threads,blocks_by_regs*threads)
+          candidate_occupancy=active_threads/2048
+          promoted_occupancy=704/2048
+          occupancy_ratio=candidate_occupancy/promoted_occupancy
+          foztor_throughput_ratio=65.51/37.32
+          conservative_ratio=min(occupancy_ratio,foztor_throughput_ratio)
+          predicted_mhs=9.184*conservative_ratio
+          predicted_gain_pct=(conservative_ratio-1)*100
+          structural=(consensus and zero_spills and resource['registers']<=64 and
+                      resource['stack_frame_bytes']<=176 and hot_sass<=2200)
+          admission=structural and predicted_mhs>=10.1024
+          report={
+              'status':'HOSTED_STATIC_PASS_DIAGNOSTIC_ALLOWED' if admission else 'HOSTED_STATIC_REJECT',
+              'candidate':'hotrun8-exact-local-residency-inversion-v1',
+              'source_commit':os.environ['GITHUB_SHA'],'cuda_arch':'sm_70',
+              'threads_per_block':threads,'resource':resource,
+              'hot_sass':hot_sass,'hot_functions':hot,
+              'core_consensus_pass':consensus,'zero_spills':zero_spills,
+              'promoted_offline_mhs':9.184,'required_offline_mhs':10.1024,
+              'promoted_physical_occupancy':promoted_occupancy,
+              'candidate_physical_occupancy':candidate_occupancy,
+              'conservative_residency_ratio':conservative_ratio,
+              'predicted_total_gain_pct':predicted_gain_pct,
+              'predicted_offline_mhs':predicted_mhs,
+              'runtime_gate_required':{'wait_max':2.14,'no_instruction_max':1.07},
+              'v100_diagnostic_authorized':admission,
+              'v100_performance_authorized':False,'pool_authorized':False}
+          Path('/tmp/report.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+          if not admission:
+              raise SystemExit(21)
+          PY
+      - name: Package immutable diagnostic candidate
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pkg
+          cp /tmp/cand/pepepow_header80_benchmark /tmp/pkg/
+          cp /tmp/cand/pepepow_header80_differential /tmp/pkg/
+          cp /tmp/report.json /tmp/pkg/static-report.json
+          cp /tmp/core.log /tmp/pkg/core-tests.log
+          printf 'source_commit=%s\ncuda_arch=sm_70\ncandidate=hotrun8-exact-local-residency-inversion-v1\nthreads=128\nreal_pool_allowed=false\n' "$GITHUB_SHA" > /tmp/pkg/build-info.txt
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz | tee /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz.sha256
+      - name: Publish immutable diagnostic candidate
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v2.1-local-residency-${GITHUB_SHA:0:7}-v100"
+          gh release create "$tag" /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz.sha256 --target "$GITHUB_SHA" --title "PepeW v2.1 Local Residency V100 Diagnostic" --prerelease
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hotrun8-local-residency-${{ github.sha }}
+          path: |
+            /tmp/cand.log
+            /tmp/core.log
+            /tmp/cand.sass
+            /tmp/report.json
+            /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz
+            /tmp/PepeW-v2.1-LocalResidency-V100-Diagnostic.tar.gz.sha256
+          if-no-files-found: warn
+          retention-days: 30
