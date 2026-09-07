@@ -171,7 +171,11 @@ void hoohash_final_hotrun8_local_phase_kernel(
     // The runtime-indexed noinline producer is the lifetime boundary. The
     // consumer retains the proven exact BLAKE3 and target comparison.
     std::uint32_t final_hash[8];
+#if defined(PEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE) && PEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE
+    blake3_32_words_static_schedule(phase_cache, final_hash);
+#else
     blake3_32_words(phase_cache, final_hash);
+#endif
     if (!hash_words_meet_target(final_hash)) return;
     if (atomicCAS(&result->found, 0U, 1U) == 0U) {
         result->nonce = nonce;
