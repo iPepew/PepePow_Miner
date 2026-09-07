@@ -137,6 +137,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           tag="v2.1-static-blake32-${GITHUB_SHA:0:7}-v100"
           gh release create "$tag" /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz.sha256 --target "$GITHUB_SHA" --title "PepeW v2.1 Static BLAKE32 V100 Diagnostic" --prerelease
       - name: Upload evidence
