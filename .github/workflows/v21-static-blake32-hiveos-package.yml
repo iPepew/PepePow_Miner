@@ -99,6 +99,8 @@ jobs:
           rm -rf stage dist
           mkdir -p "stage/${ROOT}" dist
           install -m 0755 build/pepepowminer "stage/${ROOT}/pepepowminer"
+          install -m 0755 build/pepepow_header80_benchmark "stage/${ROOT}/pepepow_header80_benchmark"
+          install -m 0755 build/pepepow_header80_differential "stage/${ROOT}/pepepow_header80_differential"
           install -m 0755 hiveos/h-config.sh "stage/${ROOT}/h-config.sh"
           install -m 0755 hiveos/h-run.sh "stage/${ROOT}/h-run.sh"
           install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
