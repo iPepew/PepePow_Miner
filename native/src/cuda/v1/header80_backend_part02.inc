@@ -148,6 +148,69 @@ __device__ __forceinline__ void blake3_32_words(
     for (int i = 0; i < 8; ++i) output[i] = compressed[i];
 }
 
+#if defined(PEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE) && PEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE
+// Exact specialization for the fixed 32-byte final BLAKE3 block. The seven
+// message schedules are expressed directly so nvcc cannot materialize the
+// runtime schedule table/indexing path. Message words 8..15 are protocol zero.
+__device__ __forceinline__ void blake3_32_words_static_schedule(
+    const std::uint32_t input[8], std::uint32_t output[8]) {
+    const std::uint32_t m0 = input[0], m1 = input[1];
+    const std::uint32_t m2 = input[2], m3 = input[3];
+    const std::uint32_t m4 = input[4], m5 = input[5];
+    const std::uint32_t m6 = input[6], m7 = input[7];
+
+    std::uint32_t v0 = kHeader80Iv[0], v1 = kHeader80Iv[1];
+    std::uint32_t v2 = kHeader80Iv[2], v3 = kHeader80Iv[3];
+    std::uint32_t v4 = kHeader80Iv[4], v5 = kHeader80Iv[5];
+    std::uint32_t v6 = kHeader80Iv[6], v7 = kHeader80Iv[7];
+    std::uint32_t v8 = kHeader80Iv[0], v9 = kHeader80Iv[1];
+    std::uint32_t v10 = kHeader80Iv[2], v11 = kHeader80Iv[3];
+    std::uint32_t v12 = 0U, v13 = 0U, v14 = 32U;
+    std::uint32_t v15 = kChunkStart | kChunkEnd | kRoot;
+
+    // Round 0.
+    g(v0,v4,v8,v12,m0,m1); g(v1,v5,v9,v13,m2,m3);
+    g(v2,v6,v10,v14,m4,m5); g(v3,v7,v11,v15,m6,m7);
+    g(v0,v5,v10,v15,0U,0U); g(v1,v6,v11,v12,0U,0U);
+    g(v2,v7,v8,v13,0U,0U); g(v3,v4,v9,v14,0U,0U);
+    // Round 1.
+    g(v0,v4,v8,v12,m2,m6); g(v1,v5,v9,v13,m3,0U);
+    g(v2,v6,v10,v14,m7,m0); g(v3,v7,v11,v15,m4,0U);
+    g(v0,v5,v10,v15,m1,0U); g(v1,v6,v11,v12,0U,m5);
+    g(v2,v7,v8,v13,0U,0U); g(v3,v4,v9,v14,0U,0U);
+    // Round 2.
+    g(v0,v4,v8,v12,m3,m4); g(v1,v5,v9,v13,0U,0U);
+    g(v2,v6,v10,v14,0U,m2); g(v3,v7,v11,v15,m7,0U);
+    g(v0,v5,v10,v15,m6,m5); g(v1,v6,v11,v12,0U,m0);
+    g(v2,v7,v8,v13,0U,0U); g(v3,v4,v9,v14,0U,m1);
+    // Round 3.
+    g(v0,v4,v8,v12,0U,m7); g(v1,v5,v9,v13,0U,0U);
+    g(v2,v6,v10,v14,0U,m3); g(v3,v7,v11,v15,0U,0U);
+    g(v0,v5,v10,v15,m4,m0); g(v1,v6,v11,v12,0U,m2);
+    g(v2,v7,v8,v13,m5,0U); g(v3,v4,v9,v14,m1,m6);
+    // Round 4.
+    g(v0,v4,v8,v12,0U,0U); g(v1,v5,v9,v13,0U,0U);
+    g(v2,v6,v10,v14,0U,0U); g(v3,v7,v11,v15,0U,0U);
+    g(v0,v5,v10,v15,m7,m2); g(v1,v6,v11,v12,m5,m3);
+    g(v2,v7,v8,v13,m0,m1); g(v3,v4,v9,v14,m6,m4);
+    // Round 5.
+    g(v0,v4,v8,v12,0U,0U); g(v1,v5,v9,v13,0U,m5);
+    g(v2,v6,v10,v14,0U,0U); g(v3,v7,v11,v15,0U,m1);
+    g(v0,v5,v10,v15,0U,m3); g(v1,v6,v11,v12,m0,0U);
+    g(v2,v7,v8,v13,m2,m6); g(v3,v4,v9,v14,m4,m7);
+    // Round 6.
+    g(v0,v4,v8,v12,0U,0U); g(v1,v5,v9,v13,m5,m0);
+    g(v2,v6,v10,v14,m1,0U); g(v3,v7,v11,v15,0U,m6);
+    g(v0,v5,v10,v15,0U,0U); g(v1,v6,v11,v12,m2,0U);
+    g(v2,v7,v8,v13,m3,m4); g(v3,v4,v9,v14,m7,0U);
+
+    output[0] = v0 ^ v8; output[1] = v1 ^ v9;
+    output[2] = v2 ^ v10; output[3] = v3 ^ v11;
+    output[4] = v4 ^ v12; output[5] = v5 ^ v13;
+    output[6] = v6 ^ v14; output[7] = v7 ^ v15;
+}
+#endif
+
 #if defined(PEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION) && PEPEPOW_CUDA_FINAL_BLAKE_STATE_COMPRESSION
 // Exact 32-byte BLAKE3 path for the overwhelmingly common target-reject case.
 // It removes cv/block/compressed/final_hash array overlap: the 16-word
