@@ -1,0 +1,158 @@
+name: PepeW v2.1 Static BLAKE32 HiveOS Candidate
+
+on:
+  push:
+    branches:
+      - agent/v21-v100-static-blake32-schedule
+    paths:
+      - '.github/workflows/v21-static-blake32-hiveos-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      RELEASE_TAG: v2.1-static-blake32-8017cc3-v100-pool-candidate
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils gh
+          python3 -m pip install --no-cache-dir "cmake==3.31.8"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+
+      - name: Configure exact static-BLAKE32 production miner
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=128 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1'
+
+      - name: Build and verify consensus resources
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation \
+            pepepow_header80_benchmark pepepow_header80_differential 2>&1 | tee /tmp/build.log
+          ./build/pepepowminer --version | tee /tmp/version.txt
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          ./build/pepepow_core_tests | tee /tmp/core.log
+          grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
+          grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
+          grep -F 'PASS: live nBits share-target boundaries matched' /tmp/core.log
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.txt
+          grep -F sm_70 /tmp/elf.txt
+          ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
+          grep -q 'hoohash_final_hotrun8_local_phase_kernel' /tmp/build.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          python3 - <<'PY'
+          import re
+          s=open('/tmp/build.log',errors='replace').read().splitlines()
+          for i,line in enumerate(s):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_local_phase_kernel' in line:
+                  b='\n'.join(s[i:i+7])
+                  regs=int(re.search(r'Used (\d+) registers',b).group(1))
+                  stack=int(re.search(r'(\d+) bytes stack frame',b).group(1))
+                  assert regs==52 and stack==80, (regs,stack)
+                  break
+          else:
+              raise SystemExit('missing static BLAKE32 kernel census')
+          PY
+
+      - name: Assemble immutable HiveOS candidate
+        run: |
+          set -Eeuo pipefail
+          rm -rf stage dist
+          mkdir -p "stage/${ROOT}" dist
+          install -m 0755 build/pepepowminer "stage/${ROOT}/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "stage/${ROOT}/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "stage/${ROOT}/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "stage/${ROOT}/h-stats.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
+          cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
+          product=PepeW-Miner-v2.1 Static BLAKE32
+          source_branch=${GITHUB_REF_NAME}
+          source_commit=${GITHUB_SHA}
+          architecture=hotrun8-exact-static-blake32-schedule-v1
+          offline_candidate_mhs=10.825
+          offline_previous_leader_mhs=9.184
+          offline_gain_pct=17.868
+          differential_100k_mismatches=0
+          candidate_registers=52
+          candidate_stack_bytes=80
+          candidate_hot_sass=1808
+          candidate_spills=0
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          gpu_target=Tesla V100
+          threads=128
+          algorithm=HooHash V110
+          release_channel=POOL_CANDIDATE
+          EOF
+          sha256sum "stage/${ROOT}/pepepowminer" > "stage/${ROOT}/pepepowminer.sha256"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
+          sha256sum "dist/${ASSET}" | tee "dist/${ASSET}.sha256"
+
+      - name: Publish isolated prerelease candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          notes='Exact static BLAKE32 V100 pool candidate. Offline median 10.825 MH/s, +17.87% versus 9.184 leader, 100k differential 0 mismatches, 52 registers, 80-byte stack, 1808 hot SASS, zero spills. Do not promote without accepted real-pool shares.'
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Static BLAKE32 V100 Pool Candidate' --notes "$notes" --prerelease
+          else
+            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Static BLAKE32 V100 Pool Candidate' --notes "$notes" --prerelease
+          fi
+          echo "download=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ASSET}"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepew-static-blake32-pool-${{ github.sha }}
+          path: |
+            dist/PepeW-Miner-HiveOS.tar.gz
+            dist/PepeW-Miner-HiveOS.tar.gz.sha256
+            /tmp/build.log
+            /tmp/core.log
+            /tmp/version.txt
+            /tmp/elf.txt
+          retention-days: 30
