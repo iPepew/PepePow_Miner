@@ -63,8 +63,13 @@
   #elif defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
         check_cuda_header80(
 #if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
+  #if defined(PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE) && PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE
+            cudaFuncSetCacheConfig(hoohash_final_hotrun8_local_phase_kernel, cudaFuncCachePreferL1),
+            "cudaFuncSetCacheConfig(hoohash+final hotrun8 local phase)"
+  #else
             cudaFuncSetCacheConfig(hoohash_final_hotrun8_resident_kernel, cudaFuncCachePreferL1),
             "cudaFuncSetCacheConfig(hoohash+final hotrun8 resident)"
+  #endif
 #else
             cudaFuncSetCacheConfig(hoohash_final_hotrun8_fused_kernel, cudaFuncCachePreferL1),
             "cudaFuncSetCacheConfig(hoohash+final hotrun8 fusion)"
@@ -98,6 +103,14 @@
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
 #if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
+  #if defined(PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE) && PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE
+    hoohash_final_hotrun8_local_phase_kernel<<<blocks, threads>>>(
+        static_cast<std::uint32_t>(range.begin),
+        static_cast<const double*>(device_matrix_),
+        static_cast<const double*>(device_scaled_nibble_), work_words,
+        static_cast<DeviceShareResult*>(device_result_), count);
+    check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_local_phase_kernel launch");
+  #else
     hoohash_final_hotrun8_resident_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
         static_cast<const double*>(device_matrix_),
@@ -105,6 +118,7 @@
         work_words + count * 8U,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_resident_kernel launch");
+  #endif
 #else
     hoohash_final_hotrun8_fused_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin),
