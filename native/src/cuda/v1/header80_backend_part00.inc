@@ -62,6 +62,9 @@ namespace {
 // Candidate selector: combined packed cursor/control dataflow.
 #define PEPEPOW_CUDA_HOTRUN8_WORD_STREAM 0
 #endif
+#ifndef PEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE
+#define PEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE 0
+#endif
 #ifndef PEPEPOW_CUDA_SW_STATE_MODE
 #define PEPEPOW_CUDA_SW_STATE_MODE 0
 #endif
