@@ -141,4 +141,43 @@ void hoohash_final_hotrun8_resident_kernel(
     }
 #endif
 }
+
+#if defined(PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE) && PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE
+// Exact runtime-indexed local phase cache. Passing phase_cache through the
+// existing noinline mixer forces address-stable thread-local storage instead
+// of allowing nvcc to scalar-promote all eight long-lived mixed words. This is
+// explicit algorithmic local state; compiler spill loads/stores remain gated
+// at zero. Cell, FP64, SW-transition and final BLAKE order are unchanged.
+__global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
+void hoohash_final_hotrun8_local_phase_kernel(
+    std::uint32_t first_nonce,
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    const std::uint32_t* __restrict__ first_words,
+    DeviceShareResult* __restrict__ result,
+    std::size_t count) {
+    const std::size_t index =
+        static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index >= count) return;
+
+    const std::size_t base = index * 8U;
+    const std::uint32_t nonce =
+        first_nonce + static_cast<std::uint32_t>(index);
+    std::uint32_t phase_cache[8];
+    hoohash_mix_words_hotrun8_resident(
+        matrix, scaled_nibble_table, byte_swap32(nonce),
+        first_words + base, phase_cache);
+
+    // The runtime-indexed noinline producer is the lifetime boundary. The
+    // consumer retains the proven exact BLAKE3 and target comparison.
+    std::uint32_t final_hash[8];
+    blake3_32_words(phase_cache, final_hash);
+    if (!hash_words_meet_target(final_hash)) return;
+    if (atomicCAS(&result->found, 0U, 1U) == 0U) {
+        result->nonce = nonce;
+        #pragma unroll
+        for (int i = 0; i < 8; ++i) result->hash_words[i] = final_hash[i];
+    }
+}
+#endif
 #endif
