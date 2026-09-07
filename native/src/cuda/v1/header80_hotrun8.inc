@@ -172,6 +172,90 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
     return sum;
 }
 
+#if PEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE
+// Decode the immutable 32-byte first pass once per nonce. The existing word
+// stream decodes these same 64 nibbles again for every one of the 64 rows.
+// Volatile runtime indexing intentionally keeps the cache in thread-local
+// storage instead of extending 64 scalar register lifetimes.
+__device__ __forceinline__ void hotrun8_build_cross_row_nibble_cache(
+    const std::uint32_t first_pass[8],
+    volatile std::uint8_t nibble_cache[64]) {
+    #pragma unroll
+    for (int word = 0; word < 8; ++word) {
+        const std::uint32_t packed = first_pass[word];
+        #pragma unroll
+        for (int lane = 0; lane < 8; ++lane) {
+            nibble_cache[word * 8 + lane] =
+                static_cast<std::uint8_t>(hotrun8_word_nibble(packed, lane));
+        }
+    }
+}
+
+__device__ __forceinline__ double matrix_row_hotrun8_cross_row_cache(
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    int row, const volatile std::uint8_t nibble_cache[64],
+    double hash_mod_fp64, double nonce_mod, HooHashSwState& sw) {
+    double sum = 0.0;
+    const int row_offset = row * 64;
+
+    #pragma unroll 1
+    for (int word_index = 0; word_index < 8; ++word_index) {
+        const int cell_base = row_offset + word_index * 8;
+        const int nibble_base = word_index * 8;
+        int lane = 0;
+
+        #pragma unroll 1
+        while (lane < 8) {
+            if (sw_state_is_cold(sw)) {
+                #pragma unroll 1
+                do {
+                    const std::uint32_t nibble =
+                        static_cast<std::uint32_t>(nibble_cache[nibble_base + lane]);
+                    if (nibble != 0U) {
+                        const double value = nibble_to_double(nibble);
+                        const double x =
+                            matrix[cell_base + lane] * hash_mod_fp64 * value + nonce_mod;
+                        sum += safe_nonlinear(x) * value * 1234.0;
+                    }
+                    update_sw_state(sw, sum);
+                    ++lane;
+                } while (lane < 8 && sw_state_is_cold(sw));
+                continue;
+            }
+
+            #pragma unroll 1
+            do {
+                const int lane0 = lane;
+                const std::uint32_t nibble0 =
+                    static_cast<std::uint32_t>(nibble_cache[nibble_base + lane0]);
+                const double contribution0 = hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell_base + lane0, nibble0);
+
+                const bool have_second = lane0 + 1 < 8;
+                double contribution1 = 0.0;
+                if (have_second) {
+                    const std::uint32_t nibble1 =
+                        static_cast<std::uint32_t>(nibble_cache[nibble_base + lane0 + 1]);
+                    contribution1 = hotrun8_warm_contribution(
+                        matrix, scaled_nibble_table, cell_base + lane0 + 1, nibble1);
+                }
+
+                sum += contribution0;
+                update_sw_state(sw, sum);
+                ++lane;
+                if (sw_state_is_cold(sw) || !have_second) break;
+
+                sum += contribution1;
+                update_sw_state(sw, sum);
+                ++lane;
+            } while (lane < 8 && !sw_state_is_cold(sw));
+        }
+    }
+    return sum;
+}
+#endif
+
 __device__ __forceinline__ double matrix_row_hotrun8_active(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
@@ -206,15 +290,28 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
     const double hash_mod_fp64 = u32_to_double_exact(hash_mod);
     const double nonce_mod = u32_to_double_exact(mix_nonce & 0xffU);
     HooHashSwState sw = initial_sw_state();
+#if PEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE
+    volatile std::uint8_t nibble_cache[64];
+    hotrun8_build_cross_row_nibble_cache(first_pass, nibble_cache);
+#endif
 
     #pragma unroll 1
     for (int pair = 0; pair < 32; ++pair) {
+#if PEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE
+        const double even_sum = matrix_row_hotrun8_cross_row_cache(
+            matrix, scaled_nibble_table, pair * 2, nibble_cache,
+            hash_mod_fp64, nonce_mod, sw);
+        const double odd_sum = matrix_row_hotrun8_cross_row_cache(
+            matrix, scaled_nibble_table, pair * 2 + 1, nibble_cache,
+            hash_mod_fp64, nonce_mod, sw);
+#else
         const double even_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2, first_pass,
             hash_mod_fp64, nonce_mod, sw);
         const double odd_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2 + 1, first_pass,
             hash_mod_fp64, nonce_mod, sw);
+#endif
         const std::uint64_t combined =
             positive_double_to_u64_rz(even_sum) +
             positive_double_to_u64_rz(odd_sum);
