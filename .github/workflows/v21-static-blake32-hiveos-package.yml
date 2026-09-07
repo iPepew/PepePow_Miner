@@ -1,9 +1,9 @@
-name: PepeW v2.1 Static BLAKE32 HiveOS Candidate
+name: PepeW v2.1 Cross-row Nibble Cache HiveOS Candidate
 
 on:
   push:
     branches:
-      - agent/v21-v100-static-blake32-schedule
+      - agent/v21-v100-cross-row-nibble-cache
     paths:
       - '.github/workflows/v21-static-blake32-hiveos-package.yml'
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      RELEASE_TAG: v2.1-static-blake32-8017cc3-v100-pool-candidate
+      RELEASE_TAG: v2.1-cross-row-nibble-cache-v100-candidate
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-HiveOS.tar.gz
 
@@ -59,6 +59,7 @@ jobs:
             -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
             -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
             -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE=ON \
             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1'
 
       - name: Build and verify consensus resources
@@ -86,7 +87,7 @@ jobs:
                   b='\n'.join(s[i:i+7])
                   regs=int(re.search(r'Used (\d+) registers',b).group(1))
                   stack=int(re.search(r'(\d+) bytes stack frame',b).group(1))
-                  assert regs==52 and stack==80, (regs,stack)
+                  assert regs==54 and stack==144, (regs,stack)
                   break
           else:
               raise SystemExit('missing static BLAKE32 kernel census')
@@ -104,24 +105,24 @@ jobs:
           install -m 0755 hiveos/stratum-replay-proxy.py "stage/${ROOT}/stratum-replay-proxy.py"
           install -m 0644 hiveos/h-manifest.conf "stage/${ROOT}/h-manifest.conf"
           cat > "stage/${ROOT}/BUILD_INFO.txt" <<EOF
-          product=PepeW-Miner-v2.1 Static BLAKE32
+          product=PepeW-Miner-v2.1 Cross-row Nibble Cache
           source_branch=${GITHUB_REF_NAME}
           source_commit=${GITHUB_SHA}
-          architecture=hotrun8-exact-static-blake32-schedule-v1
-          offline_candidate_mhs=10.825
+          architecture=hotrun8-exact-cross-row-nibble-cache-v1
+          modeled_candidate_mhs=12.211932
           offline_previous_leader_mhs=9.184
-          offline_gain_pct=17.868
+          modeled_gain_pct=12.8123
           differential_100k_mismatches=0
-          candidate_registers=52
-          candidate_stack_bytes=80
-          candidate_hot_sass=1808
+          candidate_registers=54
+          candidate_stack_bytes=144
+          baseline_hot_sass_limit=1808
           candidate_spills=0
           cuda_toolkit=12.8.1
           cuda_architectures=70-real
           gpu_target=Tesla V100
           threads=128
           algorithm=HooHash V110
-          release_channel=POOL_CANDIDATE
+          release_channel=V100_OFFLINE_CANDIDATE
           EOF
           sha256sum "stage/${ROOT}/pepepowminer" > "stage/${ROOT}/pepepowminer.sha256"
           tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "${ROOT}" | gzip -n > "dist/${ASSET}"
@@ -134,10 +135,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          notes='Exact static BLAKE32 V100 pool candidate. Offline median 10.825 MH/s, +17.87% versus 9.184 leader, 100k differential 0 mismatches, 52 registers, 80-byte stack, 1808 hot SASS, zero spills. Do not promote without accepted real-pool shares.'
+          notes='Exact cross-row nibble-cache V100 candidate. Hosted sm_70 consensus PASS, modeled 12.212 MH/s (+12.81%) from 28,972 instructions/hash, 54 registers, 144-byte stack, zero spills. Offline V100 validation required before pool.'
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
-            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Static BLAKE32 V100 Pool Candidate' --notes "$notes" --prerelease
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Cross-row Nibble Cache V100 Candidate' --notes "$notes" --prerelease
           else
             gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Static BLAKE32 V100 Pool Candidate' --notes "$notes" --prerelease
           fi
