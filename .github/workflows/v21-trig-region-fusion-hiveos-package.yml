@@ -110,7 +110,7 @@ jobs:
           architecture=hotrun8-exact-cross-region-trig-call-fusion-v1
           offline_candidate_mhs=12.101
           offline_previous_leader_mhs=10.825
-          offline_gain_pct=11.086
+          offline_gain_pct=11.788
           differential_100k_mismatches=0
           candidate_registers=56
           candidate_stack_bytes=80
@@ -134,7 +134,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          notes='Exact cross-region trig fusion V100 pool candidate. Offline median 12.101 MH/s, +11.09% versus 10.825 leader, 100k differential 0 mismatches, 56 registers, 80-byte stack, 1752 hot SASS, zero spills. Do not promote without accepted real-pool shares.'
+          notes='Exact cross-region trig fusion V100 pool candidate. Offline median 12.101 MH/s, +11.79% versus 10.825 leader, 100k differential 0 mismatches, 56 registers, 80-byte stack, 1752 hot SASS, zero spills. Do not promote without accepted real-pool shares.'
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
             gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Trig Region Fusion V100 Pool Candidate' --notes "$notes" --prerelease
