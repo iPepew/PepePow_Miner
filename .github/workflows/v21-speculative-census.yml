@@ -1,9 +1,9 @@
-name: V2 Exact HooHash Hot-Run Prefix Census
+name: V2 Exact HooHash SW Exponent Census
 
 on:
   push:
     branches:
-      - agent/v21-v100-hotrun-prefix
+      - agent/v21-sw-exponent-census
   workflow_dispatch:
 
 jobs:
