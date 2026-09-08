@@ -3,7 +3,7 @@ name: PepeW v2.1 SW Run Length Census HiveOS Candidate
 on:
   push:
     branches:
-      - agent/v21-v100-sw-run-length-census
+      - agent/v21-sw-run-length-census
     paths:
       - '.github/workflows/v21-sw-run-length-census-hiveos-package.yml'
   workflow_dispatch:
