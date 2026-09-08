@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo             -Xptxas=-v -cubin native/tests/fixed_window_i2opi_codegen_probe.cu             -o /tmp/fixed-window.cubin 2>&1 | tee /tmp/ptxas.log
-          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/fixed-window.cubin > /tmp/sass.txt
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/fixed-window.cubin > /tmp/sass.txt 2>&1
           python3 - <<'PY'
           import json, re
           text = open('/tmp/sass.txt').read().splitlines()
