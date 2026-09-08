@@ -112,6 +112,9 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
     #pragma unroll 1
     for (int word_index = 0; word_index < 8; ++word_index) {
         const std::uint32_t packed_word = first_pass[word_index];
+        // Cursor retains the current source byte. This removes the dynamic
+        // (lane >> 1) address/shift chain without extending cross-row state.
+        std::uint32_t packed_cursor = packed_word;
         const int cell_base = row_offset + word_index * 8;
         int lane = 0;
 
@@ -124,7 +127,9 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                 do {
                     const int cell = cell_base + lane;
                     const std::uint32_t nibble =
-                        hotrun8_word_nibble(packed_word, lane);
+                        ((lane & 1) == 0)
+                            ? ((packed_cursor >> 4) & 0x0fU)
+                            : (packed_cursor & 0x0fU);
                     if (nibble != 0U) {
                         const double value = nibble_to_double(nibble);
                         const double x =
@@ -133,6 +138,7 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                     }
                     update_sw_state(sw, sum);
                     ++lane;
+                    if ((lane & 1) == 0) packed_cursor >>= 8;
                 } while (lane < 8 && sw_state_is_cold(sw));
                 continue;
             }
@@ -144,7 +150,9 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
             do {
                 const int lane0 = lane;
                 const std::uint32_t nibble0 =
-                    hotrun8_word_nibble(packed_word, lane0);
+                    ((lane0 & 1) == 0)
+                        ? ((packed_cursor >> 4) & 0x0fU)
+                        : (packed_cursor & 0x0fU);
                 const double contribution0 = hotrun8_warm_contribution(
                     matrix, scaled_nibble_table, cell_base + lane0, nibble0);
 
@@ -152,7 +160,9 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                 double contribution1 = 0.0;
                 if (have_second) {
                     const std::uint32_t nibble1 =
-                        hotrun8_word_nibble(packed_word, lane0 + 1);
+                        ((lane0 & 1) == 0)
+                            ? (packed_cursor & 0x0fU)
+                            : ((packed_cursor >> 12) & 0x0fU);
                     contribution1 = hotrun8_warm_contribution(
                         matrix, scaled_nibble_table,
                         cell_base + lane0 + 1, nibble1);
@@ -161,11 +171,13 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                 sum += contribution0;
                 update_sw_state(sw, sum);
                 ++lane;
+                if ((lane & 1) == 0) packed_cursor >>= 8;
                 if (sw_state_is_cold(sw) || !have_second) break;
 
                 sum += contribution1;
                 update_sw_state(sw, sum);
                 ++lane;
+                if ((lane & 1) == 0) packed_cursor >>= 8;
             } while (lane < 8 && !sw_state_is_cold(sw));
         }
     }
