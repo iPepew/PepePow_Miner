@@ -21,6 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Python for deterministic replay
+        shell: bash
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3
+
       - name: Prove exact 192-bit convolution on one million vectors
         shell: bash
         run: |
