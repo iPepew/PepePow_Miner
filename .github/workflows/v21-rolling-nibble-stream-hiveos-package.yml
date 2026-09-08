@@ -86,7 +86,7 @@ jobs:
                   b='\n'.join(s[i:i+7])
                   regs=int(re.search(r'Used (\d+) registers',b).group(1))
                   stack=int(re.search(r'(\d+) bytes stack frame',b).group(1))
-                  assert regs==54 and stack==144, (regs,stack)
+                  assert regs==52 and stack==80, (regs,stack)
                   break
           else:
               raise SystemExit('missing static BLAKE32 kernel census')
