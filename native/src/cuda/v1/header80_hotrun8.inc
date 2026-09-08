@@ -4,6 +4,60 @@
 // is evaluated with update_sw_state(); cold cells use the existing exact
 // safe_nonlinear() path. No approximate result can reach share submission.
 
+#ifndef PEPEPOW_CUDA_SW_RUN_CENSUS
+#define PEPEPOW_CUDA_SW_RUN_CENSUS 0
+#endif
+
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+constexpr int kSwRunHistogramBins = 13;
+__device__ unsigned long long g_sw_run_census_totals[5];
+__device__ unsigned long long g_sw_run_census_histogram[kSwRunHistogramBins];
+struct SwRunCensusThread {
+    unsigned long long cold_cells, warm_cells, transitions;
+    unsigned int run_length, max_run;
+    bool previous_cold, started;
+};
+__device__ __forceinline__ int sw_run_histogram_bin(unsigned int length) {
+    if (length == 0U) return 0;
+    const int bin = 31 - __clz(length);
+    return bin < kSwRunHistogramBins ? bin : kSwRunHistogramBins - 1;
+}
+__device__ __forceinline__ void sw_run_census_close(SwRunCensusThread& c) {
+    if (c.run_length == 0U) return;
+    atomicAdd(&g_sw_run_census_histogram[sw_run_histogram_bin(c.run_length)], 1ULL);
+    if (c.run_length > c.max_run) c.max_run = c.run_length;
+}
+__device__ __forceinline__ void sw_run_census_observe(SwRunCensusThread& c, bool cold) {
+    if (!c.started) { c.started = true; c.previous_cold = cold; }
+    else if (cold != c.previous_cold) {
+        sw_run_census_close(c); c.run_length = 0U; c.previous_cold = cold; ++c.transitions;
+    }
+    ++c.run_length;
+    if (cold) ++c.cold_cells; else ++c.warm_cells;
+}
+__device__ __forceinline__ void sw_run_census_commit(SwRunCensusThread& c) {
+    sw_run_census_close(c);
+    atomicAdd(&g_sw_run_census_totals[0], c.cold_cells);
+    atomicAdd(&g_sw_run_census_totals[1], c.warm_cells);
+    atomicAdd(&g_sw_run_census_totals[2], c.transitions);
+    atomicAdd(&g_sw_run_census_totals[3], 1ULL);
+    atomicMax(&g_sw_run_census_totals[4], static_cast<unsigned long long>(c.max_run));
+}
+__global__ void sw_run_census_reset_kernel() {
+    if (blockIdx.x || threadIdx.x) return;
+    for (int i=0;i<5;++i) g_sw_run_census_totals[i]=0ULL;
+    for (int i=0;i<kSwRunHistogramBins;++i) g_sw_run_census_histogram[i]=0ULL;
+}
+__global__ void sw_run_census_print_kernel() {
+    if (blockIdx.x || threadIdx.x) return;
+    printf("SW_RUN_CENSUS cold_cells=%llu warm_cells=%llu transitions=%llu hashes=%llu max_run=%llu\\n",
+        g_sw_run_census_totals[0],g_sw_run_census_totals[1],g_sw_run_census_totals[2],
+        g_sw_run_census_totals[3],g_sw_run_census_totals[4]);
+    for(int i=0;i<kSwRunHistogramBins;++i)
+        printf("SW_RUN_HIST bin_log2=%d runs=%llu\\n",i,g_sw_run_census_histogram[i]);
+}
+#endif
+
 __device__ __forceinline__ std::uint32_t hotrun8_nibble(
     const std::uint32_t first_pass[8], int col) {
     const std::uint8_t packed = word_byte(first_pass, col >> 1);
@@ -30,7 +84,11 @@ __device__ __forceinline__ double matrix_row_hotrun8(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
     int row, const std::uint32_t first_pass[8], double hash_mod_fp64,
-    double nonce_mod, HooHashSwState& sw) {
+    double nonce_mod, HooHashSwState& sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    , SwRunCensusThread& census
+#endif
+) {
     double sum = 0.0;
     const int row_offset = row * 64;
 
@@ -56,6 +114,12 @@ __device__ __forceinline__ double matrix_row_hotrun8(
 
                 #pragma unroll
                 for (int i = 0; i < 4; ++i) {
+                    #if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+                    sw_run_census_observe(census, sw_state_is_cold(sw));
+
+                    #endif
+
                     sum += contribution[i];
                     update_sw_state(sw, sum);
                     ++consumed;
@@ -79,6 +143,12 @@ __device__ __forceinline__ double matrix_row_hotrun8(
             sum += hotrun8_warm_contribution(
                 matrix, scaled_nibble_table, cell, nibble);
         }
+        #if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+        sw_run_census_observe(census, sw_state_is_cold(sw));
+
+        #endif
+
         update_sw_state(sw, sum);
         ++col;
     }
@@ -100,7 +170,11 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
     int row, const std::uint32_t first_pass[8], double hash_mod_fp64,
-    double nonce_mod, HooHashSwState& sw) {
+    double nonce_mod, HooHashSwState& sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    , SwRunCensusThread& census
+#endif
+) {
     double sum = 0.0;
     const int row_offset = row * 64;
 
@@ -131,6 +205,12 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                             matrix[cell] * hash_mod_fp64 * value + nonce_mod;
                         sum += safe_nonlinear(x) * value * 1234.0;
                     }
+                    #if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+                    sw_run_census_observe(census, sw_state_is_cold(sw));
+
+                    #endif
+
                     update_sw_state(sw, sum);
                     ++lane;
                 } while (lane < 8 && sw_state_is_cold(sw));
@@ -159,11 +239,23 @@ __device__ __forceinline__ double matrix_row_hotrun8_word_stream(
                 }
 
                 sum += contribution0;
+                #if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+                sw_run_census_observe(census, sw_state_is_cold(sw));
+
+                #endif
+
                 update_sw_state(sw, sum);
                 ++lane;
                 if (sw_state_is_cold(sw) || !have_second) break;
 
                 sum += contribution1;
+                #if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+                sw_run_census_observe(census, sw_state_is_cold(sw));
+
+                #endif
+
                 update_sw_state(sw, sum);
                 ++lane;
             } while (lane < 8 && !sw_state_is_cold(sw));
@@ -176,15 +268,31 @@ __device__ __forceinline__ double matrix_row_hotrun8_active(
     const double* __restrict__ matrix,
     const double* __restrict__ scaled_nibble_table,
     int row, const std::uint32_t first_pass[8], double hash_mod_fp64,
-    double nonce_mod, HooHashSwState& sw) {
+    double nonce_mod, HooHashSwState& sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    , SwRunCensusThread& census
+#endif
+) {
 #if PEPEPOW_CUDA_HOTRUN8_WORD_STREAM
     return matrix_row_hotrun8_word_stream(
         matrix, scaled_nibble_table, row, first_pass,
-        hash_mod_fp64, nonce_mod, sw);
+        hash_mod_fp64, nonce_mod, sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+            , census
+#endif
+
+        );
 #else
     return matrix_row_hotrun8(
         matrix, scaled_nibble_table, row, first_pass,
-        hash_mod_fp64, nonce_mod, sw);
+        hash_mod_fp64, nonce_mod, sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+            , census
+#endif
+
+        );
 #endif
 }
 
@@ -206,15 +314,30 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
     const double hash_mod_fp64 = u32_to_double_exact(hash_mod);
     const double nonce_mod = u32_to_double_exact(mix_nonce & 0xffU);
     HooHashSwState sw = initial_sw_state();
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    SwRunCensusThread census{};
+#endif
 
     #pragma unroll 1
     for (int pair = 0; pair < 32; ++pair) {
         const double even_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2, first_pass,
-            hash_mod_fp64, nonce_mod, sw);
+            hash_mod_fp64, nonce_mod, sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+                , census
+#endif
+
+            );
         const double odd_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2 + 1, first_pass,
-            hash_mod_fp64, nonce_mod, sw);
+            hash_mod_fp64, nonce_mod, sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+
+                , census
+#endif
+
+            );
         const std::uint64_t combined =
             positive_double_to_u64_rz(even_sum) +
             positive_double_to_u64_rz(odd_sum);
@@ -222,6 +345,9 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8(
         mixed[pair >> 2] ^=
             static_cast<std::uint32_t>(combined & 0xffU) << shift;
     }
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    sw_run_census_commit(census);
+#endif
 }
 
 // Split middle-stage probe/candidate. The first BLAKE3 result lives in the
