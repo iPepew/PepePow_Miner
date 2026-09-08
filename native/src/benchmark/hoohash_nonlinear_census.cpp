@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -81,6 +82,8 @@ struct Runs {
     std::uint64_t zero_cold{};
     std::uint64_t runs{};
     std::uint64_t max_run{};
+    std::array<std::uint64_t, 2048> sum_exponent_hist{};
+    std::uint64_t period_crossings{};
 };
 
 void flush_run(Runs& r, std::uint32_t len) {
@@ -133,6 +136,7 @@ int main(int argc, char** argv) {
         const double nonce_mod = static_cast<double>(nonce & 0xffU);
         for (std::size_t row = 0; row < 64; ++row) {
             double sum = 0.0;
+            std::uint64_t previous_period = 0;
             std::uint32_t hot_run = 0;
             for (std::size_t col = 0; col < 64; ++col) {
                 if (sw <= 0.02) {
@@ -149,6 +153,11 @@ int main(int argc, char** argv) {
                     sum += matrix[row][col] * 0.0001 * static_cast<double>(vector[col]);
                 }
                 sw = sum / 1024.0 - std::floor(sum / 1024.0);
+                const auto sum_bits = std::bit_cast<std::uint64_t>(sum);
+                ++runs.sum_exponent_hist[(sum_bits >> 52U) & 0x7ffU];
+                const auto period = static_cast<std::uint64_t>(sum / 1024.0);
+                if (period != previous_period) ++runs.period_crossings;
+                previous_period = period;
             }
             flush_run(runs, hot_run);
             sink ^= static_cast<std::uint64_t>(sum);
@@ -162,7 +171,13 @@ int main(int argc, char** argv) {
               << "cold_cells=" << runs.cold_cells << '\n'
               << "zero_cold=" << runs.zero_cold << '\n'
               << "linear_runs=" << runs.runs << '\n'
-              << "max_linear_run=" << runs.max_run << '\n';
+              << "max_linear_run=" << runs.max_run << '\n'
+              << "period_crossings=" << runs.period_crossings << '\n';
+    for (std::size_t exponent = 0; exponent < runs.sum_exponent_hist.size(); ++exponent) {
+        if (runs.sum_exponent_hist[exponent] != 0U)
+            std::cout << "sum_exponent_" << exponent << '='
+                      << runs.sum_exponent_hist[exponent] << '\n';
+    }
     for (std::uint32_t w : {4U, 8U, 16U, 32U}) {
         const auto steps = chunk_steps(runs, w);
         std::cout << "prefix_width_" << w << "_chunk_steps=" << steps << '\n'
