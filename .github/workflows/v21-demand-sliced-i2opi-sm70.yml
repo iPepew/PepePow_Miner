@@ -1,0 +1,109 @@
+name: V2 Exact Demand-Sliced I2OPI SM70 Codegen
+
+on:
+  push:
+    branches:
+      - agent/demand-sliced-i2opi-projection-v1
+    paths:
+      - native/tests/demand_sliced_i2opi_codegen_probe.cu
+      - tools/prove_demand_sliced_i2opi_projection.py
+      - .github/workflows/v21-demand-sliced-i2opi-sm70.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codegen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        shell: bash
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3
+
+      - name: Replay exact projection proof
+        shell: bash
+        run: python3 tools/prove_demand_sliced_i2opi_projection.py | tee /tmp/exact-proof.json
+
+      - name: Compile and measure Volta SASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v -cubin native/tests/demand_sliced_i2opi_codegen_probe.cu \
+            -o /tmp/demand-sliced.cubin 2>&1 | tee /tmp/ptxas.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/demand-sliced.cubin > /tmp/sass.txt 2>&1
+          python3 - <<'PY'
+          import json, re
+          lines = open('/tmp/sass.txt').read().splitlines()
+          sections, current = {}, None
+          wanted = {'demand_sliced_probe', 'demand_sliced_empty'}
+          for line in lines:
+              if 'Function :' in line:
+                  name = line.split('Function :', 1)[1].strip()
+                  current = name if name in wanted else None
+                  if current:
+                      sections[current] = []
+                  continue
+              if current and '/*' in line and '*/' in line and ';' in line:
+                  tail = line.split('*/', 1)[1].strip()
+                  if tail:
+                      sections[current].append(tail.split()[0])
+          def counted(name):
+              return [op for op in sections.get(name, []) if op not in {'RET', 'NOP'}]
+          candidate = counted('demand_sliced_probe')
+          envelope = counted('demand_sliced_empty')
+          log = open('/tmp/ptxas.log').read()
+          regs = [int(x) for x in re.findall(r'Used (\d+) registers', log)]
+          spills = sum(int(x) for x in re.findall(r'(\d+) bytes spill (?:stores|loads)', log))
+          stacks = [int(x) for x in re.findall(r'(\d+) bytes stack frame', log)]
+          local_ops = sum(op.startswith(('LDL', 'STL')) for op in candidate)
+          result = {
+              'candidate': 'hotrun8-exact-demand-sliced-i2opi-projection-v1',
+              'sm': 70,
+              'candidate_kernel_instructions_excluding_ret_nop': len(candidate),
+              'empty_envelope_instructions_excluding_ret_nop': len(envelope),
+              'arithmetic_core_instruction_delta': len(candidate) - len(envelope),
+              'local_staging_instructions': local_ops,
+              'max_reported_registers': max(regs) if regs else None,
+              'max_stack_bytes': max(stacks) if stacks else 0,
+              'spill_bytes_total': spills,
+          }
+          result['admitted'] = (
+              result['arithmetic_core_instruction_delta'] <= 42 and
+              local_ops == 0 and (result['max_reported_registers'] or 999) <= 56 and
+              result['max_stack_bytes'] <= 80 and spills == 0
+          )
+          print('DEMAND_SLICED_RESULT ' + json.dumps(result, sort_keys=True))
+          open('/tmp/result.json', 'w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          PY
+
+      - name: Enforce admission gate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          result = json.load(open('/tmp/result.json'))
+          if not result['admitted']:
+              raise SystemExit('REJECT_CODEGEN_GATE')
+          PY
+
+      - name: Upload codegen evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demand-sliced-i2opi-sm70-${{ github.sha }}
+          path: |
+            /tmp/exact-proof.json
+            /tmp/ptxas.log
+            /tmp/sass.txt
+            /tmp/result.json
+          if-no-files-found: warn
+          retention-days: 30
