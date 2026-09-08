@@ -84,6 +84,7 @@ struct Runs {
     std::uint64_t max_run{};
     std::array<std::uint64_t, 2048> sum_exponent_hist{};
     std::uint64_t period_crossings{};
+    std::uint64_t exponent_transitions{};
 };
 
 void flush_run(Runs& r, std::uint32_t len) {
@@ -137,6 +138,8 @@ int main(int argc, char** argv) {
         for (std::size_t row = 0; row < 64; ++row) {
             double sum = 0.0;
             std::uint64_t previous_period = 0;
+            unsigned int previous_exponent = 0;
+            bool have_previous_exponent = false;
             std::uint32_t hot_run = 0;
             for (std::size_t col = 0; col < 64; ++col) {
                 if (sw <= 0.02) {
@@ -154,7 +157,12 @@ int main(int argc, char** argv) {
                 }
                 sw = sum / 1024.0 - std::floor(sum / 1024.0);
                 const auto sum_bits = std::bit_cast<std::uint64_t>(sum);
-                ++runs.sum_exponent_hist[(sum_bits >> 52U) & 0x7ffU];
+                const auto exponent = static_cast<unsigned int>((sum_bits >> 52U) & 0x7ffU);
+                ++runs.sum_exponent_hist[exponent];
+                if (have_previous_exponent && exponent != previous_exponent)
+                    ++runs.exponent_transitions;
+                previous_exponent = exponent;
+                have_previous_exponent = true;
                 const auto period = static_cast<std::uint64_t>(sum / 1024.0);
                 if (period != previous_period) ++runs.period_crossings;
                 previous_period = period;
@@ -172,7 +180,8 @@ int main(int argc, char** argv) {
               << "zero_cold=" << runs.zero_cold << '\n'
               << "linear_runs=" << runs.runs << '\n'
               << "max_linear_run=" << runs.max_run << '\n'
-              << "period_crossings=" << runs.period_crossings << '\n';
+              << "period_crossings=" << runs.period_crossings << '\n'
+              << "exponent_transitions=" << runs.exponent_transitions << '\n';
     for (std::size_t exponent = 0; exponent < runs.sum_exponent_hist.size(); ++exponent) {
         if (runs.sum_exponent_hist[exponent] != 0U)
             std::cout << "sum_exponent_" << exponent << '='
