@@ -62,6 +62,7 @@ jobs:
           set -euo pipefail
           /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo             -Xptxas=-v -cubin native/tests/fixed_window_i2opi_codegen_probe.cu             -o /tmp/fixed-window.cubin 2>&1 | tee /tmp/ptxas.log
           /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/fixed-window.cubin > /tmp/sass.txt 2>&1
+          grep -E 'Function|fixed_window' /tmp/sass.txt || true
           python3 - <<'PY'
           import json, re
           text = open('/tmp/sass.txt').read().splitlines()
@@ -69,11 +70,11 @@ jobs:
           body = []
           ins = []
           for line in text:
-              if 'Function :' in line:
-                  if active:
-                      break
-                  active = 'fixed_window_mul3' in line
+              if not active and 'fixed_window_mul3' in line:
+                  active = True
                   continue
+              if active and 'Function :' in line:
+                  break
               if active:
                   body.append(line)
                   if '/*' in line and '*/' in line and ';' in line:
