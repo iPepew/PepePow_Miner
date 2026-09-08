@@ -29,6 +29,12 @@ __device__ __noinline__ U256 fixed_window_mul3(std::uint64_t mantissa) {
     return U256{lo0, w1, w2, hi2 + carry2a + carry2b};
 }
 
+extern "C" __global__ void fixed_window_empty(
+    const std::uint64_t* input, U256* output, int count) {
+    const int i = int(blockIdx.x * blockDim.x + threadIdx.x);
+    if (i < count) output[i] = U256{input[i], 0, 0, 0};
+}
+
 extern "C" __global__ void fixed_window_probe(
     const std::uint64_t* input, U256* output, int count) {
     const int i = int(blockIdx.x * blockDim.x + threadIdx.x);

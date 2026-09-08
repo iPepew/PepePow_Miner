@@ -66,33 +66,34 @@ jobs:
           python3 - <<'PY'
           import json, re
           text = open('/tmp/sass.txt').read().splitlines()
-          active = False
-          body = []
-          ins = []
+          sections = {}
+          current = None
           for line in text:
-              if not active and 'fixed_window_mul3' in line:
-                  active = True
+              if 'Function :' in line:
+                  name = line.split('Function :', 1)[1].strip()
+                  current = name if name in {'fixed_window_probe', 'fixed_window_empty'} else None
+                  if current:
+                      sections[current] = []
                   continue
-              if active and 'Function :' in line:
-                  break
-              if active:
-                  body.append(line)
-                  if '/*' in line and '*/' in line and ';' in line:
-                      tail = line.split('*/', 1)[1].strip()
-                      if tail:
-                          ins.append(tail.split()[0])
-          print('FIXED_WINDOW_SASS_BEGIN')
-          print('\n'.join(body))
-          print('FIXED_WINDOW_SASS_END')
-          local_ops = sum(op.startswith('LDL') or op.startswith('STL') for op in ins)
-          arithmetic = sum(op not in {'RET', 'NOP'} for op in ins)
-          regs = [int(x) for x in re.findall(r'Used (\d+) registers', open('/tmp/ptxas.log').read())]
-          spills = sum(int(x) for x in re.findall(r'(\d+) bytes spill (?:stores|loads)', open('/tmp/ptxas.log').read()))
+              if current and '/*' in line and '*/' in line and ';' in line:
+                  tail = line.split('*/', 1)[1].strip()
+                  if tail:
+                      sections[current].append(tail.split()[0])
+          def counted(name):
+              return [op for op in sections.get(name, []) if op not in {'RET', 'NOP'}]
+          candidate_ops = counted('fixed_window_probe')
+          envelope_ops = counted('fixed_window_empty')
+          local_ops = sum(op.startswith('LDL') or op.startswith('STL') for op in candidate_ops)
+          candidate_total = len(candidate_ops)
+          envelope_total = len(envelope_ops)
+          arithmetic = candidate_total - envelope_total
           result = {
               'exact_vectors': 1000000,
               'mismatches': 0,
               'sm': 70,
-              'function_instruction_count_excluding_ret_nop': arithmetic,
+              'candidate_kernel_instructions_excluding_ret_nop': candidate_total,
+              'empty_envelope_instructions_excluding_ret_nop': envelope_total,
+              'arithmetic_core_instruction_delta': arithmetic,
               'local_staging_instructions': local_ops,
               'max_reported_registers': max(regs) if regs else None,
               'spill_bytes_total': spills,
