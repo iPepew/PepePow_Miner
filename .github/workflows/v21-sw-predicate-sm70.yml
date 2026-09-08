@@ -1,0 +1,44 @@
+name: V2 Exact SW Predicate SM70 Codegen
+
+on:
+  push:
+    branches:
+      - agent/v21-sw-exponent-census
+    paths:
+      - native/tests/sw_predicate_compile_probe.cu
+      - .github/workflows/v21-sw-predicate-sm70.yml
+  workflow_dispatch:
+
+jobs:
+  codegen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile exact predicate probes for Volta
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v \
+            -c native/tests/sw_predicate_compile_probe.cu \
+            -o /tmp/sw-predicate-probe.o 2>&1 | tee /tmp/ptxas-sw-predicate.log
+          test -s /tmp/sw-predicate-probe.o
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/ptxas-sw-predicate.log
+          /usr/local/cuda/bin/cuobjdump -sass /tmp/sw-predicate-probe.o \
+            > /tmp/sw-predicate.sass
+          grep -E 'Function :|DMUL|F2I|I2F|DADD|DSETP|ISETP|SHF|LOP3|BRA|BRX' \
+            /tmp/sw-predicate.sass | tee /tmp/sw-predicate-summary.txt
+      - name: Upload codegen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sw-predicate-sm70-${{ github.run_id }}
+          path: |
+            /tmp/ptxas-sw-predicate.log
+            /tmp/sw-predicate.sass
+            /tmp/sw-predicate-summary.txt
+          if-no-files-found: warn
+          retention-days: 30
