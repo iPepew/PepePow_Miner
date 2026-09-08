@@ -5,7 +5,7 @@ on:
     branches:
       - agent/v21-v100-rolling-nibble-stream
     paths:
-      - '.github/workflows/v21-static-blake32-hiveos-package.yml'
+      - '.github/workflows/v21-rolling-nibble-stream-hiveos-package.yml'
   workflow_dispatch:
 
 permissions:
