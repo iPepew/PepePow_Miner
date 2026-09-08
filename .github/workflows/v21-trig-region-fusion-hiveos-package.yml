@@ -22,7 +22,7 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      RELEASE_TAG: v2.1-trig-region-fusion-pool-candidate
+      RELEASE_TAG: v2.1-trig-region-fusion-a010b8c-pool-candidate
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-HiveOS.tar.gz
 
@@ -135,12 +135,7 @@ jobs:
           set -Eeuo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           notes='Exact cross-region trig fusion V100 pool candidate. Offline median 12.101 MH/s, +11.79% versus 10.825 leader, 100k differential 0 mismatches, 56 registers, 80-byte stack, 1752 hot SASS, zero spills. Do not promote without accepted real-pool shares.'
-          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --clobber
-            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Trig Region Fusion V100 Pool Candidate' --notes "$notes" --prerelease
-          else
-            gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Trig Region Fusion V100 Pool Candidate' --notes "$notes" --prerelease
-          fi
+          gh release create "$RELEASE_TAG" "dist/${ASSET}" "dist/${ASSET}.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Trig Region Fusion V100 Pool Candidate' --notes "$notes" --prerelease
 
       - name: Upload diagnostics
         if: always()
