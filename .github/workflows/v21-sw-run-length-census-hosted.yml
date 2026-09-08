@@ -1,0 +1,75 @@
+name: PepeW SW Run Length Census Hosted Gate
+
+on:
+  push:
+    branches:
+      - agent/v21-sw-run-length-census
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  hosted-static:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir "cmake==3.31.10"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - name: Configure exact diagnostic
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=128 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_CROSS_ROW_NIBBLE_CACHE=ON \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1 -DPEPEPOW_CUDA_SW_RUN_CENSUS=1'
+      - name: Build and correctness gates
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_differential pepepow_header80_benchmark 2>&1 | tee /tmp/build.log
+          ctest --test-dir build --output-on-failure -R '^pepepow_core_tests$'
+          ./build/pepepow_core_tests | tee /tmp/core.log
+          grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
+          grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.txt
+          grep -F sm_70 /tmp/elf.txt
+          ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.txt
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sw-run-length-census-${{ github.sha }}
+          path: |
+            /tmp/build.log
+            /tmp/core.log
+            /tmp/elf.txt
+          retention-days: 30
