@@ -1,11 +1,11 @@
-name: V2 Exact Fixed-Window I2OPI SM70 Codegen
+name: V2 Exact Shifted53 Comba I2OPI SM70 Codegen
 
 on:
   push:
     branches:
       - agent/fixed-window-codegen-v1
     paths:
-      - native/tests/fixed_window_i2opi_codegen_probe.cu
+      - native/tests/shifted53_comba_i2opi_codegen_probe.cu
       - .github/workflows/v21-fixed-window-i2opi-sm70.yml
   workflow_dispatch:
 
@@ -27,7 +27,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3
 
-      - name: Prove exact 192-bit convolution on one million vectors
+      - name: Prove exact shifted53 Comba product on one million vectors
         shell: bash
         run: |
           python3 - <<'PY'
@@ -38,20 +38,28 @@ jobs:
               | (0xa2f9836e4e441529 << 128)
           )
           mask = (1 << 64) - 1
-          rng = random.Random(0x5045504557)
+          cs = [(C >> (64*i)) & mask for i in range(3)]
+          rng = random.Random(0x53484946543533)
           cases = [1 << 52, (1 << 53) - 1]
           cases.extend(rng.randrange(1 << 52, 1 << 53) for _ in range(999_998))
           for n in cases:
-              m = n << 11
-              c0, c1, c2 = C & mask, (C >> 64) & mask, (C >> 128) & mask
-              lo0, hi0 = (m * c0) & mask, (m * c0) >> 64
-              lo1, hi1 = (m * c1) & mask, (m * c1) >> 64
-              lo2, hi2 = (m * c2) & mask, (m * c2) >> 64
-              w1_full = hi0 + lo1
-              w1, carry1 = w1_full & mask, w1_full >> 64
-              w2_full = hi1 + lo2 + carry1
-              got = lo0 | (w1 << 64) | ((w2_full & mask) << 128) | ((hi2 + (w2_full >> 64)) << 192)
-              if got != m * C:
+              qs = [n*c for c in cs]
+              qlo = [q & mask for q in qs]
+              qhi = [q >> 64 for q in qs]
+              p0 = qlo[0]
+              s1 = qhi[0] + qlo[1]
+              p1, carry1 = s1 & mask, s1 >> 64
+              s2 = qhi[1] + qlo[2] + carry1
+              p2, carry2 = s2 & mask, s2 >> 64
+              p3 = qhi[2] + carry2
+              words = [
+                  (p0 << 11) & mask,
+                  ((p1 << 11) | (p0 >> 53)) & mask,
+                  ((p2 << 11) | (p1 >> 53)) & mask,
+                  ((p3 << 11) | (p2 >> 53)) & mask,
+              ]
+              got = sum(w << (64*i) for i, w in enumerate(words))
+              if got != (n * C) << 11:
                   raise SystemExit("EXACT_MISMATCH")
           print("EXACT_REPLAY cases=1000000 mismatches=0")
           PY
@@ -60,18 +68,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo             -Xptxas=-v -cubin native/tests/fixed_window_i2opi_codegen_probe.cu             -o /tmp/fixed-window.cubin 2>&1 | tee /tmp/ptxas.log
-          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/fixed-window.cubin > /tmp/sass.txt 2>&1
-          grep -E 'Function|fixed_window' /tmp/sass.txt || true
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo \
+            -Xptxas=-v -cubin native/tests/shifted53_comba_i2opi_codegen_probe.cu \
+            -o /tmp/shifted53.cubin 2>&1 | tee /tmp/ptxas.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/shifted53.cubin > /tmp/sass.txt 2>&1
+          grep -E 'Function|shifted53' /tmp/sass.txt || true
           python3 - <<'PY'
           import json, re
           text = open('/tmp/sass.txt').read().splitlines()
           sections = {}
           current = None
+          wanted = {'shifted53_probe', 'shifted53_empty'}
           for line in text:
               if 'Function :' in line:
                   name = line.split('Function :', 1)[1].strip()
-                  current = name if name in {'fixed_window_probe', 'fixed_window_empty'} else None
+                  current = name if name in wanted else None
                   if current:
                       sections[current] = []
                   continue
@@ -81,14 +92,15 @@ jobs:
                       sections[current].append(tail.split()[0])
           def counted(name):
               return [op for op in sections.get(name, []) if op not in {'RET', 'NOP'}]
-          candidate_ops = counted('fixed_window_probe')
-          envelope_ops = counted('fixed_window_empty')
+          candidate_ops = counted('shifted53_probe')
+          envelope_ops = counted('shifted53_empty')
           local_ops = sum(op.startswith('LDL') or op.startswith('STL') for op in candidate_ops)
           candidate_total = len(candidate_ops)
           envelope_total = len(envelope_ops)
           arithmetic = candidate_total - envelope_total
-          regs = [int(x) for x in re.findall(r'Used (\\d+) registers', open('/tmp/ptxas.log').read())]
-          spills = sum(int(x) for x in re.findall(r'(\\d+) bytes spill (?:stores|loads)', open('/tmp/ptxas.log').read()))
+          log = open('/tmp/ptxas.log').read()
+          regs = [int(x) for x in re.findall(r'Used (\d+) registers', log)]
+          spills = sum(int(x) for x in re.findall(r'(\d+) bytes spill (?:stores|loads)', log))
           result = {
               'exact_vectors': 1000000,
               'mismatches': 0,
@@ -104,7 +116,7 @@ jobs:
               arithmetic <= 42 and local_ops == 0 and
               (result['max_reported_registers'] or 999) <= 56 and spills == 0
           )
-          print('FIXED_WINDOW_RESULT ' + json.dumps(result, sort_keys=True))
+          print('SHIFTED53_RESULT ' + json.dumps(result, sort_keys=True))
           open('/tmp/result.json','w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
           PY
 
@@ -112,7 +124,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fixed-window-i2opi-sm70-${{ github.sha }}
+          name: shifted53-comba-i2opi-sm70-${{ github.sha }}
           path: |
             /tmp/ptxas.log
             /tmp/sass.txt
