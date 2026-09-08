@@ -1,9 +1,9 @@
-name: V2.1 Exact Static BLAKE32 Schedule Gate
+name: V2.1 Exact Cross-Region Trig Fusion Gate
 
 on:
   push:
     branches:
-      - agent/v21-v100-static-blake32-schedule
+      - agent/v21-trig-region-fusion
     paths:
       - '.github/workflows/v21-local-residency-inversion-gate.yml'
       - 'native/**'
@@ -91,25 +91,25 @@ jobs:
           occupancy_ratio=candidate_occupancy/promoted_occupancy
           foztor_throughput_ratio=65.51/37.32
           conservative_ratio=min(occupancy_ratio,foztor_throughput_ratio)
-          predicted_mhs=9.184*conservative_ratio
+          predicted_mhs=10.825*conservative_ratio
           predicted_gain_pct=(conservative_ratio-1)*100
-          structural=(consensus and zero_spills and resource['registers']<=64 and
-                      resource['stack_frame_bytes']<=176 and hot_sass<=2200)
+          structural=(consensus and zero_spills and resource['registers']<=56 and
+                      resource['stack_frame_bytes']<=80 and hot_sass<=1808)
           admission=structural and predicted_mhs>=10.1024
           report={
               'status':'HOSTED_STATIC_PASS_DIAGNOSTIC_ALLOWED' if admission else 'HOSTED_STATIC_REJECT',
-              'candidate':'hotrun8-exact-static-blake32-schedule-v1',
+              'candidate':'hotrun8-exact-cross-region-trig-call-fusion-v1',
               'source_commit':os.environ['GITHUB_SHA'],'cuda_arch':'sm_70',
               'threads_per_block':threads,'resource':resource,
               'hot_sass':hot_sass,'hot_functions':hot,
               'core_consensus_pass':consensus,'zero_spills':zero_spills,
-              'promoted_offline_mhs':9.184,'required_offline_mhs':10.1024,
+              'promoted_offline_mhs':10.825,'required_offline_mhs':11.9075,
               'promoted_physical_occupancy':promoted_occupancy,
               'candidate_physical_occupancy':candidate_occupancy,
               'conservative_residency_ratio':conservative_ratio,
               'predicted_total_gain_pct':predicted_gain_pct,
               'predicted_offline_mhs':predicted_mhs,
-              'runtime_gate_required':{'wait_max':2.14,'no_instruction_max':1.07},
+              'runtime_gate_required':{'instruction_per_hash_max':29712.869138,'offline_mhs_min':11.9075},
               'v100_diagnostic_authorized':admission,
               'v100_performance_authorized':False,'pool_authorized':False}
           Path('/tmp/report.json').write_text(json.dumps(report,indent=2)+'\n')
@@ -127,9 +127,9 @@ jobs:
           cp /tmp/cand/pepepow_header80_differential /tmp/pkg/
           cp /tmp/report.json /tmp/pkg/static-report.json
           cp /tmp/core.log /tmp/pkg/core-tests.log
-          printf 'source_commit=%s\ncuda_arch=sm_70\ncandidate=hotrun8-exact-static-blake32-schedule-v1\nthreads=128\nreal_pool_allowed=false\n' "$GITHUB_SHA" > /tmp/pkg/build-info.txt
-          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz .
-          sha256sum /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz | tee /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz.sha256
+          printf 'source_commit=%s\ncuda_arch=sm_70\ncandidate=hotrun8-exact-cross-region-trig-call-fusion-v1\nthreads=128\nreal_pool_allowed=false\n' "$GITHUB_SHA" > /tmp/pkg/build-info.txt
+          tar -C /tmp/pkg -czf /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz .
+          sha256sum /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz | tee /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz.sha256
       - name: Publish immutable diagnostic candidate
         if: success()
         shell: bash
@@ -138,19 +138,19 @@ jobs:
         run: |
           set -euo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          tag="v2.1-static-blake32-${GITHUB_SHA:0:7}-v100"
-          gh release create "$tag" /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz.sha256 --target "$GITHUB_SHA" --title "PepeW v2.1 Static BLAKE32 V100 Diagnostic" --prerelease
+          tag="v2.1-trig-region-fusion-${GITHUB_SHA:0:7}-v100"
+          gh release create "$tag" /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz.sha256 --target "$GITHUB_SHA" --title "PepeW v2.1 Trig Region Fusion V100 Diagnostic" --prerelease
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hotrun8-static-blake32-${{ github.sha }}
+          name: hotrun8-trig-region-fusion-${{ github.sha }}
           path: |
             /tmp/cand.log
             /tmp/core.log
             /tmp/cand.sass
             /tmp/report.json
-            /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz
-            /tmp/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz.sha256
+            /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz
+            /tmp/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz.sha256
           if-no-files-found: warn
           retention-days: 30
