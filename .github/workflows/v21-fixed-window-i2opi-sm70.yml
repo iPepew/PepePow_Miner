@@ -87,6 +87,8 @@ jobs:
           candidate_total = len(candidate_ops)
           envelope_total = len(envelope_ops)
           arithmetic = candidate_total - envelope_total
+          regs = [int(x) for x in re.findall(r'Used (\\d+) registers', open('/tmp/ptxas.log').read())]
+          spills = sum(int(x) for x in re.findall(r'(\\d+) bytes spill (?:stores|loads)', open('/tmp/ptxas.log').read()))
           result = {
               'exact_vectors': 1000000,
               'mismatches': 0,
