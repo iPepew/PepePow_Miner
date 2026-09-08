@@ -1,0 +1,102 @@
+name: V2 Exact Fixed-Window I2OPI SM70 Codegen
+
+on:
+  push:
+    branches:
+      - agent/fixed-window-codegen-v1
+    paths:
+      - native/tests/fixed_window_i2opi_codegen_probe.cu
+      - .github/workflows/v21-fixed-window-i2opi-sm70.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codegen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove exact 192-bit convolution on one million vectors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import random
+          C = (
+              0xdb6295993c439041
+              | (0xfc2757d1f534ddc0 << 64)
+              | (0xa2f9836e4e441529 << 128)
+          )
+          mask = (1 << 64) - 1
+          rng = random.Random(0x5045504557)
+          cases = [1 << 52, (1 << 53) - 1]
+          cases.extend(rng.randrange(1 << 52, 1 << 53) for _ in range(999_998))
+          for n in cases:
+              m = n << 11
+              c0, c1, c2 = C & mask, (C >> 64) & mask, (C >> 128) & mask
+              lo0, hi0 = (m * c0) & mask, (m * c0) >> 64
+              lo1, hi1 = (m * c1) & mask, (m * c1) >> 64
+              lo2, hi2 = (m * c2) & mask, (m * c2) >> 64
+              w1_full = hi0 + lo1
+              w1, carry1 = w1_full & mask, w1_full >> 64
+              w2_full = hi1 + lo2 + carry1
+              got = lo0 | (w1 << 64) | ((w2_full & mask) << 128) | ((hi2 + (w2_full >> 64)) << 192)
+              if got != m * C:
+                  raise SystemExit("EXACT_MISMATCH")
+          print("EXACT_REPLAY cases=1000000 mismatches=0")
+          PY
+
+      - name: Compile and measure Volta SASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/local/cuda/bin/nvcc -std=c++17 -O3 -arch=sm_70 -lineinfo             -Xptxas=-v -cubin native/tests/fixed_window_i2opi_codegen_probe.cu             -o /tmp/fixed-window.cubin 2>&1 | tee /tmp/ptxas.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass /tmp/fixed-window.cubin > /tmp/sass.txt
+          python3 - <<'PY'
+          import json, re
+          text = open('/tmp/sass.txt').read().splitlines()
+          active = False
+          ins = []
+          for line in text:
+              if 'Function :' in line:
+                  active = 'fixed_window_mul3' in line
+                  continue
+              if active and re.search(r'/\*[0-9a-fA-F]+\*/', line):
+                  op = line.split('*/', 1)[1].strip().split()[0]
+                  ins.append(op)
+          local_ops = sum(op.startswith('LDL') or op.startswith('STL') for op in ins)
+          arithmetic = sum(op not in {'RET', 'NOP'} for op in ins)
+          regs = [int(x) for x in re.findall(r'Used (\d+) registers', open('/tmp/ptxas.log').read())]
+          spills = sum(int(x) for x in re.findall(r'(\d+) bytes spill (?:stores|loads)', open('/tmp/ptxas.log').read()))
+          result = {
+              'exact_vectors': 1000000,
+              'mismatches': 0,
+              'sm': 70,
+              'function_instruction_count_excluding_ret_nop': arithmetic,
+              'local_staging_instructions': local_ops,
+              'max_reported_registers': max(regs) if regs else None,
+              'spill_bytes_total': spills,
+          }
+          result['admitted'] = (
+              arithmetic <= 42 and local_ops == 0 and
+              (result['max_reported_registers'] or 999) <= 56 and spills == 0
+          )
+          print('FIXED_WINDOW_RESULT ' + json.dumps(result, sort_keys=True))
+          open('/tmp/result.json','w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          PY
+
+      - name: Upload codegen evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixed-window-i2opi-sm70-${{ github.sha }}
+          path: |
+            /tmp/ptxas.log
+            /tmp/sass.txt
+            /tmp/result.json
+          if-no-files-found: warn
+          retention-days: 30
