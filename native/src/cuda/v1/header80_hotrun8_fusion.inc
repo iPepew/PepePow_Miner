@@ -84,16 +84,27 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8_resident(
     const double hash_mod_fp64 = u32_to_double_exact(hash_mod);
     const double nonce_mod = u32_to_double_exact(mix_nonce & 0xffU);
     HooHashSwState sw = initial_sw_state();
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    SwRunCensusThread census{};
+#endif
     std::uint32_t mixed_word = first_pass[0];
 
     #pragma unroll 1
     for (int pair = 0; pair < 32; ++pair) {
         const double even_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2, first_pass,
-            hash_mod_fp64, nonce_mod, sw);
+            hash_mod_fp64, nonce_mod, sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+            , census
+#endif
+        );
         const double odd_sum = matrix_row_hotrun8_active(
             matrix, scaled_nibble_table, pair * 2 + 1, first_pass,
-            hash_mod_fp64, nonce_mod, sw);
+            hash_mod_fp64, nonce_mod, sw
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+            , census
+#endif
+        );
         const std::uint64_t combined =
             positive_double_to_u64_rz(even_sum) +
             positive_double_to_u64_rz(odd_sum);
@@ -105,6 +116,9 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8_resident(
             if (word != 7) mixed_word = first_pass[word + 1];
         }
     }
+#if PEPEPOW_CUDA_SW_RUN_CENSUS
+    sw_run_census_commit(census);
+#endif
 }
 
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
