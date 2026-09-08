@@ -1,0 +1,46 @@
+name: V2 Exact Trig Reducer Input Census
+
+on:
+  push:
+    branches:
+      - agent/v21-bounded-reducer-input-census
+  workflow_dispatch:
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        working-directory: native
+        run: cmake -S . -B build -DPEPEPOW_ENABLE_CUDA=OFF -DPEPEPOW_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build census and consensus tests
+        working-directory: native
+        shell: bash
+        run: |
+          set +e
+          cmake --build build --target pepepow_hoohash_nonlinear_census pepepow_core_tests -j2 2>&1 | tee census-build.log
+          rc=${PIPESTATUS[0]}
+          echo "build_rc=${rc}" >> "$GITHUB_ENV"
+          exit 0
+      - name: Run core consensus tests
+        if: env.build_rc == '0'
+        working-directory: native
+        run: ./build/pepepow_core_tests
+      - name: Run fixed-job trig input exponent census
+        if: env.build_rc == '0'
+        working-directory: native
+        run: ./build/pepepow_hoohash_nonlinear_census 32768 | tee trig-input-census.txt
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-trig-reducer-input-census-${{ github.run_id }}
+          path: |
+            native/census-build.log
+            native/trig-input-census.txt
+          if-no-files-found: warn
+      - name: Enforce build success
+        if: always()
+        shell: bash
+        run: test "${build_rc:-1}" = "0"
