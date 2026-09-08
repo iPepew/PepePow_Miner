@@ -66,14 +66,23 @@ jobs:
           import json, re
           text = open('/tmp/sass.txt').read().splitlines()
           active = False
+          body = []
           ins = []
           for line in text:
               if 'Function :' in line:
+                  if active:
+                      break
                   active = 'fixed_window_mul3' in line
                   continue
-              if active and re.search(r'/\*[0-9a-fA-F]+\*/', line):
-                  op = line.split('*/', 1)[1].strip().split()[0]
-                  ins.append(op)
+              if active:
+                  body.append(line)
+                  if '/*' in line and '*/' in line and ';' in line:
+                      tail = line.split('*/', 1)[1].strip()
+                      if tail:
+                          ins.append(tail.split()[0])
+          print('FIXED_WINDOW_SASS_BEGIN')
+          print('\n'.join(body))
+          print('FIXED_WINDOW_SASS_END')
           local_ops = sum(op.startswith('LDL') or op.startswith('STL') for op in ins)
           arithmetic = sum(op not in {'RET', 'NOP'} for op in ins)
           regs = [int(x) for x in re.findall(r'Used (\d+) registers', open('/tmp/ptxas.log').read())]
