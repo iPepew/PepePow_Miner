@@ -74,14 +74,15 @@ __device__ __forceinline__ double nonlinear(double x) {
     else if (two < 0.50) y = x - (1.0 + two);
     else if (two < 0.75) y = x * (1.0 + two);
     else y = x / (1.0 + two);
-    if (selector.one_region == 0U) {
+    // Regions 0 and 1 share the exact trigonometric range-reduction entry.
+    // The region-specific result expressions and their FP64 order stay intact;
+    // V100 differential validation must additionally prove that libdevice's
+    // sincos sine output is bit-identical to the former standalone sin output.
+    if (selector.one_region < 2U) {
         double sine, cosine;
         sincos(y, &sine, &cosine);
-        return exp(sine + cosine);
-    }
-    if (selector.one_region == 1U) {
+        if (selector.one_region == 0U) return exp(sine + cosine);
         if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) return 0.0;
-        const double sine = sin(y);
         return sine * sine;
     }
     return 1.0 / sqrt(fabs(y) + 1.0);
