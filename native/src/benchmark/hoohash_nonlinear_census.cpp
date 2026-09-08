@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +16,12 @@
 namespace {
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kTransformMultiplier = 0.000001;
+
+std::array<std::uint64_t, 2048> g_trig_y_exponent_hist{};
+std::uint64_t g_trig_region0_inputs{};
+std::uint64_t g_trig_region1_inputs{};
+double g_trig_y_abs_max{};
+std::uint64_t g_trig_y_abs_max_bits{};
 
 std::uint8_t hex_nibble(char v) {
     if (v >= '0' && v <= '9') return static_cast<std::uint8_t>(v - '0');
@@ -54,6 +61,18 @@ double nonlinear(double x) {
     else if (two < 0.50) y = x - (1.0 + two);
     else if (two < 0.75) y = x * (1.0 + two);
     else y = x / (1.0 + two);
+    if (one < 0.66) {
+        const double ay = std::fabs(y);
+        const auto bits = std::bit_cast<std::uint64_t>(ay);
+        const auto exponent = static_cast<std::size_t>((bits >> 52U) & 0x7ffU);
+        ++g_trig_y_exponent_hist[exponent];
+        if (ay > g_trig_y_abs_max) {
+            g_trig_y_abs_max = ay;
+            g_trig_y_abs_max_bits = bits;
+        }
+        if (one < 0.33) ++g_trig_region0_inputs;
+        else ++g_trig_region1_inputs;
+    }
     if (one < 0.33) return std::exp(std::sin(y) + std::cos(y));
     if (one < 0.66) {
         if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) return 0.0;
@@ -162,7 +181,17 @@ int main(int argc, char** argv) {
               << "cold_cells=" << runs.cold_cells << '\n'
               << "zero_cold=" << runs.zero_cold << '\n'
               << "linear_runs=" << runs.runs << '\n'
-              << "max_linear_run=" << runs.max_run << '\n';
+              << "max_linear_run=" << runs.max_run << '\n'
+              << "trig_region0_inputs=" << g_trig_region0_inputs << '\n'
+              << "trig_region1_inputs=" << g_trig_region1_inputs << '\n'
+              << "trig_y_abs_max=" << std::setprecision(17) << g_trig_y_abs_max << '\n'
+              << "trig_y_abs_max_bits=0x" << std::hex << g_trig_y_abs_max_bits << std::dec << '\n';
+    for (std::size_t exponent = 0; exponent < g_trig_y_exponent_hist.size(); ++exponent) {
+        if (g_trig_y_exponent_hist[exponent] != 0U)
+            std::cout << "trig_y_exponent_" << exponent << '='
+                      << g_trig_y_exponent_hist[exponent] << '\n';
+    }
+    std::cout << std::fixed << std::setprecision(6);
     for (std::uint32_t w : {4U, 8U, 16U, 32U}) {
         const auto steps = chunk_steps(runs, w);
         std::cout << "prefix_width_" << w << "_chunk_steps=" << steps << '\n'
