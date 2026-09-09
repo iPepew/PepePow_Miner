@@ -1,4 +1,4 @@
-name: V2 Demand-Sliced Production SM70 Gate
+# Admission boundary: 2200 hot SASS per authorized architecture gate.\nname: V2 Demand-Sliced Production SM70 Gate
 
 on:
   push:
