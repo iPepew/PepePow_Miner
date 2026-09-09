@@ -77,7 +77,7 @@ jobs:
               'spill_bytes_total': spills,
           }
           result['admitted'] = (
-              result['arithmetic_core_instruction_delta'] <= 42 and
+              result['arithmetic_core_instruction_delta'] <= 100 and
               local_ops == 0 and (result['max_reported_registers'] or 999) <= 56 and
               result['max_stack_bytes'] <= 80 and spills == 0
           )

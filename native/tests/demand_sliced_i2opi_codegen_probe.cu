@@ -2,11 +2,13 @@
 #include <cuda_runtime.h>
 
 // Isolated sm_70 codegen probe. It computes only the two values consumed by
-// libdevice after the fixed 2/pi convolution: quadrant and normalized high64.
+// libdevice after the fixed 2/pi convolution: quadrant and the normalized
+// high96 consumed by the downstream FP64 remainder reconstruction.
 // It is intentionally not connected to consensus code.
 struct Projection {
     std::uint64_t quadrant;
-    std::uint64_t normalized;
+    std::uint64_t normalized_high;
+    std::uint32_t normalized_tail;
 };
 
 __device__ __forceinline__ Projection demand_sliced_projection(
@@ -38,19 +40,24 @@ __device__ __forceinline__ Projection demand_sliced_projection(
 
     const std::uint64_t round_bit = (high >> 61) & 1ULL;
     const std::uint64_t quadrant = (high >> 62) + round_bit;
-    std::uint64_t normalized = (high << 2) | (shifted_low >> 62);
+    std::uint64_t normalized_high = (high << 2) | (shifted_low >> 62);
+    std::uint32_t normalized_tail = static_cast<std::uint32_t>(shifted_low >> 30);
     if (round_bit != 0ULL) {
-        const std::uint64_t sticky =
-            static_cast<std::uint64_t>((shifted_low & ((1ULL << 62) - 1ULL)) != 0ULL);
-        normalized = 0ULL - normalized - sticky;
+        const std::uint32_t sticky =
+            static_cast<std::uint32_t>((shifted_low & ((1ULL << 30) - 1ULL)) != 0ULL);
+        const std::uint32_t old_tail = normalized_tail;
+        normalized_tail = 0U - normalized_tail - sticky;
+        const std::uint64_t borrow =
+            static_cast<std::uint64_t>(old_tail != 0U || sticky != 0U);
+        normalized_high = 0ULL - normalized_high - borrow;
     }
-    return Projection{quadrant, normalized};
+    return Projection{quadrant, normalized_high, normalized_tail};
 }
 
 extern "C" __global__ void demand_sliced_empty(
     const std::uint64_t* input, Projection* output, int count) {
     const int i = int(blockIdx.x * blockDim.x + threadIdx.x);
-    if (i < count) output[i] = Projection{input[i], 0};
+    if (i < count) output[i] = Projection{input[i], 0, 0};
 }
 
 extern "C" __global__ void demand_sliced_probe(
