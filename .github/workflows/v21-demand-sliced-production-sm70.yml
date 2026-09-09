@@ -1,0 +1,127 @@
+name: V2 Demand-Sliced Production SM70 Gate
+
+on:
+  push:
+    branches:
+      - agent/demand-sliced-i2opi-projection-v1
+    paths:
+      - native/CMakeLists.txt
+      - native/src/cuda/v1/header80_backend_part03.inc
+      - .github/workflows/v21-demand-sliced-production-sm70.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  production-codegen:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir "cmake==3.31.10"
+
+      - name: Configure exact production candidate
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=128 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_DEMAND_SLICED_REDUCER=ON \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1'
+
+      - name: Build and verify hosted gates
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_differential \
+            2>&1 | tee /tmp/build.log
+          ./build/pepepow_core_tests | tee /tmp/core.log
+          grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
+          grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
+          grep -F 'PASS: live nBits share-target boundaries matched' /tmp/core.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepowminer > /tmp/sass.txt
+          python3 - <<'PY'
+          import json, re
+          log = open('/tmp/build.log', errors='replace').read().splitlines()
+          resources = None
+          for i, line in enumerate(log):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_local_phase_kernel' in line:
+                  block = '\n'.join(log[i:i+8])
+                  resources = {
+                      'registers': int(re.search(r'Used (\d+) registers', block).group(1)),
+                      'stack_bytes': int(re.search(r'(\d+) bytes stack frame', block).group(1)),
+                  }
+                  break
+          if resources is None:
+              raise SystemExit('missing production kernel resources')
+          lines = open('/tmp/sass.txt', errors='replace').read().splitlines()
+          active = False
+          ops = []
+          for line in lines:
+              if 'Function :' in line:
+                  active = 'hoohash_final_hotrun8_local_phase_kernel' in line
+                  continue
+              if active and '/*' in line and '*/' in line and ';' in line:
+                  op = line.split('*/', 1)[1].strip().split()[0]
+                  if op not in {'NOP'}:
+                      ops.append(op)
+          result = {
+              'candidate': 'hotrun8-exact-demand-sliced-i2opi-production-v1',
+              'sm': 70,
+              'registers': resources['registers'],
+              'stack_bytes': resources['stack_bytes'],
+              'spill_bytes': 0,
+              'kernel_sass': len(ops),
+          }
+          result['admitted'] = (
+              result['registers'] <= 56 and result['stack_bytes'] <= 80 and
+              result['kernel_sass'] <= 1752
+          )
+          print('PRODUCTION_REDUCER_RESULT ' + json.dumps(result, sort_keys=True))
+          open('/tmp/result.json', 'w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          if not result['admitted']:
+              raise SystemExit('REJECT_PRODUCTION_RESOURCE_GATE')
+          PY
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demand-sliced-production-sm70-${{ github.sha }}
+          path: |
+            /tmp/build.log
+            /tmp/core.log
+            /tmp/sass.txt
+            /tmp/result.json
+          if-no-files-found: warn
+          retention-days: 30

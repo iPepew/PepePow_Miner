@@ -61,6 +61,105 @@
     return {one_region, two};
 }
 
+#if PEPEPOW_CUDA_DEMAND_SLICED_REDUCER
+struct ExactTrigReduction {
+    double remainder;
+    int quadrant;
+};
+
+__device__ __forceinline__ ExactTrigReduction exact_fixed_window_reduce(double value) {
+    constexpr std::uint64_t c0 = 0xdb6295993c439041ULL;
+    constexpr std::uint64_t c1 = 0xfc2757d1f534ddc0ULL;
+    constexpr std::uint64_t c2 = 0xa2f9836e4e441529ULL;
+    constexpr std::uint64_t half_pi_fixed = 0xc90fdaa22168c235ULL;
+
+    const std::uint64_t bits =
+        static_cast<std::uint64_t>(__double_as_longlong(value));
+    const unsigned int biased = static_cast<unsigned int>((bits >> 52U) & 0x7ffU);
+    const std::uint64_t mantissa = (bits << 11U) | (std::uint64_t{1} << 63U);
+
+    const std::uint64_t carry0 = __umul64hi(c0, mantissa);
+    const std::uint64_t lo1 = c1 * mantissa;
+    const std::uint64_t sum1 = lo1 + carry0;
+    const std::uint64_t carry1 =
+        __umul64hi(c1, mantissa) + static_cast<std::uint64_t>(sum1 < lo1);
+    const std::uint64_t lo2 = c2 * mantissa;
+    const std::uint64_t sum2 = lo2 + carry1;
+    std::uint64_t fraction_high =
+        __umul64hi(c2, mantissa) + static_cast<std::uint64_t>(sum2 < lo2);
+    std::uint64_t fraction_low = sum2;
+
+    const unsigned int shift = (biased - 1024U) & 63U;
+    if (shift != 0U) {
+        fraction_high = (fraction_high << shift) |
+                        (fraction_low >> (64U - shift));
+        fraction_low <<= shift;
+    }
+
+    const unsigned int round_bit = static_cast<unsigned int>((fraction_high >> 61U) & 1U);
+    const unsigned int quadrant_abs =
+        static_cast<unsigned int>(fraction_high >> 62U) + round_bit;
+    fraction_high = (fraction_high << 2U) | (fraction_low >> 62U);
+    fraction_low <<= 2U;
+    if (round_bit != 0U) {
+        const std::uint64_t old_low = fraction_low;
+        fraction_low = 0ULL - fraction_low;
+        fraction_high = 0ULL - fraction_high -
+                        static_cast<std::uint64_t>(old_low != 0ULL);
+    }
+
+    const unsigned int leading = static_cast<unsigned int>(__clzll(fraction_high));
+    std::uint64_t normalized;
+    if (leading == 0U) normalized = fraction_high;
+    else if (leading < 64U) {
+        normalized = (fraction_high << leading) |
+                     (fraction_low >> (64U - leading));
+    } else {
+        normalized = fraction_low;
+    }
+
+    const std::uint64_t product_low = normalized * half_pi_fixed;
+    const std::uint64_t product_high = __umul64hi(normalized, half_pi_fixed);
+    const bool renormalize = static_cast<std::int64_t>(product_high) > 0;
+    const std::uint64_t significant = renormalize
+        ? (product_high << 1U) + (product_low >> 63U)
+        : product_high;
+    const unsigned int exponent_shift = leading + static_cast<unsigned int>(renormalize);
+    const std::uint64_t rounded = ((((significant + 1ULL) >> 10U) + 1ULL) >> 1U);
+    const std::uint64_t sign =
+        (bits & 0x8000000000000000ULL) ^
+        (static_cast<std::uint64_t>(round_bit) << 63U);
+    const std::uint64_t remainder_bits =
+        (0x3fe0000000000000ULL -
+         (static_cast<std::uint64_t>(exponent_shift) << 52U)) + rounded;
+    const int quadrant = (bits >> 63U) != 0ULL
+        ? -static_cast<int>(quadrant_abs)
+        : static_cast<int>(quadrant_abs);
+    return {__longlong_as_double(static_cast<long long>(remainder_bits | sign)), quadrant};
+}
+
+__device__ __forceinline__ void exact_fixed_window_sincos(
+    double value, double* sine, double* cosine) {
+    const std::uint64_t bits =
+        static_cast<std::uint64_t>(__double_as_longlong(value));
+    const unsigned int biased = static_cast<unsigned int>((bits >> 52U) & 0x7ffU);
+    const int exponent = static_cast<int>(biased) - 1023;
+    if (exponent < 27 || exponent > 56) {
+        sincos(value, sine, cosine);
+        return;
+    }
+    const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
+    double reduced_sine, reduced_cosine;
+    sincos(reduced.remainder, &reduced_sine, &reduced_cosine);
+    switch (static_cast<unsigned int>(reduced.quadrant) & 3U) {
+        case 0U: *sine = reduced_sine; *cosine = reduced_cosine; break;
+        case 1U: *sine = reduced_cosine; *cosine = -reduced_sine; break;
+        case 2U: *sine = -reduced_sine; *cosine = -reduced_cosine; break;
+        default: *sine = -reduced_cosine; *cosine = reduced_sine; break;
+    }
+}
+#endif
+
 #if PEPEPOW_CUDA_COLD_OUTLINE
 __device__ __noinline__ double nonlinear(double x) {
 #else
@@ -80,7 +179,11 @@ __device__ __forceinline__ double nonlinear(double x) {
     // sincos sine output is bit-identical to the former standalone sin output.
     if (selector.one_region < 2U) {
         double sine, cosine;
+#if PEPEPOW_CUDA_DEMAND_SLICED_REDUCER
+        exact_fixed_window_sincos(y, &sine, &cosine);
+#else
         sincos(y, &sine, &cosine);
+#endif
         if (selector.one_region == 0U) return exp(sine + cosine);
         if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) return 0.0;
         return sine * sine;
