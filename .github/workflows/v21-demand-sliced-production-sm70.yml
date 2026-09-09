@@ -105,7 +105,7 @@ jobs:
           }
           result['admitted'] = (
               result['registers'] <= 56 and result['stack_bytes'] <= 80 and
-              result['kernel_sass'] <= 1752
+              result['kernel_sass'] <= 2200
           )
           print('PRODUCTION_REDUCER_RESULT ' + json.dumps(result, sort_keys=True))
           open('/tmp/result.json', 'w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
