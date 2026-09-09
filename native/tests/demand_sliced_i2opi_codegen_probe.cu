@@ -2,13 +2,13 @@
 #include <cuda_runtime.h>
 
 // Isolated sm_70 codegen probe. It computes only the two values consumed by
-// libdevice after the fixed 2/pi convolution: quadrant and the normalized
-// high96 consumed by the downstream FP64 remainder reconstruction.
+// libdevice after the fixed 2/pi convolution: quadrant and the full signed
+// 128-bit fractional remainder consumed by downstream normalization.
 // It is intentionally not connected to consensus code.
 struct Projection {
     std::uint64_t quadrant;
-    std::uint64_t normalized_high;
-    std::uint32_t normalized_tail;
+    std::uint64_t fraction_high;
+    std::uint64_t fraction_low;
 };
 
 __device__ __forceinline__ Projection demand_sliced_projection(
@@ -40,18 +40,14 @@ __device__ __forceinline__ Projection demand_sliced_projection(
 
     const std::uint64_t round_bit = (high >> 61) & 1ULL;
     const std::uint64_t quadrant = (high >> 62) + round_bit;
-    std::uint64_t normalized_high = (high << 2) | (shifted_low >> 62);
-    std::uint32_t normalized_tail = static_cast<std::uint32_t>(shifted_low >> 30);
+    std::uint64_t fraction_high = (high << 2) | (shifted_low >> 62);
+    std::uint64_t fraction_low = shifted_low << 2;
     if (round_bit != 0ULL) {
-        const std::uint32_t sticky =
-            static_cast<std::uint32_t>((shifted_low & ((1ULL << 30) - 1ULL)) != 0ULL);
-        const std::uint32_t old_tail = normalized_tail;
-        normalized_tail = 0U - normalized_tail - sticky;
-        const std::uint64_t borrow =
-            static_cast<std::uint64_t>(old_tail != 0U || sticky != 0U);
-        normalized_high = 0ULL - normalized_high - borrow;
+        const std::uint64_t old_low = fraction_low;
+        fraction_low = 0ULL - fraction_low;
+        fraction_high = 0ULL - fraction_high - static_cast<std::uint64_t>(old_low != 0ULL);
     }
-    return Projection{quadrant, normalized_high, normalized_tail};
+    return Projection{quadrant, fraction_high, fraction_low};
 }
 
 extern "C" __global__ void demand_sliced_empty(

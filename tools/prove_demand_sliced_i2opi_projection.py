@@ -35,11 +35,11 @@ def full_projection(payload):
     fraction = (((high << 64) | low) << 2) & MASK128
     if round_bit:
         fraction = (-fraction) & MASK128
-    return quadrant, fraction >> 32
+    return quadrant, fraction
 
 
 def demand_sliced_projection(bits):
-    """Keep the quadrant and the 96 normalized bits consumed downstream."""
+    """Keep quadrant and the full 128-bit signed fraction consumed downstream."""
     mantissa = ((bits << 11) & MASK64) | (1 << 63)
 
     # The first product's low word is overwritten by the second iteration.
@@ -59,14 +59,13 @@ def demand_sliced_projection(bits):
 
     round_bit = (high >> 61) & 1
     quadrant = (high >> 62) + round_bit
-    normalized_high = ((high << 2) | (shifted_low >> 62)) & MASK64
-    normalized_tail = (shifted_low >> 30) & 0xFFFFFFFF
+    fraction_high = ((high << 2) | (shifted_low >> 62)) & MASK64
+    fraction_low = (shifted_low << 2) & MASK64
     if round_bit:
-        sticky = bool(shifted_low & ((1 << 30) - 1))
-        borrow = bool(normalized_tail) or sticky
-        normalized_tail = (-normalized_tail - sticky) & 0xFFFFFFFF
-        normalized_high = (-normalized_high - borrow) & MASK64
-    return quadrant, (normalized_high << 32) | normalized_tail
+        borrow = bool(fraction_low)
+        fraction_low = (-fraction_low) & MASK64
+        fraction_high = (-fraction_high - borrow) & MASK64
+    return quadrant, (fraction_high << 64) | fraction_low
 
 
 def main():
@@ -84,8 +83,8 @@ def main():
             if first_mismatch is None:
                 first_mismatch = {
                     "input_bits": f"{bits:016x}",
-                    "expected": [expected[0], f"{expected[1]:024x}"],
-                    "actual": [actual[0], f"{actual[1]:024x}"],
+                    "expected": [expected[0], f"{expected[1]:032x}"],
+                    "actual": [actual[0], f"{actual[1]:032x}"],
                 }
 
     report = {
@@ -97,11 +96,10 @@ def main():
         "unbiased_exponents": [27, 56],
         "mismatches": mismatches,
         "first_mismatch": first_mismatch,
-        "consensus_visible_output": ["quadrant", "normalized_fraction_high96"],
+        "consensus_visible_output": ["quadrant", "signed_fraction_128"],
         "proved_dead_values": [
             "low64(limb15 * mantissa)",
             "lower128 of the conceptual 256-bit product",
-            "low32 of the normalized fractional payload except its any-bit-set predicate",
         ],
         "next_gate": {
             "kind": "hosted_sm70_codegen",
