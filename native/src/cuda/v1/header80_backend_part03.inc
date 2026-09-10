@@ -93,7 +93,7 @@ __device__ __forceinline__ ExactTrigReduction exact_fixed_window_reduce(double v
     if (shift != 0U) {
         fraction_high = (fraction_high << shift) |
                         (fraction_low >> (64U - shift));
-        fraction_low <<= shift;
+        fraction_low = (fraction_low << shift) | (sum1 >> (64U - shift));
     }
 
     const unsigned int round_bit = static_cast<unsigned int>((fraction_high >> 61U) & 1U);

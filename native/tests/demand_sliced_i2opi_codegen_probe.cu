@@ -35,7 +35,7 @@ __device__ __forceinline__ Projection demand_sliced_projection(
     std::uint64_t shifted_low = sum2;
     if (shift != 0U) {
         high = (high << shift) | (sum2 >> (64U - shift));
-        shifted_low = sum2 << shift;
+        shifted_low = (sum2 << shift) | (sum1 >> (64U - shift));
     }
 
     const std::uint64_t round_bit = (high >> 61) & 1ULL;

@@ -16,16 +16,11 @@ LIMBS = (
 
 def full_payload(bits):
     mantissa = ((bits << 11) & MASK64) | (1 << 63)
-    carry = low = 0
-    for limb in LIMBS:
-        product = limb * mantissa + carry
-        low = product & MASK64
-        carry = product >> 64
+    # Independent whole-product oracle, including bits from the preceding limb.
+    constant = sum(limb << (64 * i) for i, limb in enumerate(LIMBS))
     shift = (((bits >> 52) & 0x7FF) - 1024) & 63
-    if shift:
-        carry = ((carry << shift) & MASK64) | (low >> (64 - shift))
-        low = (low << shift) & MASK64
-    return carry, low
+    payload = ((constant * mantissa) >> (128 - shift)) & MASK128
+    return payload >> 64, payload & MASK64
 
 
 def full_projection(payload):
@@ -53,7 +48,7 @@ def demand_sliced_projection(bits):
     shift = (((bits >> 52) & 0x7FF) - 1024) & 63
     if shift:
         high = ((high << shift) & MASK64) | (low >> (64 - shift))
-        shifted_low = (low << shift) & MASK64
+        shifted_low = ((low << shift) | ((product1 & MASK64) >> (64 - shift))) & MASK64
     else:
         shifted_low = low
 
@@ -99,7 +94,7 @@ def main():
         "consensus_visible_output": ["quadrant", "signed_fraction_128"],
         "proved_dead_values": [
             "low64(limb15 * mantissa)",
-            "lower128 of the conceptual 256-bit product",
+            "bits below the exponent-dependent 128-bit output window",
         ],
         "next_gate": {
             "kind": "hosted_sm70_codegen",
