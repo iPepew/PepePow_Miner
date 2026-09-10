@@ -1,4 +1,5 @@
-# Admission boundary: 2200 hot SASS per authorized architecture gate.\nname: V2 Demand-Sliced Production SM70 Gate
+# Admission boundary: 2200 hot SASS per authorized architecture gate.
+name: V2 Demand-Sliced Production SM70 Gate
 
 on:
   push:
@@ -20,10 +21,13 @@ defaults:
 jobs:
   production-codegen:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
+      - name: Enforce bounded session
+        run: |
+          test "$(date -u +%s)" -lt "$(date -u -d '2026-09-10 11:58:57 UTC' +%s)" || { echo SESSION_DEADLINE_NO_BUILD; exit 1; }
       - uses: actions/checkout@v4
 
       - name: Install build tools
@@ -33,6 +37,11 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates git ninja-build python3 python3-pip binutils
           python3 -m pip install --no-cache-dir "cmake==3.31.10"
+
+      - name: Independent fraction128 oracle
+        run: |
+          python3 tools/prove_demand_sliced_i2opi_projection.py
+          python3 tools/audit_fraction128_window.py
 
       - name: Configure exact production candidate
         run: |
