@@ -144,7 +144,9 @@ __device__ __forceinline__ void exact_fixed_window_sincos(
         static_cast<std::uint64_t>(__double_as_longlong(value));
     const unsigned int biased = static_cast<unsigned int>((bits >> 52U) & 0x7ffU);
     const int exponent = static_cast<int>(biased) - 1023;
-    if (exponent < 27 || exponent > 56) {
+    // libdevice uses its three-FMA fast reducer below 2^31. Preserve it
+    // bit-for-bit; the exact slow-path payload is not interchangeable there.
+    if (exponent < 31 || exponent > 56) {
         sincos(value, sine, cosine);
         return;
     }
