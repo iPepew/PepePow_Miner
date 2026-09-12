@@ -43,6 +43,7 @@ jobs:
           python3 tools/prove_demand_sliced_i2opi_projection.py
           python3 tools/audit_fraction128_window.py
           python3 tools/audit_trig_fp64_reconstruction.py
+          python3 tools/audit_trig_slowpath_final.py
 
       - name: Configure exact production candidate
         run: |
