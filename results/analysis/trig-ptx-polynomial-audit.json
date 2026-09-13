@@ -1,0 +1,13 @@
+{
+  "vectors": 1000000,
+  "exponent_sign_classes": 52,
+  "mismatches": 0,
+  "edge_vectors": 312,
+  "edge_mismatches": 0,
+  "first_mismatch": null,
+  "fixture_sha256": "483af6855a12c1927895b547f4e43b2893d52271fbcd3c621c1fdbe989fb7971",
+  "reference_polynomial": "parsed captured PTX; separate from candidate polynomial",
+  "cuda_executed": false,
+  "compiled_candidate_verified": false,
+  "limitation": "CPU replay only; reduction reference is handwritten; compiled candidate GPU differential required"
+}
