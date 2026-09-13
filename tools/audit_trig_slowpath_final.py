@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Shared-reconstruction consistency audit for exponent classes 31..56.
+"""CPU reconstruction consistency audit for exponent classes 31..56.
 
 Reference uses one full 192x64-bit product. Candidate uses the production
-three-word carry chain. Both replay the captured sm_70 binary64 reconstruction
-and polynomial sequence; candidate additionally replays its nested sincos and
-quadrant switch. Shared reconstruction and polynomial functions mean this
-is NOT an independent final-FP64 proof. This is CPU replay, not CUDA execution.
+three-word carry chain and a separate word-level reconstruction model.
+The polynomial function remains shared; candidate additionally replays its
+nested sincos and quadrant switch. This is NOT an independent final-FP64
+proof. This is handwritten CPU replay, not CUDA execution.
 """
 import json
 import random
@@ -51,7 +51,42 @@ def candidate_reduce(raw):
     if shift:
         high = ((high << shift) | (low >> (64 - shift))) & MASK64
         low = ((low << shift) | ((product1 & MASK64) >> (64 - shift))) & MASK64
-    return reconstruct(raw, high, low)
+    return candidate_reconstruct(raw, high, low)
+
+
+def candidate_reconstruct(raw, high, low):
+    """Word-by-word replay of exact_fixed_window_reduce, separate from reference.
+
+    Reference reconstruct uses wide Python integer operations. This path
+    preserves the CUDA source's 64-bit wrap, borrow and normalization branches.
+    It is still a hand-written CPU model, not compiled GPU execution.
+    """
+    round_bit = (high >> 61) & 1
+    quadrant = (high >> 62) + round_bit
+    high = ((high << 2) | (low >> 62)) & MASK64
+    low = (low << 2) & MASK64
+    if round_bit:
+        old_low = low
+        low = (-low) & MASK64
+        high = (-high - int(old_low != 0)) & MASK64
+    leading = 64 - high.bit_length()
+    if leading == 0:
+        normalized = high
+    elif leading < 64:
+        normalized = ((high << leading) | (low >> (64 - leading))) & MASK64
+    else:
+        normalized = low
+    product = normalized * 0xc90fdaa22168c235
+    product_low = product & MASK64
+    product_high = (product >> 64) & MASK64
+    renormalize = 0 < product_high < (1 << 63)
+    significant = (((product_high << 1) + (product_low >> 63)) & MASK64
+                   if renormalize else product_high)
+    rounded = ((((significant + 1) & MASK64) >> 10) + 1) >> 1
+    remainder = (0x3fe0000000000000 -
+                 ((leading + int(renormalize)) << 52) + rounded) & MASK64
+    sign = (raw & (1 << 63)) ^ (round_bit << 63)
+    return number(remainder | sign), -quadrant if raw >> 63 else quadrant
 
 
 def flip(raw):
@@ -110,7 +145,8 @@ def main():
               'random_exponent_sign_classes': len(coverage),
               'random_class_counts': coverage,
               'independent_final_fp64_proof': False,
-              'limitation': 'Shared reconstruction and polynomial; independent reference and GPU differential still required',
+              'separate_reconstruction_models': True,
+              'limitation': 'Separate handwritten reconstruction models; shared polynomial, independent PTX execution and GPU differential still required',
               'reduction_mismatches': reduce_errors,
               'final_sincos_mismatches': output_errors,
               'edge_vectors': 312, 'edge_mismatches': edge_errors,
