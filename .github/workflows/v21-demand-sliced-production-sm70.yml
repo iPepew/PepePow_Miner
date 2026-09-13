@@ -44,6 +44,8 @@ jobs:
           python3 tools/audit_fraction128_window.py
           python3 tools/audit_trig_fp64_reconstruction.py
           python3 tools/audit_trig_slowpath_final.py
+          set -o pipefail
+          python3 tools/audit_trig_ptx_polynomial.py | tee /tmp/ptx-polynomial-audit.json
 
       - name: Configure exact production candidate
         run: |
@@ -124,6 +126,28 @@ jobs:
               raise SystemExit('REJECT_PRODUCTION_RESOURCE_GATE')
           PY
 
+      - name: Package GPU correctness executables
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/gpu-correctness
+          for binary in pepepowminer pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_differential; do
+            test -x "build/$binary"
+            cp "build/$binary" /tmp/gpu-correctness/
+          done
+          cp /tmp/result.json /tmp/gpu-correctness/resources.json
+          cp /tmp/ptx-polynomial-audit.json /tmp/gpu-correctness/
+          printf '%s\\n' "$GITHUB_SHA" > /tmp/gpu-correctness/source-commit.txt
+          cd /tmp/gpu-correctness
+          sha256sum pepepowminer pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_differential resources.json ptx-polynomial-audit.json source-commit.txt > SHA256SUMS
+
+      - name: Upload GPU correctness package
+        uses: actions/upload-artifact@v4
+        with:
+          name: demand-sliced-gpu-correctness-${{ github.sha }}
+          path: /tmp/gpu-correctness/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -134,5 +158,6 @@ jobs:
             /tmp/core.log
             /tmp/sass.txt
             /tmp/result.json
+            /tmp/ptx-polynomial-audit.json
           if-no-files-found: warn
           retention-days: 30
