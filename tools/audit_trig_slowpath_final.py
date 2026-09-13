@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Independent final-output audit for candidate exponent classes 31..56.
+"""Shared-reconstruction consistency audit for exponent classes 31..56.
 
 Reference uses one full 192x64-bit product. Candidate uses the production
 three-word carry chain. Both replay the captured sm_70 binary64 reconstruction
 and polynomial sequence; candidate additionally replays its nested sincos and
-quadrant switch. This is CPU PTX replay, not CUDA execution.
+quadrant switch. Shared reconstruction and polynomial functions mean this
+is NOT an independent final-FP64 proof. This is CPU replay, not CUDA execution.
 """
 import json
 import random
@@ -81,9 +82,13 @@ def main():
     rng = random.Random(0x534c4f5750415448)
     reduce_errors = output_errors = 0
     first = None
+    coverage = {}
     for i in range(1_000_000):
         exponent = 31 + i % 26
-        raw = ((exponent + 1023) << 52) | rng.getrandbits(52) | ((i & 1) << 63)
+        sign = (i // 26) & 1
+        key = f"{exponent}:{sign}"
+        coverage[key] = coverage.get(key, 0) + 1
+        raw = ((exponent + 1023) << 52) | rng.getrandbits(52) | (sign << 63)
         reference, candidate, expected, actual = check(raw)
         reduce_errors += (bits(reference[0]), reference[1]) != (bits(candidate[0]), candidate[1])
         output_errors += expected != actual
@@ -91,6 +96,8 @@ def main():
             first = {'input_bits': f'{raw:016x}',
                      'reference': [f'{v:016x}' for v in expected],
                      'candidate': [f'{v:016x}' for v in actual]}
+    assert set(coverage) == {f"{e}:{s}" for e in range(31, 57) for s in (0, 1)}
+    assert max(coverage.values()) - min(coverage.values()) <= 1
     edge_errors = 0
     for exponent in range(31, 57):
         for mantissa in (0, 1, (1 << 51) - 1, 1 << 51,
@@ -100,6 +107,10 @@ def main():
                 _, _, expected, actual = check(raw)
                 edge_errors += expected != actual
     report = {'vectors': 1_000_000, 'exponents': [31, 56],
+              'random_exponent_sign_classes': len(coverage),
+              'random_class_counts': coverage,
+              'independent_final_fp64_proof': False,
+              'limitation': 'Shared reconstruction and polynomial; independent reference and GPU differential still required',
               'reduction_mismatches': reduce_errors,
               'final_sincos_mismatches': output_errors,
               'edge_vectors': 312, 'edge_mismatches': edge_errors,
