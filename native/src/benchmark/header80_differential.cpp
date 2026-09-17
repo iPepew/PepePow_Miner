@@ -1,76 +1,78 @@
 #include "pepepow/core/header_builder.hpp"
 #include "pepepow/crypto/pow.hpp"
 #include "pepepow/cuda/header80_backend.hpp"
-
+#include <algorithm>
 #include <array>
-#include <chrono>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
-#include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <vector>
 
-int main(int argc, char** argv) {
-    std::uint64_t count = 100000ULL;
-    if (argc > 1) count = std::strtoull(argv[1], nullptr, 10);
-    if (count == 0 || count > 1000000ULL) {
-        std::cerr << "invalid differential count\n";
-        return 2;
-    }
-
-    pepepow::MiningJob job;
-    job.job_id = "header80-production-differential";
-    job.version = 0x20004000U;
-    job.ntime = 0x6a673f01U;
-    job.bits = 0x1d0124fbU;
-    for (std::size_t i = 0; i < 32; ++i) {
-        job.previous_hash[i] = static_cast<std::uint8_t>((i * 17U + 11U) & 0xffU);
-        job.merkle_root[i] = static_cast<std::uint8_t>((i * 31U + 5U) & 0xffU);
-    }
-
-    constexpr std::array<std::uint8_t, 32> maximum_target = [] {
-        std::array<std::uint8_t, 32> value{};
-        value.fill(0xffU);
-        return value;
-    }();
-
+// Contract: search may return ANY qualifying nonce, selected by atomicCAS.
+// No performance claims: CPU enumeration is intentionally inside this test.
+int main() {
     try {
         pepepow::Header80CudaBackend backend(0);
-        const auto devices = backend.enumerate_devices();
-        if (devices.empty()) throw std::runtime_error("no CUDA device detected");
-
-        auto warmup_job = job;
-        warmup_job.nonce = 0U;
-        (void)backend.search(warmup_job, pepepow::SearchRange{0U, 1U}, maximum_target);
-
-        std::uint64_t mismatches = 0;
-        const auto start = std::chrono::steady_clock::now();
-        for (std::uint64_t nonce64 = 0; nonce64 < count; ++nonce64) {
-            const auto nonce = static_cast<std::uint32_t>(nonce64);
-            job.nonce = nonce;
-            const auto header = pepepow::build_header80(job);
-            const auto expected = pepepow::crypto::calculate_header80_pow(header);
-            const auto candidate = backend.search(
-                job, pepepow::SearchRange{nonce, 1U}, maximum_target);
-            if (!candidate.has_value() || candidate->nonce != nonce || candidate->hash != expected) {
-                ++mismatches;
-                if (mismatches <= 8U) {
-                    std::cerr << "mismatch nonce=" << nonce64
-                              << " candidate=" << (candidate.has_value() ? 1 : 0) << '\n';
+        std::uint64_t cases=0, mismatches=0, cpu_hashes=0;
+        const std::array<std::uint64_t,8> sizes{2,31,32,33,127,128,129,257};
+        for (unsigned header_id=0; header_id<3; ++header_id) {
+            pepepow::MiningJob job;
+            job.job_id="batch-correctness";
+            job.version=0x20004000U+header_id;
+            job.ntime=0x6a673f01U+header_id;
+            job.bits=0x1d0124fbU;
+            for (std::size_t i=0;i<32;++i) {
+                job.previous_hash[i]=static_cast<std::uint8_t>(i*17+11+header_id);
+                job.merkle_root[i]=static_cast<std::uint8_t>(i*31+5+header_id*7);
+            }
+            for (auto count:sizes) {
+                const std::uint64_t begin=header_id==2 ? 0x100000000ULL-count : 127+header_id*1024;
+                std::vector<pepepow::Hash256> hashes;
+                for (std::uint64_t i=0;i<count;++i) {
+                    job.nonce=static_cast<std::uint32_t>(begin+i);
+                    hashes.push_back(pepepow::crypto::calculate_header80_pow(pepepow::build_header80(job)));
+                    ++cpu_hashes;
+                }
+                const auto minimum=*std::min_element(hashes.begin(),hashes.end());
+                if (std::count(hashes.begin(),hashes.end(),minimum)!=1)
+                    throw std::runtime_error("oracle minimum is not unique");
+                auto below=minimum;
+                bool decremented=false;
+                for (std::size_t i=32;i-->0;) {
+                    if (below[i]!=0) { --below[i]; decremented=true; break; }
+                    below[i]=255;
+                }
+                if (!decremented) throw std::runtime_error("zero minimum cannot be decremented");
+                pepepow::Hash256 maximum; maximum.fill(255);
+                // Repeat maximum after empty-result search to detect stale result state.
+                for (const auto& target:std::array<pepepow::Hash256,4>{maximum,minimum,below,maximum}) {
+                    ++cases;
+                    const bool expected=std::any_of(hashes.begin(),hashes.end(),
+                        [&](const auto& h){return h<=target;});
+                    job.nonce=0; // SearchRange, not this field, specifies the range.
+                    const auto result=backend.search(job,pepepow::SearchRange{begin,count},target);
+                    bool ok=result.has_value()==expected;
+                    if (result) {
+                        const auto nonce=static_cast<std::uint64_t>(result->nonce);
+                        ok=ok && nonce>=begin && nonce-begin<count;
+                        if (ok) ok=result->hash==hashes[nonce-begin] && result->hash<=target;
+                    }
+                    if (!ok) {
+                        ++mismatches;
+                        std::cerr<<"BATCH_MISMATCH header="<<header_id<<" begin="<<begin
+                                 <<" count="<<count<<" case="<<cases<<"\n";
+                    }
                 }
             }
         }
-        const auto stop = std::chrono::steady_clock::now();
-        const double seconds = std::chrono::duration<double>(stop - start).count();
-
-        std::cout << "differential_cases=" << count << '\n'
-                  << "differential_mismatches=" << mismatches << '\n'
-                  << "differential_seconds=" << std::fixed << std::setprecision(6)
-                  << seconds << '\n';
-        return mismatches == 0 ? 0 : 3;
-    } catch (const std::exception& error) {
-        std::cerr << "DIFFERENTIAL_FAIL " << error.what() << '\n';
+        std::cout<<"batch_search_calls="<<cases<<"\n"
+                 <<"batch_cpu_hashes="<<cpu_hashes<<"\n"
+                 <<"batch_mismatches="<<mismatches<<"\n";
+        if (mismatches) return 3;
+        std::cout<<"BATCH_CORRECTNESS_PASS\n";
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr<<"BATCH_CORRECTNESS_FAIL "<<e.what()<<"\n";
         return 1;
     }
 }
