@@ -14,7 +14,7 @@ int main() {
     try {
         pepepow::Header80CudaBackend backend(0);
         std::uint64_t cases=0, mismatches=0, cpu_hashes=0;
-        const std::array<std::uint64_t,8> sizes{2,31,32,33,127,128,129,257};
+        const std::array<std::uint64_t,11> sizes{2,31,32,33,127,128,129,257,4095,4096,4097};
         for (unsigned header_id=0; header_id<3; ++header_id) {
             pepepow::MiningJob job;
             job.job_id="batch-correctness";
