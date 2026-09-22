@@ -14,7 +14,8 @@ int main() {
     try {
         pepepow::Header80CudaBackend backend(0);
         std::uint64_t cases=0, mismatches=0, cpu_hashes=0;
-        const std::array<std::uint64_t,11> sizes{2,31,32,33,127,128,129,257,4095,4096,4097};
+        const std::array<std::uint64_t,11> base_sizes{2,31,32,33,127,128,129,257,4095,4096,4097};
+        const std::array<std::uint64_t,3> production_sizes{65535,65536,65537};
         for (unsigned header_id=0; header_id<3; ++header_id) {
             pepepow::MiningJob job;
             job.job_id="batch-correctness";
@@ -25,6 +26,9 @@ int main() {
                 job.previous_hash[i]=static_cast<std::uint8_t>(i*17+11+header_id);
                 job.merkle_root[i]=static_cast<std::uint8_t>(i*31+5+header_id*7);
             }
+            std::vector<std::uint64_t> sizes(base_sizes.begin(),base_sizes.end());
+            if (header_id==0)
+                sizes.insert(sizes.end(),production_sizes.begin(),production_sizes.end());
             for (auto count:sizes) {
                 const std::uint64_t begin=header_id==2 ? 0x100000000ULL-count : 127+header_id*1024;
                 std::vector<pepepow::Hash256> hashes;
