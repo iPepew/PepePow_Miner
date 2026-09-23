@@ -6,12 +6,53 @@
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 // Contract: search may return ANY qualifying nonce, selected by atomicCAS.
 // No performance claims: CPU enumeration is intentionally inside this test.
-int main() {
+
+static int direct_differential() {
+    pepepow::Header80CudaBackend backend(0);
+    pepepow::Hash256 target; target.fill(255);
+    std::uint64_t tested=0, mismatches=0;
+    for (unsigned header_id=0; header_id<100; ++header_id) {
+        pepepow::MiningJob job;
+        job.job_id="direct-100k";
+        job.version=0x20004000U+header_id;
+        job.ntime=0x6a673f01U+header_id;
+        job.bits=0x1d0124fbU;
+        for (std::size_t k=0;k<32;++k) {
+            job.previous_hash[k]=static_cast<std::uint8_t>(k*17+11+header_id);
+            job.merkle_root[k]=static_cast<std::uint8_t>(k*31+5+header_id*7);
+        }
+        for (std::uint32_t i=0;i<1000;++i) {
+            const std::uint32_t nonce=i<8 ?
+                std::array<std::uint32_t,8>{0,1,31,32,127,128,0xfffffffeU,0xffffffffU}[i] :
+                static_cast<std::uint32_t>((header_id*1000U+i)*2654435761U);
+            job.nonce=nonce;
+            const auto expected=pepepow::crypto::calculate_header80_pow(pepepow::build_header80(job));
+            job.nonce=0;
+            const auto actual=backend.search(job,pepepow::SearchRange{nonce,1},target);
+            ++tested;
+            if (!actual || actual->nonce!=nonce || actual->hash!=expected) {
+                ++mismatches;
+                if (mismatches<=10)
+                    std::cerr<<"DIRECT_MISMATCH header="<<header_id<<" nonce="<<nonce<<"\n";
+            }
+        }
+    }
+    std::cout<<"direct_headers=100\ndirect_cases="<<tested
+             <<"\ndirect_mismatches="<<mismatches<<"\n";
+    if (tested!=100000 || mismatches) return 3;
+    std::cout<<"DIRECT_CORRECTNESS_PASS\n";
+    return 0;
+}
+
+int main(int argc, char** argv) {
     try {
+        if (argc==2 && std::string(argv[1])=="--direct-100000") return direct_differential();
+        if (argc!=1) throw std::runtime_error("unsupported test arguments");
         pepepow::Header80CudaBackend backend(0);
         std::uint64_t cases=0, mismatches=0, cpu_hashes=0;
         const std::array<std::uint64_t,11> base_sizes{2,31,32,33,127,128,129,257,4095,4096,4097};
