@@ -16,6 +16,8 @@ int main() {
         std::uint64_t cases=0, mismatches=0, cpu_hashes=0;
         const std::array<std::uint64_t,11> base_sizes{2,31,32,33,127,128,129,257,4095,4096,4097};
         const std::array<std::uint64_t,3> production_sizes{65535,65536,65537};
+        const std::uint64_t working_span=16777216, tile_size=65536;
+        const unsigned working_tiles=16;
         for (unsigned header_id=0; header_id<3; ++header_id) {
             pepepow::MiningJob job;
             job.job_id="batch-correctness";
@@ -68,8 +70,54 @@ int main() {
                     }
                 }
             }
+            if (header_id==0) {
+                for (unsigned tile=0; tile<working_tiles; ++tile) {
+                    const std::uint64_t begin=127+
+                        (working_span-tile_size)*tile/(working_tiles-1);
+                    const std::uint64_t count=tile_size;
+                    std::vector<pepepow::Hash256> hashes;
+                    hashes.reserve(count);
+                    for (std::uint64_t i=0;i<count;++i) {
+                        job.nonce=static_cast<std::uint32_t>(begin+i);
+                        hashes.push_back(pepepow::crypto::calculate_header80_pow(pepepow::build_header80(job)));
+                        ++cpu_hashes;
+                    }
+                    const auto minimum=*std::min_element(hashes.begin(),hashes.end());
+                    if (std::count(hashes.begin(),hashes.end(),minimum)!=1)
+                        throw std::runtime_error("tile oracle minimum is not unique");
+                    auto below=minimum;
+                    bool decremented=false;
+                    for (std::size_t i=32;i-->0;) {
+                        if (below[i]!=0) { --below[i]; decremented=true; break; }
+                        below[i]=255;
+                    }
+                    if (!decremented) throw std::runtime_error("tile zero minimum cannot be decremented");
+                    pepepow::Hash256 maximum; maximum.fill(255);
+                    for (const auto& target:std::array<pepepow::Hash256,4>{maximum,minimum,below,maximum}) {
+                        ++cases;
+                        const bool expected=std::any_of(hashes.begin(),hashes.end(),
+                            [&](const auto& h){return h<=target;});
+                        job.nonce=0;
+                        const auto result=backend.search(job,pepepow::SearchRange{begin,count},target);
+                        bool ok=result.has_value()==expected;
+                        if (result) {
+                            const auto nonce=static_cast<std::uint64_t>(result->nonce);
+                            ok=ok && nonce>=begin && nonce-begin<count;
+                            if (ok) ok=result->hash==hashes[nonce-begin] && result->hash<=target;
+                        }
+                        if (!ok) {
+                            ++mismatches;
+                            std::cerr<<"WORKING_TILE_MISMATCH tile="<<tile<<" begin="<<begin
+                                     <<" count="<<count<<" case="<<cases<<"\n";
+                        }
+                    }
+                }
+            }
         }
-        std::cout<<"batch_search_calls="<<cases<<"\n"
+        std::cout<<"working_span="<<working_span<<"\n"
+                 <<"working_tiles="<<working_tiles<<"\n"
+                 <<"working_tile_size="<<tile_size<<"\n"
+                 <<"batch_search_calls="<<cases<<"\n"
                  <<"batch_cpu_hashes="<<cpu_hashes<<"\n"
                  <<"batch_mismatches="<<mismatches<<"\n";
         if (mismatches) return 3;
