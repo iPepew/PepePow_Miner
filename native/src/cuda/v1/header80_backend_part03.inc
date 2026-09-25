@@ -153,12 +153,15 @@ __device__ __forceinline__ void exact_fixed_window_sincos(
     const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
     double reduced_sine, reduced_cosine;
     sincos(reduced.remainder, &reduced_sine, &reduced_cosine);
-    switch (static_cast<unsigned int>(reduced.quadrant) & 3U) {
-        case 0U: *sine = reduced_sine; *cosine = reduced_cosine; break;
-        case 1U: *sine = reduced_cosine; *cosine = -reduced_sine; break;
-        case 2U: *sine = -reduced_sine; *cosine = -reduced_cosine; break;
-        default: *sine = -reduced_cosine; *cosine = reduced_sine; break;
-    }
+    const unsigned int q = static_cast<unsigned int>(reduced.quadrant) & 3U;
+    const std::uint64_t sine_bits =
+        static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_cosine : reduced_sine)) ^
+        (static_cast<std::uint64_t>(q >> 1U) << 63U);
+    const std::uint64_t cosine_bits =
+        static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_sine : reduced_cosine)) ^
+        (static_cast<std::uint64_t>(((q + 1U) >> 1U) & 1U) << 63U);
+    *sine = __longlong_as_double(static_cast<long long>(sine_bits));
+    *cosine = __longlong_as_double(static_cast<long long>(cosine_bits));
 }
 #endif
 
