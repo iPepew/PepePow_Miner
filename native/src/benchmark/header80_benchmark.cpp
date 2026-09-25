@@ -12,6 +12,8 @@
 int main(int argc, char** argv) {
     std::uint64_t count = 1048576ULL;
     if (argc > 1) count = std::strtoull(argv[1], nullptr, 10);
+    const unsigned header_id = argc > 2 ? static_cast<unsigned>(std::strtoul(argv[2], nullptr, 10)) : 0U;
+    if (argc > 3 || header_id > 255U) { std::cerr << "invalid arguments\n"; return 2; }
     if (count == 0 || count > 0x100000000ULL) {
         std::cerr << "invalid nonce count\n";
         return 2;
@@ -19,12 +21,12 @@ int main(int argc, char** argv) {
 
     pepepow::MiningJob job;
     job.job_id = "header80-performance-benchmark";
-    job.version = 0x20004000U;
-    job.ntime = 0x6a673f01U;
+    job.version = 0x20004000U + header_id;
+    job.ntime = 0x6a673f01U + header_id;
     job.bits = 0x1d0124fbU;
     for (std::size_t i = 0; i < 32; ++i) {
-        job.previous_hash[i] = static_cast<std::uint8_t>((i * 17U + 11U) & 0xffU);
-        job.merkle_root[i] = static_cast<std::uint8_t>((i * 31U + 5U) & 0xffU);
+        job.previous_hash[i] = static_cast<std::uint8_t>((i * 17U + 11U + header_id) & 0xffU);
+        job.merkle_root[i] = static_cast<std::uint8_t>((i * 31U + 5U + header_id * 7U) & 0xffU);
     }
 
     std::array<std::uint8_t, 32> impossible_target{};
@@ -48,6 +50,7 @@ int main(int argc, char** argv) {
         const double seconds = std::chrono::duration<double>(stop - start).count();
         const double hps = static_cast<double>(count) / seconds;
         std::cout << "PERFORMANCE_BENCHMARK device=\"" << devices.front().name << "\""
+                  << " header=" << header_id
                   << " nonces=" << count
                   << " seconds=" << std::fixed << std::setprecision(4) << seconds
                   << " hps=" << std::setprecision(0) << hps
