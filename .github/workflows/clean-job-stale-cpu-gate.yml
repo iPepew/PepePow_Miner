@@ -1,0 +1,44 @@
+name: Clean-job stale CPU gate
+
+on:
+  push:
+    branches:
+      - agent/demand-sliced-batch-correctness-20260917
+    paths:
+      - "native/**"
+      - ".github/workflows/clean-job-stale-cpu-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - name: Reject late start
+        shell: bash
+        run: |
+          set -euo pipefail
+          now="$(date -u +%s)"
+          cutoff="$(date -u -d '2026-09-26 19:15:00Z' +%s)"
+          test "$now" -lt "$cutoff" || {
+            echo "Late start rejected before checkout/build"
+            exit 1
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify protocol patch ancestry
+        run: git merge-base --is-ancestor 82d248a22dcf1803b428f98235116defc3d2f99c HEAD
+
+      - name: Configure CPU tests
+        run: cmake -S native -B native/build -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build CPU tests
+        run: cmake --build native/build --config Release --parallel
+
+      - name: Run CPU tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
