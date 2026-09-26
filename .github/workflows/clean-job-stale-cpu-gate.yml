@@ -30,6 +30,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Verify protocol patch ancestry
         run: git merge-base --is-ancestor 82d248a22dcf1803b428f98235116defc3d2f99c HEAD
