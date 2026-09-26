@@ -25,11 +25,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Verify production tree is identical to admitted code
-        run: |
-          set -Eeuo pipefail
-          git diff --exit-code "$VERIFIED_CODE" HEAD -- native hiveos VERSION
-          echo "VERIFIED_PRODUCTION_TREE=$VERIFIED_CODE"
       - name: Install build tools
         run: |
           set -Eeuo pipefail
@@ -38,6 +33,11 @@ jobs:
           python3 -m pip install --no-cache-dir "cmake==3.31.10"
           rm -rf /var/lib/apt/lists/*
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - name: Verify production tree is identical to admitted code
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code "$VERIFIED_CODE" HEAD -- native hiveos VERSION
+          echo "VERIFIED_PRODUCTION_TREE=$VERIFIED_CODE"
       - name: Validate HiveOS wrapper and identity
         run: |
           set -Eeuo pipefail
