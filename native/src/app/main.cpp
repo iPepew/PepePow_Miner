@@ -138,6 +138,12 @@ public:
                       << message.substr(std::string_view("STRATUM Share accepted: ").size()) << '\n';
             return;
         }
+        if (message.starts_with("STRATUM Share stale after clean job:")) {
+            std::cout << kYellow << "🟠 STALE" << kReset << "     "
+                      << message.substr(std::string_view(
+                          "STRATUM Share stale after clean job: ").size()) << '\n';
+            return;
+        }
         if (message.starts_with("STRATUM Share rejected:")) {
             std::cout << kRed << "❌ REJECTED" << kReset << "  "
                       << message.substr(std::string_view("STRATUM Share rejected: ").size()) << '\n';
@@ -217,6 +223,7 @@ public:
             output << "HPS=" << hps << '\n'
                    << "ACCEPTED=" << stats.accepted << '\n'
                    << "REJECTED=" << stats.rejected << '\n'
+                   << "CLEAN_JOB_STALE=" << stats.clean_job_stale << '\n'
                    << "UPTIME=" << uptime_seconds() << '\n'
                    << "UPDATED_EPOCH=" << epoch_seconds() << '\n'
                    << "PID=" << static_cast<unsigned long long>(::getpid()) << '\n'
@@ -565,6 +572,7 @@ int main(int argc, char** argv) {
         status.update(0, stats, "stopped");
         log.write("FINAL_STATS accepted=" + std::to_string(stats.accepted) +
                   " rejected=" + std::to_string(stats.rejected) +
+                  " clean_job_stale=" + std::to_string(stats.clean_job_stale) +
                   " reconnects=" + std::to_string(stats.reconnects));
         active_client = nullptr;
         return 0;

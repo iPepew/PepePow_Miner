@@ -169,6 +169,15 @@ bool response_success(const json& message) {
 }
 } // namespace
 
+ShareResponseKind classify_share_response(
+    bool success, bool invalidated_by_clean_job, bool unspecified_error) noexcept {
+    if (success) return ShareResponseKind::accepted;
+    if (invalidated_by_clean_job && unspecified_error) {
+        return ShareResponseKind::clean_job_stale;
+    }
+    return ShareResponseKind::rejected;
+}
+
 class Client::Impl {
 public:
     explicit Impl(Config config) : config_(std::move(config)) {}
@@ -217,22 +226,31 @@ public:
             return;
         }
 
-        std::string job_id;
+        PendingSubmit pending;
         {
             std::lock_guard lock(pending_mutex_);
             const auto it = pending_submit_.find(id);
             if (it == pending_submit_.end()) return;
-            job_id = it->second;
+            pending = it->second;
             pending_submit_.erase(it);
         }
 
         const auto error = message.value("error", json(nullptr));
-        if (response_success(message)) {
+        const auto kind = classify_share_response(
+            response_success(message), pending.invalidated_by_clean_job, error.is_null());
+        if (kind == ShareResponseKind::accepted) {
             ++accepted_;
-            log("Share accepted: job=" + job_id);
+            log("Share accepted: job=" + pending.job_id);
+        } else if (kind == ShareResponseKind::clean_job_stale) {
+            // Keep this in the total rejected count. The extra counter only
+            // attributes a known clean-job transition and never hides it.
+            ++rejected_;
+            ++clean_job_stale_;
+            log("Share stale after clean job: job=" + pending.job_id +
+                " reason=" + error_text(error));
         } else {
             ++rejected_;
-            log("Share rejected: job=" + job_id + " reason=" + error_text(error));
+            log("Share rejected: job=" + pending.job_id + " reason=" + error_text(error));
         }
     }
 
@@ -260,6 +278,15 @@ public:
             job.extranonce1 = extranonce1_;
             job.extranonce2_size = extranonce2_size_;
             job.difficulty = difficulty_;
+            if (job.clean_jobs) {
+                std::lock_guard lock(pending_mutex_);
+                for (auto& entry : pending_submit_) {
+                    auto& pending = entry.second;
+                    if (pending.job_id != job.job_id) {
+                        pending.invalidated_by_clean_job = true;
+                    }
+                }
+            }
             if (job_handler_) job_handler_(job);
             log("New job " + job.job_id + (job.clean_jobs ? " (clean)" : ""));
         } else if (method == "mining.set_extranonce") {
@@ -346,7 +373,7 @@ public:
         const int id = next_id_++;
         {
             std::lock_guard lock(pending_mutex_);
-            pending_submit_[id] = share.job_id;
+            pending_submit_[id] = PendingSubmit{share.job_id, false};
         }
         try {
             send_json({{"id",id},{"method","mining.submit"},{"params",json::array({config_.username,share.job_id,share.extranonce2,share.ntime,share.nonce})}});
@@ -365,13 +392,18 @@ public:
     std::atomic_bool stop_{false};
     socket_handle socket_{invalid_socket};
     std::mutex send_mutex_;
+    struct PendingSubmit {
+        std::string job_id;
+        bool invalidated_by_clean_job{false};
+    };
+
     std::mutex pending_mutex_;
-    std::unordered_map<int,std::string> pending_submit_;
+    std::unordered_map<int,PendingSubmit> pending_submit_;
     std::atomic_int next_id_{10};
     std::string extranonce1_;
     std::size_t extranonce2_size_{4};
     double difficulty_{1.0};
-    std::atomic_uint64_t accepted_{0}, rejected_{0}, reconnects_{0};
+    std::atomic_uint64_t accepted_{0}, rejected_{0}, clean_job_stale_{0}, reconnects_{0};
 };
 
 Client::Client(Config config) : impl_(std::make_unique<Impl>(std::move(config))) {}
@@ -381,7 +413,10 @@ void Client::set_log_handler(LogHandler handler) { impl_->log_handler_ = std::mo
 void Client::run() { impl_->run(); }
 void Client::stop() { impl_->stop(); }
 bool Client::submit(const Share& share) { return impl_->submit(share); }
-Stats Client::stats() const noexcept { return {impl_->accepted_.load(), impl_->rejected_.load(), impl_->reconnects_.load()}; }
+Stats Client::stats() const noexcept {
+    return {impl_->accepted_.load(), impl_->rejected_.load(),
+            impl_->clean_job_stale_.load(), impl_->reconnects_.load()};
+}
 
 Endpoint parse_endpoint(const std::string& url) {
     Endpoint endpoint;

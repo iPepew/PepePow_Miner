@@ -52,9 +52,21 @@ struct Share {
 
 struct Stats {
     std::uint64_t accepted{0};
+    // Total pool rejects. clean_job_stale is an attributed subset, not a
+    // replacement, so admission gates cannot accidentally hide pool rejects.
     std::uint64_t rejected{0};
+    std::uint64_t clean_job_stale{0};
     std::uint64_t reconnects{0};
 };
+
+enum class ShareResponseKind {
+    accepted,
+    rejected,
+    clean_job_stale
+};
+
+[[nodiscard]] ShareResponseKind classify_share_response(
+    bool success, bool invalidated_by_clean_job, bool unspecified_error) noexcept;
 
 class Client {
 public:

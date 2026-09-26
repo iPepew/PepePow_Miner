@@ -77,6 +77,17 @@ bool validate_consensus_vector(const ConsensusVector& vector) {
 } // namespace
 
 int main() {
+    using pepepow::stratum::ShareResponseKind;
+    assert(pepepow::stratum::classify_share_response(true, false, true) ==
+           ShareResponseKind::accepted);
+    assert(pepepow::stratum::classify_share_response(false, false, true) ==
+           ShareResponseKind::rejected);
+    assert(pepepow::stratum::classify_share_response(false, true, false) ==
+           ShareResponseKind::rejected);
+    assert(pepepow::stratum::classify_share_response(false, true, true) ==
+           ShareResponseKind::clean_job_stale);
+    std::cout << "PASS: clean-job stale response classification matched\n";
+
     pepepow::MiningJob job{};
     job.version = 0x11223344U;
     job.ntime = 0x55667788U;
