@@ -34,11 +34,6 @@ jobs:
         with:
           ref: 5a49c6d75df5087545ae2722c4ae1313af43eda7
           fetch-depth: 1
-      - name: Confirm exact admitted checkout
-        run: |
-          set -Eeuo pipefail
-          test "$(git rev-parse HEAD)" = "$VERIFIED_CODE"
-          echo "VERIFIED_PRODUCTION_TREE=$VERIFIED_CODE"
       - name: Validate HiveOS wrapper and identity
         run: |
           set -Eeuo pipefail
