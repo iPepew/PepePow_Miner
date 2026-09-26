@@ -127,15 +127,16 @@ __device__ __forceinline__ ExactTrigReduction exact_fixed_window_reduce(double v
         : product_high;
     const unsigned int exponent_shift = leading + static_cast<unsigned int>(renormalize);
     const std::uint64_t rounded = ((((significant + 1ULL) >> 10U) + 1ULL) >> 1U);
+    // Consensus inputs reaching this specialized magnitude are positive:
+    // matrix, hash_mod, nibble and nonce_mod are non-negative, and each y
+    // transform preserves the sign once x >= 2^31. Negative small y stays on
+    // libdevice's exponent<31 path. Remove the unreachable signed-input arm.
     const std::uint64_t sign =
-        (bits & 0x8000000000000000ULL) ^
-        (static_cast<std::uint64_t>(round_bit) << 63U);
+        static_cast<std::uint64_t>(round_bit) << 63U;
     const std::uint64_t remainder_bits =
         (0x3fe0000000000000ULL -
          (static_cast<std::uint64_t>(exponent_shift) << 52U)) + rounded;
-    const int quadrant = (bits >> 63U) != 0ULL
-        ? -static_cast<int>(quadrant_abs)
-        : static_cast<int>(quadrant_abs);
+    const int quadrant = static_cast<int>(quadrant_abs);
     return {__longlong_as_double(static_cast<long long>(remainder_bits | sign)), quadrant};
 }
 
