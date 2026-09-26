@@ -33,8 +33,13 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Verify protocol patch ancestry
-        run: git merge-base --is-ancestor 82d248a22dcf1803b428f98235116defc3d2f99c HEAD
+      - name: Verify protocol patch content
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'clean_job_stale' native/include/pepepow/stratum/client.hpp
+          grep -q 'invalidated_by_clean_job' native/src/network/stratum_client.cpp
+          grep -q 'clean-job stale response classification matched' native/tests/core_tests.cpp
 
       - name: Configure CPU tests
         run: cmake -S native -B native/build -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
