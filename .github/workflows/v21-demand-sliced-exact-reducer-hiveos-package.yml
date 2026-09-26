@@ -126,7 +126,9 @@ jobs:
           set -Eeuo pipefail
           notes='Tesla V100 pool-test candidate built from verified code 5a49c6d75df5087545ae2722c4ae1313af43eda7. Full offline admission +15.1365%, direct differential 100000/0, zero spills. Test only; no stable/live promotion.'
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO" --clobber
+            gh release delete-asset "$RELEASE_TAG" "$ASSET" --repo "$GH_REPO" -y || true
+            gh release delete-asset "$RELEASE_TAG" "$ASSET.sha256" --repo "$GH_REPO" -y || true
+            gh release upload "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO"
             gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Demand-Sliced Exact Reducer V100 Pool Candidate' --notes "$notes" --prerelease
           else
             gh release create "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Demand-Sliced Exact Reducer V100 Pool Candidate' --notes "$notes" --prerelease
