@@ -32,11 +32,12 @@ jobs:
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - name: Verify production tree is identical to admitted code
+          ref: 5a49c6d75df5087545ae2722c4ae1313af43eda7
+          fetch-depth: 1
+      - name: Confirm exact admitted checkout
         run: |
           set -Eeuo pipefail
-          git diff --exit-code "$VERIFIED_CODE" HEAD -- native hiveos VERSION
+          test "$(git rev-parse HEAD)" = "$VERIFIED_CODE"
           echo "VERIFIED_PRODUCTION_TREE=$VERIFIED_CODE"
       - name: Validate HiveOS wrapper and identity
         run: |
