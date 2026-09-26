@@ -89,12 +89,13 @@ __device__ __forceinline__ ExactTrigReduction exact_fixed_window_reduce(double v
         __umul64hi(c2, mantissa) + static_cast<std::uint64_t>(sum2 < lo2);
     std::uint64_t fraction_low = sum2;
 
-    const unsigned int shift = (biased - 1024U) & 63U;
-    if (shift != 0U) {
-        fraction_high = (fraction_high << shift) |
-                        (fraction_low >> (64U - shift));
-        fraction_low = (fraction_low << shift) | (sum1 >> (64U - shift));
-    }
+    // The caller admits only unbiased exponents 31..56, hence shift is
+    // exactly 30..55. Specialize the hot path and remove the unreachable
+    // zero-shift branch without changing any FP64 operation or rounding.
+    const unsigned int shift = biased - 1024U;
+    fraction_high = (fraction_high << shift) |
+                    (fraction_low >> (64U - shift));
+    fraction_low = (fraction_low << shift) | (sum1 >> (64U - shift));
 
     const unsigned int round_bit = static_cast<unsigned int>((fraction_high >> 61U) & 1U);
     const unsigned int quadrant_abs =
