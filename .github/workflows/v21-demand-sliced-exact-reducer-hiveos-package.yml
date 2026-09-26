@@ -97,6 +97,7 @@ jobs:
           product=PepeW-Miner-v2.1 BETA
           version=2.1-beta.1
           workflow_commit=$GITHUB_SHA
+          source_commit=$VERIFIED_CODE
           verified_code_commit=$VERIFIED_CODE
           architecture=demand-sliced-exact-reducer-positive-domain
           offline_full_gain_pct=15.136476426799007
