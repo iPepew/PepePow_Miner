@@ -1,0 +1,146 @@
+name: PepeW v2.1 Demand-Sliced Exact Reducer HiveOS Package
+on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: ['.github/workflows/v21-demand-sliced-exact-reducer-hiveos-package.yml']
+permissions:
+  contents: write
+defaults:
+  run:
+    shell: bash
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      RELEASE_TAG: v2.1-demand-sliced-exact-reducer-v100-pool-candidate
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-HiveOS.tar.gz
+      VERIFIED_CODE: 5a49c6d75df5087545ae2722c4ae1313af43eda7
+    steps:
+      - name: Reject late build
+        run: test "$(date -u +%s)" -lt "$(date -u -d '2026-09-26 18:20:00 UTC' +%s)"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify production tree is identical to admitted code
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code "$VERIFIED_CODE" HEAD -- native hiveos VERSION
+          echo "VERIFIED_PRODUCTION_TREE=$VERIFIED_CODE"
+      - name: Install build tools
+        run: |
+          set -Eeuo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils gh
+          python3 -m pip install --no-cache-dir "cmake==3.31.10"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - name: Validate HiveOS wrapper and identity
+        run: |
+          set -Eeuo pipefail
+          test "$(tr -d '\r\n' < VERSION)" = "2.1-beta.1"
+          grep -F 'CUSTOM_VERSION="v2.1 BETA"' hiveos/h-manifest.conf
+          bash -n hiveos/h-config.sh
+          bash -n hiveos/h-run.sh
+          bash -n hiveos/h-stats.sh
+      - name: Configure admitted production candidate
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc             -DPEPEPOW_ENABLE_CUDA=ON             -DPEPEPOW_BUILD_TESTS=ON             -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON             -DPEPEPOW_CUDA_ARCHITECTURES=70-real             -DPEPEPOW_CUDA_THREADS=128             -DPEPEPOW_CUDA_MIN_BLOCKS=1             -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON             -DPEPEPOW_CUDA_HOTRUN8=ON             -DPEPEPOW_CUDA_SCALED_MATRIX=OFF             -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON             -DPEPEPOW_CUDA_ASSUME_FINITE=ON             -DPEPEPOW_CUDA_SW_STATE_MODE=3             -DPEPEPOW_CUDA_BYTE_UNROLL=1             -DPEPEPOW_CUDA_DEMAND_SLICED_REDUCER=ON             '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1'
+      - name: Build and verify consensus and resources
+        run: |
+          set -Eeuo pipefail
+          cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests 2>&1 | tee /tmp/build.log
+          ./build/pepepow_core_tests | tee /tmp/core.log
+          grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
+          grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
+          grep -F 'PASS: live nBits share-target boundaries matched' /tmp/core.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepowminer > /tmp/sass.txt
+          python3 - <<'PY'
+          import json,re
+          log=open('/tmp/build.log',errors='replace').read().splitlines()
+          res=None
+          for i,line in enumerate(log):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_local_phase_kernel' in line:
+                  b='\n'.join(log[i:i+8])
+                  res={'registers':int(re.search(r'Used (\d+) registers',b).group(1)),
+                       'stack_bytes':int(re.search(r'(\d+) bytes stack frame',b).group(1))}
+                  break
+          if not res: raise SystemExit('missing production resources')
+          lines=open('/tmp/sass.txt',errors='replace').read().splitlines(); active=False; ops=[]
+          for line in lines:
+              if 'Function :' in line:
+                  active='hoohash_final_hotrun8_local_phase_kernel' in line; continue
+              if active and '/*' in line and '*/' in line and ';' in line:
+                  op=line.split('*/',1)[1].strip().split()[0]
+                  if op!='NOP': ops.append(op)
+          out={'sm':70,'kernel_sass':len(ops),'registers':res['registers'],'stack_bytes':res['stack_bytes'],'spill_bytes':0}
+          out['pass']=out=={'sm':70,'kernel_sass':1968,'registers':54,'stack_bytes':80,'spill_bytes':0}
+          print('PACKAGE_RESOURCE_RESULT '+json.dumps(out,sort_keys=True))
+          open('/tmp/resources.json','w').write(json.dumps(out,indent=2,sort_keys=True)+'\n')
+          if not out['pass']: raise SystemExit('packaged binary differs from admitted resources')
+          PY
+      - name: Assemble immutable HiveOS prerelease
+        run: |
+          set -Eeuo pipefail
+          rm -rf stage dist
+          mkdir -p "stage/$ROOT" dist
+          install -m 0755 build/pepepowminer "stage/$ROOT/pepepowminer"
+          install -m 0755 hiveos/h-config.sh "stage/$ROOT/h-config.sh"
+          install -m 0755 hiveos/h-run.sh "stage/$ROOT/h-run.sh"
+          install -m 0755 hiveos/h-stats.sh "stage/$ROOT/h-stats.sh"
+          install -m 0755 hiveos/stratum-replay-proxy.py "stage/$ROOT/stratum-replay-proxy.py"
+          install -m 0644 hiveos/h-manifest.conf "stage/$ROOT/h-manifest.conf"
+          install -m 0644 /tmp/resources.json "stage/$ROOT/resources.json"
+          cat > "stage/$ROOT/BUILD_INFO.txt" <<EOF
+          product=PepeW-Miner-v2.1 BETA
+          version=2.1-beta.1
+          workflow_commit=$GITHUB_SHA
+          verified_code_commit=$VERIFIED_CODE
+          architecture=demand-sliced-exact-reducer-positive-domain
+          offline_full_gain_pct=15.136476426799007
+          offline_candidate_mhs=13.688
+          offline_baseline_mhs=11.8885
+          differential_100k_mismatches=0
+          candidate_spills=0
+          kernel_sass=1968
+          registers=54
+          stack_bytes=80
+          cuda_toolkit=12.8.1
+          cuda_architectures=70-real
+          gpu_target=Tesla V100 / Volta
+          threads=128
+          algorithm=HooHash V110
+          release_channel=BETA_TEST
+          EOF
+          sha256sum "stage/$ROOT/pepepowminer" > "stage/$ROOT/pepepowminer.sha256"
+          tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "$ROOT" | gzip -n > "dist/$ASSET"
+          sha256sum "dist/$ASSET" | tee "dist/$ASSET.sha256"
+      - name: Publish isolated prerelease candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          notes='Tesla V100 pool-test candidate built from verified code 5a49c6d75df5087545ae2722c4ae1313af43eda7. Full offline admission +15.1365%, direct differential 100000/0, zero spills. Test only; no stable/live promotion.'
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Demand-Sliced Exact Reducer V100 Pool Candidate' --notes "$notes" --prerelease
+          else
+            gh release create "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Demand-Sliced Exact Reducer V100 Pool Candidate' --notes "$notes" --prerelease
+          fi
+          echo "download=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$ASSET"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demand-sliced-exact-reducer-hiveos-${{ github.sha }}
+          path: |
+            dist/
+            /tmp/build.log
+            /tmp/core.log
+            /tmp/resources.json
+          retention-days: 30
