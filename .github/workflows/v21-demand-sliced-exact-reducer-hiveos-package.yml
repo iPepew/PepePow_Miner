@@ -22,9 +22,6 @@ jobs:
     steps:
       - name: Reject late build
         run: test "$(date -u +%s)" -lt "$(date -u -d '2026-09-26 18:20:00 UTC' +%s)"
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Install build tools
         run: |
           set -Eeuo pipefail
@@ -33,6 +30,9 @@ jobs:
           python3 -m pip install --no-cache-dir "cmake==3.31.10"
           rm -rf /var/lib/apt/lists/*
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Verify production tree is identical to admitted code
         run: |
           set -Eeuo pipefail
