@@ -1,4 +1,4 @@
-name: PepeW v2.1 Demand-Sliced Exact Reducer HiveOS Package
+name: PepeW v2.1 Patched Stratum Accounting HiveOS Package
 on:
   push:
     branches: [agent/demand-sliced-batch-correctness-20260917]
@@ -15,13 +15,13 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      RELEASE_TAG: v2.1-demand-sliced-exact-reducer-5a49c6d-v100-pool-candidate
+      RELEASE_TAG: v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-HiveOS.tar.gz
-      VERIFIED_CODE: 5a49c6d75df5087545ae2722c4ae1313af43eda7
+      VERIFIED_CODE: 9879165760a736a62969b373e6673112e4d04a1b
     steps:
       - name: Reject late build
-        run: test "$(date -u +%s)" -lt "$(date -u -d '2026-09-26 18:20:00 UTC' +%s)"
+        run: test "$(date -u +%s)" -lt "$(date -u -d '2026-09-28 00:05:00 UTC' +%s)"
       - name: Install build tools
         run: |
           set -Eeuo pipefail
@@ -50,8 +50,10 @@ jobs:
       - name: Build and verify consensus and resources
         run: |
           set -Eeuo pipefail
-          cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests 2>&1 | tee /tmp/build.log
+          cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests pepepow_stratum_clean_job_replay 2>&1 | tee /tmp/build.log
           ./build/pepepow_core_tests | tee /tmp/core.log
+          ctest --test-dir build -C Release --output-on-failure | tee /tmp/ctest.log
+          grep -F '100% tests passed, 0 tests failed out of 2' /tmp/ctest.log
           grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
           grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
           grep -F 'PASS: live nBits share-target boundaries matched' /tmp/core.log
@@ -104,6 +106,10 @@ jobs:
           offline_candidate_mhs=13.688
           offline_baseline_mhs=11.8885
           differential_100k_mismatches=0
+          stratum_accounting_patch_commit=82d248a22dcf1803b428f98235116defc3d2f99c
+          stratum_socket_replay_commit=df2b76d136c7f6baae23f0f4fbf6ff2d0d813653
+          stratum_socket_replay_run=36307236403
+          stratum_socket_replay_status=PASS
           candidate_spills=0
           kernel_sass=1968
           registers=54
@@ -124,14 +130,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          notes='Tesla V100 pool-test candidate built from verified code 5a49c6d75df5087545ae2722c4ae1313af43eda7. Full offline admission +15.1365%, direct differential 100000/0, zero spills. Test only; no stable/live promotion.'
+          notes='Tesla V100 pool-validation candidate built from patched, SHA-pinned code 9879165760a736a62969b373e6673112e4d04a1b. CUDA kernel remains the offline-admitted exact reducer (+15.1365%, differential 100000/0, zero spills); Stratum accounting patch passed socket replay run 36307236403. Test only; no stable/live promotion.'
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             gh release delete-asset "$RELEASE_TAG" "$ASSET" --repo "$GH_REPO" -y || true
             gh release delete-asset "$RELEASE_TAG" "$ASSET.sha256" --repo "$GH_REPO" -y || true
             gh release upload "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO"
-            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Demand-Sliced Exact Reducer V100 Pool Candidate' --notes "$notes" --prerelease
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --title 'PepeW v2.1 Exact Reducer + Patched Stratum V100 Candidate' --notes "$notes" --prerelease
           else
-            gh release create "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Demand-Sliced Exact Reducer V100 Pool Candidate' --notes "$notes" --prerelease
+            gh release create "$RELEASE_TAG" "dist/$ASSET" "dist/$ASSET.sha256" --repo "$GH_REPO" --target "$GITHUB_SHA" --title 'PepeW v2.1 Exact Reducer + Patched Stratum V100 Candidate' --notes "$notes" --prerelease
           fi
           echo "download=https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$ASSET"
       - uses: actions/upload-artifact@v4
@@ -141,5 +147,6 @@ jobs:
             dist/
             /tmp/build.log
             /tmp/core.log
+            /tmp/ctest.log
             /tmp/resources.json
           retention-days: 30
