@@ -1,0 +1,49 @@
+name: Stratum clean-job socket replay gate
+
+on:
+  push:
+    branches:
+      - agent/demand-sliced-batch-correctness-20260917
+    paths:
+      - "native/**"
+      - ".github/workflows/stratum-clean-job-replay-gate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  socket-replay:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - name: Reject late start
+        shell: bash
+        run: |
+          set -euo pipefail
+          now="$(date -u +%s)"
+          cutoff="$(date -u -d '2026-09-27 09:05:00Z' +%s)"
+          test "$now" -lt "$cutoff" || {
+            echo "Late start rejected before checkout/build"
+            exit 1
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify replay source
+        run: |
+          set -euo pipefail
+          grep -q 'socket clean-job replay' native/tests/stratum_clean_job_replay.cpp
+          grep -q 'clean_job_stale' native/tests/stratum_clean_job_replay.cpp
+
+      - name: Configure CPU tests
+        run: cmake -S native -B native/build -DPEPEPOW_BUILD_TESTS=ON -DPEPEPOW_ENABLE_CUDA=OFF -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build CPU tests
+        run: cmake --build native/build --config Release --parallel
+
+      - name: Run socket replay only
+        run: ctest --test-dir native/build -C Release -R pepepow_stratum_clean_job_replay --output-on-failure
+
+      - name: Run complete CPU suite
+        run: ctest --test-dir native/build -C Release --output-on-failure
