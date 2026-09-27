@@ -15,7 +15,7 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      RELEASE_TAG: v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate
+      RELEASE_TAG: v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate-r2
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-HiveOS.tar.gz
       VERIFIED_CODE: 9879165760a736a62969b373e6673112e4d04a1b
