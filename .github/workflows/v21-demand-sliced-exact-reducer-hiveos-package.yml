@@ -32,7 +32,7 @@ jobs:
           /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
       - uses: actions/checkout@v4
         with:
-          ref: 5a49c6d75df5087545ae2722c4ae1313af43eda7
+          ref: 9879165760a736a62969b373e6673112e4d04a1b
           fetch-depth: 1
       - name: Validate HiveOS wrapper and identity
         run: |
