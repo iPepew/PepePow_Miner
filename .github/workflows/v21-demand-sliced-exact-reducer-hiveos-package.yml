@@ -121,7 +121,11 @@ jobs:
           algorithm=HooHash V110
           release_channel=BETA_TEST
           EOF
-          sha256sum "stage/$ROOT/pepepowminer" > "stage/$ROOT/pepepowminer.sha256"
+          (
+            cd "stage/$ROOT"
+            sha256sum pepepowminer > pepepowminer.sha256
+            sha256sum -c pepepowminer.sha256
+          )
           tar --sort=name --owner=0 --group=0 --numeric-owner -C stage -cf - "$ROOT" | gzip -n > "dist/$ASSET"
           sha256sum "dist/$ASSET" | tee "dist/$ASSET.sha256"
       - name: Publish isolated prerelease candidate
