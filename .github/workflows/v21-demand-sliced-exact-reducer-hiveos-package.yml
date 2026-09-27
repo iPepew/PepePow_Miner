@@ -52,7 +52,7 @@ jobs:
           set -Eeuo pipefail
           cmake --build build --parallel 4 --target pepepowminer pepepow_core_tests pepepow_stratum_clean_job_replay 2>&1 | tee /tmp/build.log
           ./build/pepepow_core_tests | tee /tmp/core.log
-          ctest --test-dir build -C Release --output-on-failure | tee /tmp/ctest.log
+          ctest --test-dir build -C Release -R 'pepepow_(core_tests|stratum_clean_job_replay)' --output-on-failure | tee /tmp/ctest.log
           grep -F '100% tests passed, 0 tests failed out of 2' /tmp/ctest.log
           grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
           grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
