@@ -3,6 +3,9 @@
 #include <nlohmann/json.hpp>
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
