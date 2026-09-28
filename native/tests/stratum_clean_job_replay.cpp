@@ -161,18 +161,22 @@ int main() {
             send_json(peer.value, notify("old-job", false));
 
             std::vector<int> old_ids;
-            for (int index = 0; index < 3; ++index) {
+            for (int index = 0; index < 4; ++index) {
                 const auto submit = read_json(peer.value, buffer);
                 assert(submit.at("method") == "mining.submit");
                 assert(submit.at("params").at(1) == "old-job");
                 old_ids.push_back(submit.at("id").get<int>());
             }
 
+            // This pool rejects a batch just before delivering the clean-job
+            // notification. The response is still attributable to the
+            // transition when the clean notification follows immediately.
+            send_json(peer.value, {{"id", old_ids[0]}, {"result", false}, {"error", nullptr}});
             send_json(peer.value, notify("new-job", true));
-            send_json(peer.value, {{"id", old_ids[0]}, {"result", true}, {"error", nullptr}});
-            send_json(peer.value, {{"id", old_ids[1]}, {"result", false}, {"error", nullptr}});
+            send_json(peer.value, {{"id", old_ids[1]}, {"result", true}, {"error", nullptr}});
+            send_json(peer.value, {{"id", old_ids[2]}, {"result", false}, {"error", nullptr}});
             send_json(peer.value, {
-                {"id", old_ids[2]},
+                {"id", old_ids[3]},
                 {"result", false},
                 {"error", json::array({23, "low difficulty share", nullptr})}
             });
@@ -218,7 +222,7 @@ int main() {
     std::thread client_thread([&] { client.run(); });
 
     assert(wait_for([&] { return !jobs.empty(); }, jobs_cv, jobs_mutex));
-    for (int index = 0; index < 3; ++index) {
+    for (int index = 0; index < 4; ++index) {
         assert(client.submit({"old-job", "00000001", "5f5e1000",
                               "0000000" + std::to_string(index + 1)}));
     }
@@ -230,8 +234,8 @@ int main() {
     pepepow::stratum::Stats stats;
     do {
         stats = client.stats();
-        if (stats.accepted == 2U && stats.rejected == 2U &&
-            stats.clean_job_stale == 1U) {
+        if (stats.accepted == 2U && stats.rejected == 3U &&
+            stats.clean_job_stale == 2U) {
             break;
         }
         std::this_thread::sleep_for(10ms);
@@ -251,26 +255,30 @@ int main() {
     assert(jobs[0] == "old-job");
     assert(jobs[1] == "new-job");
     assert(stats.accepted == 2U);
-    assert(stats.rejected == 2U);
-    assert(stats.clean_job_stale == 1U);
+    assert(stats.rejected == 3U);
+    assert(stats.clean_job_stale == 2U);
     assert(stats.reconnects == 0U);
 
     bool saw_stale = false;
+    bool saw_pre_notify_stale = false;
     bool saw_explicit_reject = false;
     {
         std::lock_guard lock(logs_mutex);
         for (const auto& message : logs) {
             saw_stale = saw_stale ||
                 message.find("Share stale after clean job: job=old-job") != std::string::npos;
+            saw_pre_notify_stale = saw_pre_notify_stale ||
+                message.find("Share stale around clean job: job=old-job") != std::string::npos;
             saw_explicit_reject = saw_explicit_reject ||
                 message.find("Share rejected: job=old-job reason=low difficulty share") !=
                     std::string::npos;
         }
     }
     assert(saw_stale);
+    assert(saw_pre_notify_stale);
     assert(saw_explicit_reject);
 
-    std::cout << "PASS: socket clean-job replay accepted=2 rejected=2 clean_job_stale=1\n";
+    std::cout << "PASS: socket clean-job replay accepted=2 rejected=3 clean_job_stale=2\n";
     return 0;
 }
 
