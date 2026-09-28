@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <deque>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -250,7 +251,36 @@ public:
                 " reason=" + error_text(error));
         } else {
             ++rejected_;
+            if (!success && error.is_null()) {
+                const auto now = std::chrono::steady_clock::now();
+                while (!recent_unspecified_rejects_.empty() &&
+                       now - recent_unspecified_rejects_.front().received_at >
+                           kPreNotifyStaleWindow) {
+                    recent_unspecified_rejects_.pop_front();
+                }
+                recent_unspecified_rejects_.push_back({pending.job_id, now});
+                if (recent_unspecified_rejects_.size() > 256U) {
+                    recent_unspecified_rejects_.pop_front();
+                }
+            }
             log("Share rejected: job=" + pending.job_id + " reason=" + error_text(error));
+        }
+    }
+
+    void attribute_pre_notify_stale(const std::string& new_job_id) {
+        const auto now = std::chrono::steady_clock::now();
+        while (!recent_unspecified_rejects_.empty() &&
+               now - recent_unspecified_rejects_.front().received_at >
+                   kPreNotifyStaleWindow) {
+            recent_unspecified_rejects_.pop_front();
+        }
+        for (auto& entry : recent_unspecified_rejects_) {
+            if (!entry.attributed && entry.job_id != new_job_id) {
+                entry.attributed = true;
+                ++clean_job_stale_;
+                log("Share stale around clean job: job=" + entry.job_id +
+                    " reason=unspecified pool response direction=pre-notify");
+            }
         }
     }
 
@@ -279,6 +309,7 @@ public:
             job.extranonce2_size = extranonce2_size_;
             job.difficulty = difficulty_;
             if (job.clean_jobs) {
+                attribute_pre_notify_stale(job.job_id);
                 std::lock_guard lock(pending_mutex_);
                 for (auto& entry : pending_submit_) {
                     auto& pending = entry.second;
@@ -396,8 +427,15 @@ public:
         std::string job_id;
         bool invalidated_by_clean_job{false};
     };
+    struct RecentUnspecifiedReject {
+        std::string job_id;
+        std::chrono::steady_clock::time_point received_at;
+        bool attributed{false};
+    };
+    static constexpr auto kPreNotifyStaleWindow = std::chrono::seconds(2);
 
     std::mutex pending_mutex_;
+    std::deque<RecentUnspecifiedReject> recent_unspecified_rejects_;
     std::unordered_map<int,PendingSubmit> pending_submit_;
     std::atomic_int next_id_{10};
     std::string extranonce1_;
