@@ -144,6 +144,12 @@ public:
                           "STRATUM Share stale after clean job: ").size()) << '\n';
             return;
         }
+        if (message.starts_with("STRATUM Share stale around clean job:")) {
+            std::cout << kYellow << "🟠 STALE" << kReset << "     "
+                      << message.substr(std::string_view(
+                          "STRATUM Share stale around clean job: ").size()) << '\n';
+            return;
+        }
         if (message.starts_with("STRATUM Share rejected:")) {
             std::cout << kRed << "❌ REJECTED" << kReset << "  "
                       << message.substr(std::string_view("STRATUM Share rejected: ").size()) << '\n';
