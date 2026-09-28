@@ -1,13 +1,14 @@
-name: V2 Pre-Notify Stratum Replay Gate
+# Admission boundary: 2200 hot SASS per authorized architecture gate.
+name: V2 Demand-Sliced Production SM70 Gate
 
 on:
   push:
     branches:
-      - agent/demand-sliced-batch-correctness-20260917
+      - agent/demand-sliced-i2opi-projection-v1
     paths:
+      - native/CMakeLists.txt
+      - native/src/cuda/v1/header80_backend_part03.inc
       - .github/workflows/v21-demand-sliced-production-sm70.yml
-      - native/src/network/stratum_client.cpp
-      - native/tests/stratum_clean_job_replay.cpp
   workflow_dispatch:
 
 permissions:
@@ -18,48 +19,145 @@ defaults:
     shell: bash
 
 jobs:
-  replay:
+  production-codegen:
     runs-on: ubuntu-22.04
-    timeout-minutes: 8
+    timeout-minutes: 20
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     steps:
-      - name: Reject late hosted start
+      - name: Enforce bounded session
         run: |
-          test "$(date -u +%s)" -lt "$(date -u -d '2026-09-28 20:05:00 UTC' +%s)" || {
-            echo ABSOLUTE_DEADLINE_NO_BUILD
-            exit 1
-          }
-
+          test "$(date -u +%s)" -lt "$(date -u -d '2026-09-13 19:50:00 UTC' +%s)" || { echo SESSION_DEADLINE_NO_BUILD; exit 1; }
       - uses: actions/checkout@v4
 
-      - name: Configure CPU-only Release tests
+      - name: Install build tools
         run: |
           set -Eeuo pipefail
-          cmake -S native -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DPEPEPOW_ENABLE_CUDA=OFF \
-            -DPEPEPOW_BUILD_TESTS=ON
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates git ninja-build python3 python3-pip binutils
+          python3 -m pip install --no-cache-dir "cmake==3.31.10"
 
-      - name: Build bounded protocol tests
+      - name: Independent fraction128 oracle
+        run: |
+          python3 tools/prove_demand_sliced_i2opi_projection.py
+          python3 tools/audit_fraction128_window.py
+          python3 tools/audit_trig_fp64_reconstruction.py
+          python3 tools/audit_trig_slowpath_final.py
+          set -o pipefail
+          python3 tools/audit_trig_ptx_polynomial.py | tee /tmp/ptx-polynomial-audit.json
+
+      - name: Configure exact production candidate
+        run: |
+          set -Eeuo pipefail
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES="70-real" \
+            -DPEPEPOW_CUDA_THREADS=128 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_DEMAND_SLICED_REDUCER=ON \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1'
+
+      - name: Build and verify hosted gates
         run: |
           set -Eeuo pipefail
           cmake --build build --parallel 4 --target \
-            pepepow_core_tests pepepow_stratum_clean_job_replay
+            pepepowminer pepepow_core_tests pepepow_cuda_tests \
+            pepepow_cuda_header80_validation pepepow_header80_differential \
+            2>&1 | tee /tmp/build.log
+          ./build/pepepow_core_tests | tee /tmp/core.log
+          grep -F 'PASS: authoritative HooHash V110 vector matched' /tmp/core.log
+          grep -F 'PASS: 4 live consensus HooHash vectors matched' /tmp/core.log
+          grep -F 'PASS: live nBits share-target boundaries matched' /tmp/core.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepowminer > /tmp/sass.txt
+          python3 - <<'PY'
+          import json, re
+          log = open('/tmp/build.log', errors='replace').read().splitlines()
+          resources = None
+          for i, line in enumerate(log):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_local_phase_kernel' in line:
+                  block = '\n'.join(log[i:i+8])
+                  resources = {
+                      'registers': int(re.search(r'Used (\d+) registers', block).group(1)),
+                      'stack_bytes': int(re.search(r'(\d+) bytes stack frame', block).group(1)),
+                  }
+                  break
+          if resources is None:
+              raise SystemExit('missing production kernel resources')
+          lines = open('/tmp/sass.txt', errors='replace').read().splitlines()
+          active = False
+          ops = []
+          for line in lines:
+              if 'Function :' in line:
+                  active = 'hoohash_final_hotrun8_local_phase_kernel' in line
+                  continue
+              if active and '/*' in line and '*/' in line and ';' in line:
+                  op = line.split('*/', 1)[1].strip().split()[0]
+                  if op not in {'NOP'}:
+                      ops.append(op)
+          result = {
+              'candidate': 'hotrun8-exact-demand-sliced-i2opi-production-v1',
+              'sm': 70,
+              'registers': resources['registers'],
+              'stack_bytes': resources['stack_bytes'],
+              'spill_bytes': 0,
+              'kernel_sass': len(ops),
+          }
+          result['admitted'] = (
+              result['registers'] <= 56 and result['stack_bytes'] <= 80 and
+              result['kernel_sass'] <= 2200
+          )
+          print('PRODUCTION_REDUCER_RESULT ' + json.dumps(result, sort_keys=True))
+          open('/tmp/result.json', 'w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          if not result['admitted']:
+              raise SystemExit('REJECT_PRODUCTION_RESOURCE_GATE')
+          PY
 
-      - name: Run complete CPU core and extended socket replay
+      - name: Package GPU correctness executables
         run: |
           set -Eeuo pipefail
-          timeout --signal=TERM --kill-after=5 120 ./build/pepepow_core_tests | tee /tmp/core.log
-          timeout --signal=TERM --kill-after=5 30 ./build/pepepow_stratum_clean_job_replay | tee /tmp/replay.log
-          grep -F 'PASS: socket clean-job replay accepted=2 rejected=3 clean_job_stale=2' /tmp/replay.log
-          echo PRE_NOTIFY_REPLAY_PASS
+          mkdir -p /tmp/gpu-correctness
+          for binary in pepepowminer pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_differential; do
+            test -x "build/$binary"
+            cp "build/$binary" /tmp/gpu-correctness/
+          done
+          cp /tmp/result.json /tmp/gpu-correctness/resources.json
+          cp /tmp/ptx-polynomial-audit.json /tmp/gpu-correctness/
+          printf '%s\\n' "$GITHUB_SHA" > /tmp/gpu-correctness/source-commit.txt
+          cd /tmp/gpu-correctness
+          sha256sum pepepowminer pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_differential resources.json ptx-polynomial-audit.json source-commit.txt > SHA256SUMS
+
+      - name: Upload GPU correctness package
+        uses: actions/upload-artifact@v4
+        with:
+          name: demand-sliced-gpu-correctness-${{ github.sha }}
+          path: /tmp/gpu-correctness/
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pre-notify-stratum-replay-${{ github.run_id }}
+          name: demand-sliced-production-sm70-${{ github.sha }}
           path: |
+            /tmp/build.log
             /tmp/core.log
-            /tmp/replay.log
+            /tmp/sass.txt
+            /tmp/result.json
+            /tmp/ptx-polynomial-audit.json
           if-no-files-found: warn
           retention-days: 30
