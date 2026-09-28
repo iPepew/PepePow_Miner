@@ -6,6 +6,8 @@ on:
       - agent/demand-sliced-batch-correctness-20260917
     paths:
       - .github/workflows/v21-demand-sliced-production-sm70.yml
+      - native/src/network/stratum_client.cpp
+      - native/tests/stratum_clean_job_replay.cpp
   workflow_dispatch:
 
 permissions:
