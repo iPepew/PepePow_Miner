@@ -237,8 +237,9 @@ public:
         }
 
         const auto error = message.value("error", json(nullptr));
+        const bool success = response_success(message);
         const auto kind = classify_share_response(
-            response_success(message), pending.invalidated_by_clean_job, error.is_null());
+            success, pending.invalidated_by_clean_job, error.is_null());
         if (kind == ShareResponseKind::accepted) {
             ++accepted_;
             log("Share accepted: job=" + pending.job_id);
