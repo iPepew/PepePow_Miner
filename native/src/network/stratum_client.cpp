@@ -347,6 +347,11 @@ public:
     }
 
     void clear_pending(const std::string& reason) {
+        // A clean notification only describes the current connection. Never
+        // let a recent null-error reject from a disconnected pool be attributed
+        // to a clean job received after reconnect (even within two seconds).
+        // This deque is owned by the receive thread, just like attribution.
+        recent_unspecified_rejects_.clear();
         std::lock_guard lock(pending_mutex_);
         if (!pending_submit_.empty()) {
             log("Discarding " + std::to_string(pending_submit_.size()) + " pending share response(s): " + reason);
