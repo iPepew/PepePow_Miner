@@ -168,9 +168,15 @@ int replay() {
             send_json(peer.value, {{"id", old_id}, {"result", false}, {"error", nullptr}});
             send_json(peer.value, {{"id", new_id}, {"result", false},
                                   {"error", json::array({23, "low difficulty share", nullptr})}});
+            // Completed IDs must also be ignored within the current connection:
+            // neither a duplicate reject nor a contradictory success is new work.
+            send_json(peer.value, {{"id", new_id}, {"result", false}, {"error", nullptr}});
+            send_json(peer.value, {{"id", new_id}, {"result", true}, {"error", nullptr}});
             send_json(peer.value, notify("newer-job", true));
             const auto fresh_id = submit_id(peer.value, buffer, "newer-job");
             send_json(peer.value, {{"id", fresh_id}, {"result", true}, {"error", nullptr}});
+            send_json(peer.value, {{"id", fresh_id}, {"result", true}, {"error", nullptr}});
+            send_json(peer.value, {{"id", fresh_id}, {"result", false}, {"error", nullptr}});
             // A job callback is a receive-order barrier, eliminating stats polling.
             send_json(peer.value, notify("drained", false));
             std::unique_lock lock(mutex);
@@ -226,7 +232,7 @@ int replay() {
     for (const auto& line : logs) {
         require(line.find("Share stale") == std::string::npos, "unexpected stale attribution log");
     }
-    std::cout << "PASS: reconnect isolates rejection history; duplicate ignored; explicit reject preserved\n";
+    std::cout << "PASS: reconnect isolates rejection history; cross-connection and same-connection duplicates/contradictions ignored; explicit reject preserved\n";
     return 0;
 }
 } // namespace
