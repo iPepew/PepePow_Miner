@@ -5,6 +5,7 @@
 #include <condition_variable>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -17,6 +18,7 @@ int main() {
     return 0;
 }
 #else
+#include "pepepow/stratum/evidence_file.hpp"
 #include <arpa/inet.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -103,7 +105,7 @@ int submit_id(int fd, std::string& buffer, const std::string& job) {
     return message.at("id").get<int>();
 }
 
-int replay() {
+int replay(const std::string& evidence_mode, const std::string& evidence_path) {
     Fd listener(::socket(AF_INET, SOCK_STREAM, 0));
     sockaddr_in address{};
     address.sin_family = AF_INET;
@@ -120,6 +122,8 @@ int replay() {
     std::condition_variable cv;
     std::vector<std::string> jobs;
     std::vector<std::string> logs;
+    std::vector<json> evidence;
+    unsigned sink_calls = 0;
     bool finish = false;
     std::exception_ptr server_error;
     Clock::time_point old_reject_sent{}, second_clean_sent{};
@@ -129,7 +133,19 @@ int replay() {
     config.username = "synthetic.worker";
     config.password = "synthetic-only";
     config.reconnect_seconds = 0; // Deliberately stay inside the attribution window.
+    std::unique_ptr<pepepow::stratum::EvidenceFile> evidence_file;
+    if (!evidence_path.empty()) evidence_file = std::make_unique<pepepow::stratum::EvidenceFile>(evidence_path);
     pepepow::stratum::Client client(std::move(config));
+    if (!evidence_mode.empty()) client.set_evidence_handler([&](const std::string& line) {
+        ++sink_calls;
+        if (evidence_mode == "--evidence-failure") throw std::runtime_error("synthetic sink failure");
+        if (evidence_file) evidence_file->write(line);
+        require(!line.empty() && line.back() == '\n', "evidence must be JSONL");
+        require(line.find("synthetic") == std::string::npos, "credential leaked to evidence");
+        require(line.find("old-job") == std::string::npos, "raw job leaked to evidence");
+        require(line.find("private-error-text") == std::string::npos, "pool text leaked to evidence");
+        evidence.push_back(json::parse(line));
+    });
     client.set_log_handler([&](const std::string& line) {
         std::lock_guard lock(mutex);
         logs.push_back(line);
@@ -166,12 +182,24 @@ int replay() {
             // a second rejection. An explicit new rejection near clean stays
             // ordinary, even though the old null rejection was very recent.
             send_json(peer.value, {{"id", old_id}, {"result", false}, {"error", nullptr}});
+            if (evidence_mode == "--evidence-invalid") {
+                // A 64-bit ID must not narrow to the pending 32-bit ID.
+                send_json(peer.value, {{"id", (std::uint64_t{1} << 32U) + static_cast<unsigned>(new_id)},
+                                      {"result", true}, {"error", nullptr}});
+                send_json(peer.value, {{"id", "private-error-text"}, {"result", true}, {"error", nullptr}});
+                send_json(peer.value, {{"id", std::numeric_limits<std::uint64_t>::max()}, {"result", true}, {"error", nullptr}});
+                send_json(peer.value, {{"id", -1}, {"result", true}, {"error", nullptr}});
+                send_json(peer.value, {{"id", static_cast<double>(new_id)}, {"result", true}, {"error", nullptr}});
+            }
             send_json(peer.value, {{"id", new_id}, {"result", false},
                                   {"error", json::array({23, "low difficulty share", nullptr})}});
             // Completed IDs must also be ignored within the current connection:
             // neither a duplicate reject nor a contradictory success is new work.
             send_json(peer.value, {{"id", new_id}, {"result", false}, {"error", nullptr}});
             send_json(peer.value, {{"id", new_id}, {"result", true}, {"error", nullptr}});
+            send_json(peer.value, {{"id", 9999}, {"result", "synthetic-only"},
+                                  {"error", json::array({99, "private-error-text", "synthetic.worker"})}});
+            if (evidence_mode == "--evidence-invalid") send_json(peer.value, json::array({"private-error-text"}));
             send_json(peer.value, notify("newer-job", true));
             const auto fresh_id = submit_id(peer.value, buffer, "newer-job");
             send_json(peer.value, {{"id", fresh_id}, {"result", true}, {"error", nullptr}});
@@ -214,6 +242,8 @@ int replay() {
     { std::lock_guard lock(mutex); finish = true; }
     cv.notify_all();
     server.join();
+    client.finish_evidence();
+    if (evidence_file) evidence_file->close();
     if (server_error) std::rethrow_exception(server_error);
     if (client_error) std::rethrow_exception(client_error);
 
@@ -229,6 +259,49 @@ int replay() {
     require(stats.rejected == 2, "inclusive reject count mismatch (duplicate counted?)");
     require(stats.reconnects == 1, "reconnect count mismatch");
     require(stats.clean_job_stale == 0, "old-connection rejection leaked into new clean job");
+    if (evidence_mode == "--evidence-failure") {
+        require(sink_calls == 1, "failed evidence sink was retried");
+        require(client.stats().evidence_errors == 1, "sink failure not exposed");
+    } else if (evidence_mode == "--evidence" || evidence_mode == "--evidence-invalid") {
+        require(client.stats().evidence_errors == 0, "evidence sink unexpectedly failed");
+        require(evidence.front().at("event") == "stream_start", "missing stream start");
+        require(evidence.back().at("event") == "stream_end", "missing stream end");
+        std::uint64_t seq = 0, previous_us = 0;
+        unsigned matched = 0, unmatched = 0, connections = 0, closes = 0, submits = 0, invalid = 0;
+        for (const auto& event : evidence) {
+            require(event.at("schema") == "pepew-stratum-evidence-v1", "schema mismatch");
+            require(event.at("seq").get<std::uint64_t>() == ++seq, "event sequence gap");
+            const auto us = event.at("monotonic_us").get<std::uint64_t>();
+            require(us >= previous_us, "non-monotonic evidence time");
+            previous_us = us;
+            const auto epoch = event.at("connection_epoch").get<unsigned>();
+            if (event.at("event") == "connection_open") {
+                require(epoch == ++connections, "connection epoch mismatch");
+            } else if (event.at("event") == "connection_close") ++closes;
+            else if (event.at("event") == "invalid_message") ++invalid;
+            else if (event.at("event") == "submit_attempt") ++submits;
+            else if (event.at("event") == "response") {
+                if (event.at("matched") == true) {
+                    ++matched;
+                    require(event.at("clean_ref") == 0, "unexpected invalidation reference");
+                    require(event.at("job_ref").get<std::string>().size() == 64, "bad job digest");
+                    require(epoch == (matched == 1 ? 1U : 2U), "response crossed epochs");
+                } else ++unmatched;
+                if (event.at("submit_id") == 9999) {
+                    require(event.at("result_type") == "string", "result shape lost");
+                    require(event.at("result_bool").is_null(), "untrusted result copied");
+                    require(event.at("error_code") == 99, "safe error code lost");
+                }
+            }
+            require(event.at("event") != "temporal_attribution", "cross-epoch attribution");
+        }
+        require(connections == 2 && closes == 2 && submits == 3, "lifecycle count mismatch");
+        require(matched == 3 && unmatched == 6, "response evidence count mismatch");
+        require(invalid == (evidence_mode == "--evidence-invalid" ? 6U : 0U), "invalid message missing");
+        require(evidence.back().at("accepted") == 1 &&
+                evidence.back().at("rejected_inclusive") == 2, "final evidence counters mismatch");
+        for (const auto& event : evidence) std::cout << event.dump() << '\n';
+    } else require(sink_calls == 0, "evidence not opt-in");
     for (const auto& line : logs) {
         require(line.find("Share stale") == std::string::npos, "unexpected stale attribution log");
     }
@@ -237,8 +310,8 @@ int replay() {
 }
 } // namespace
 
-int main() {
-    try { return replay(); }
+int main(int argc, char** argv) {
+    try { return replay(argc > 1 ? argv[1] : "", argc > 2 ? argv[2] : ""); }
     catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;

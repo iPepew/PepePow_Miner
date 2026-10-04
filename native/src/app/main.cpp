@@ -4,6 +4,7 @@
 #include "pepepow/crypto/pow.hpp"
 #include "pepepow/mining/target.hpp"
 #include "pepepow/stratum/client.hpp"
+#include "pepepow/stratum/evidence_file.hpp"
 #include "pepepow/version.hpp"
 #ifdef PEPEPOW_HAS_CUDA
 #include "pepepow/cuda/header80_backend.hpp"
@@ -267,6 +268,7 @@ void print_help() {
               << "  -p, --pass PASSWORD     Pool password, default x\n"
               << "      --diagnostic        Enable full job/share diagnostics\n"
               << "      --diagnostic-log P  Diagnostic log path\n"
+              << "      --stratum-evidence P  New sanitized JSONL file (opt-in)\n"
               << "      --list-gpu          List detected devices and exit\n"
               << "      --version           Show build identity and exit\n"
               << "  -h, --help              Show this help\n";
@@ -495,6 +497,7 @@ int main(int argc, char** argv) {
     try {
         std::string pool, username, password{"x"};
         std::optional<std::string> fallback;
+        std::optional<std::string> evidence_path;
         bool list_gpu = false;
         bool diagnostic = std::getenv("PEPEPOW_DIAGNOSTIC") != nullptr;
         std::string diagnostic_log = std::getenv("PEPEPOW_DIAGNOSTIC_LOG") ?
@@ -514,6 +517,7 @@ int main(int argc, char** argv) {
             else if (argument == "-p" || argument == "--pass") password = take_value("pass");
             else if (argument == "--diagnostic") diagnostic = true;
             else if (argument == "--diagnostic-log") diagnostic_log = take_value("diagnostic-log");
+            else if (argument == "--stratum-evidence") evidence_path = take_value("stratum-evidence");
             else if (argument == "--list-gpu") list_gpu = true;
             else if (argument == "--version") { std::cout << build_identity() << '\n'; return 0; }
             else if (argument == "--pepepow" || argument == "--no-longpoll") {}
@@ -559,7 +563,12 @@ int main(int argc, char** argv) {
         config.password = password;
         config.agent = std::string("PepeW/") + PEPEPOW_VERSION;
 
+        std::unique_ptr<pepepow::stratum::EvidenceFile> evidence_file;
+        if (evidence_path) evidence_file = std::make_unique<pepepow::stratum::EvidenceFile>(*evidence_path);
         pepepow::stratum::Client client(std::move(config));
+        if (evidence_file) client.set_evidence_handler([&](const std::string& line) {
+            evidence_file->write(line);
+        });
         client.set_log_handler([&log](const std::string& line) {
             log.write("STRATUM " + line);
         });
@@ -574,13 +583,19 @@ int main(int argc, char** argv) {
         });
         client.run();
         worker.stop();
+        // Evidence close may throw. Do not leave the signal handler pointing
+        // at a Client which stack unwinding is about to destroy.
+        active_client = nullptr;
+        client.finish_evidence();
+        if (evidence_file) evidence_file->close();
         const auto stats = client.stats();
         status.update(0, stats, "stopped");
         log.write("FINAL_STATS accepted=" + std::to_string(stats.accepted) +
                   " rejected=" + std::to_string(stats.rejected) +
                   " clean_job_stale=" + std::to_string(stats.clean_job_stale) +
-                  " reconnects=" + std::to_string(stats.reconnects));
-        active_client = nullptr;
+                  " reconnects=" + std::to_string(stats.reconnects) +
+                  " evidence_errors=" + std::to_string(stats.evidence_errors));
+        if (stats.evidence_errors != 0) throw std::runtime_error("Stratum evidence is incomplete: sink failed");
         return 0;
     } catch (const std::exception& error) {
         ConsoleUi::fatal(error.what());

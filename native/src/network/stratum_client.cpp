@@ -8,6 +8,7 @@
 #include <deque>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
@@ -168,6 +169,27 @@ bool response_success(const json& message) {
     const auto error = message.find("error");
     return error == message.end() || error->is_null();
 }
+
+// No arbitrary pool strings, credentials, extranonces or share payloads enter
+// the evidence channel. A digest correlates jobs without copying their text.
+std::string job_ref(const std::string& id) {
+    const auto digest = sha256(std::vector<std::uint8_t>(id.begin(), id.end()));
+    return bytes_to_hex(digest.data(), digest.size());
+}
+
+json safe_response(const json& message) {
+    const auto result = message.find("result");
+    const auto error = message.find("error");
+    json fields = {
+        {"result_type", result == message.end() ? "missing" : result->type_name()},
+        {"result_bool", result != message.end() && result->is_boolean() ? *result : json(nullptr)},
+        {"error_type", error == message.end() ? "missing" : error->type_name()},
+        {"error_code", nullptr}
+    };
+    if (error != message.end() && error->is_array() && !error->empty() &&
+        (*error)[0].is_number_integer()) fields["error_code"] = (*error)[0];
+    return fields;
+}
 } // namespace
 
 ShareResponseKind classify_share_response(
@@ -185,6 +207,25 @@ public:
     ~Impl() { stop(); }
 
     void log(const std::string& text) { if (log_handler_) log_handler_(text); else std::cout << text << '\n'; }
+
+    std::uint64_t evidence(json fields) {
+        if (!evidence_handler_) return 0;
+        std::lock_guard lock(evidence_mutex_);
+        if (evidence_disabled_) return 0;
+        try {
+            fields["schema"] = "pepew-stratum-evidence-v1";
+            fields["seq"] = ++evidence_seq_;
+            fields["monotonic_us"] = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - evidence_origin_).count();
+            fields["connection_epoch"] = connection_epoch_.load();
+            evidence_handler_(fields.dump() + "\n");
+            return evidence_seq_;
+        } catch (...) {
+            ++evidence_errors_;
+            evidence_disabled_ = true;
+            return 0;
+        }
+    }
 
     void send_json(const json& value) {
         const auto line = value.dump() + "\n";
@@ -231,7 +272,14 @@ public:
         {
             std::lock_guard lock(pending_mutex_);
             const auto it = pending_submit_.find(id);
-            if (it == pending_submit_.end()) return;
+            if (it == pending_submit_.end()) {
+                if (evidence_handler_) {
+                    auto fields = safe_response(message);
+                    fields.update({{"event", "response"}, {"submit_id", id}, {"matched", false}});
+                    evidence(std::move(fields));
+                }
+                return;
+            }
             pending = it->second;
             pending_submit_.erase(it);
         }
@@ -240,6 +288,17 @@ public:
         const bool success = response_success(message);
         const auto kind = classify_share_response(
             success, pending.invalidated_by_clean_job, error.is_null());
+        std::uint64_t response_seq = 0;
+        if (evidence_handler_) {
+            auto fields = safe_response(message);
+            fields.update({{"event", "response"}, {"submit_id", id}, {"matched", true},
+                           {"job_ref", job_ref(pending.job_id)},
+                           {"success", success}, {"clean_ref", pending.clean_ref},
+                           {"classification", success ? "accepted" :
+                               kind == ShareResponseKind::clean_job_stale ?
+                                   "suspected_post_notify_stale" : "rejected"}});
+            response_seq = evidence(std::move(fields));
+        }
         if (kind == ShareResponseKind::accepted) {
             ++accepted_;
             log("Share accepted: job=" + pending.job_id);
@@ -259,7 +318,7 @@ public:
                            kPreNotifyStaleWindow) {
                     recent_unspecified_rejects_.pop_front();
                 }
-                recent_unspecified_rejects_.push_back({pending.job_id, now});
+                recent_unspecified_rejects_.push_back({pending.job_id, now, false, id, response_seq});
                 if (recent_unspecified_rejects_.size() > 256U) {
                     recent_unspecified_rejects_.pop_front();
                 }
@@ -268,7 +327,7 @@ public:
         }
     }
 
-    void attribute_pre_notify_stale(const std::string& new_job_id) {
+    void attribute_pre_notify_stale(const std::string& new_job_id, std::uint64_t clean_ref) {
         const auto now = std::chrono::steady_clock::now();
         while (!recent_unspecified_rejects_.empty() &&
                now - recent_unspecified_rejects_.front().received_at >
@@ -279,6 +338,10 @@ public:
             if (!entry.attributed && entry.job_id != new_job_id) {
                 entry.attributed = true;
                 ++clean_job_stale_;
+                if (evidence_handler_) evidence({
+                    {"event", "temporal_attribution"}, {"submit_id", entry.submit_id},
+                    {"job_ref", job_ref(entry.job_id)}, {"response_ref", entry.response_ref},
+                    {"clean_ref", clean_ref}, {"classification", "suspected_pre_notify_stale"}});
                 log("Share stale around clean job: job=" + entry.job_id +
                     " reason=unspecified pool response direction=pre-notify");
             }
@@ -309,12 +372,16 @@ public:
             job.extranonce1 = extranonce1_;
             job.extranonce2_size = extranonce2_size_;
             job.difficulty = difficulty_;
+            std::uint64_t clean_ref = 0;
+            if (evidence_handler_) clean_ref = evidence({
+                {"event", "job"}, {"job_ref", job_ref(job.job_id)}, {"clean", job.clean_jobs}});
             if (job.clean_jobs) {
-                attribute_pre_notify_stale(job.job_id);
+                attribute_pre_notify_stale(job.job_id, clean_ref);
                 std::lock_guard lock(pending_mutex_);
                 for (auto& entry : pending_submit_) {
                     auto& pending = entry.second;
                     if (pending.job_id != job.job_id) {
+                        if (!pending.invalidated_by_clean_job) pending.clean_ref = clean_ref;
                         pending.invalidated_by_clean_job = true;
                     }
                 }
@@ -333,15 +400,30 @@ public:
         try {
             message = json::parse(line);
         } catch (const std::exception& error) {
+            if (evidence_handler_) evidence({{"event", "invalid_message"}, {"phase", "json_parse"}});
             log(std::string("Ignoring malformed Stratum JSON: ") + error.what());
             return;
         }
+        if (!message.is_object()) {
+            if (evidence_handler_) evidence({{"event", "invalid_message"}, {"phase", "message_object"}});
+            return;
+        }
         try {
-            if (message.contains("id") && message["id"].is_number_integer()) {
-                handle_response(message, message["id"].get<int>());
+            if (message.contains("id") && !message["id"].is_null()) {
+                const auto& id = message["id"];
+                bool valid_id = id.is_number_integer();
+                if (valid_id && id.is_number_unsigned()) {
+                    valid_id = id.get<std::uint64_t>() <= static_cast<std::uint64_t>(std::numeric_limits<int>::max());
+                } else if (valid_id) {
+                    const auto value = id.get<std::int64_t>();
+                    valid_id = value >= 0 && value <= std::numeric_limits<int>::max();
+                }
+                if (valid_id) handle_response(message, id.get<int>());
+                else if (evidence_handler_) evidence({{"event", "invalid_message"}, {"phase", "response_id"}});
             }
             handle_notification(message);
         } catch (const std::exception& error) {
+            if (evidence_handler_) evidence({{"event", "invalid_message"}, {"phase", "message_fields"}});
             log(std::string("Ignoring invalid Stratum message: ") + error.what() + " raw=" + line);
         }
     }
@@ -354,6 +436,11 @@ public:
         recent_unspecified_rejects_.clear();
         std::lock_guard lock(pending_mutex_);
         if (!pending_submit_.empty()) {
+            if (evidence_handler_) {
+                for (const auto& [id, pending] : pending_submit_) evidence({
+                    {"event", "submit_discarded"}, {"submit_id", id},
+                    {"job_ref", job_ref(pending.job_id)}});
+            }
             log("Discarding " + std::to_string(pending_submit_.size()) + " pending share response(s): " + reason);
             pending_submit_.clear();
         }
@@ -361,9 +448,14 @@ public:
 
     void run() {
         stop_ = false;
+        if (evidence_handler_) evidence({{"event", "stream_start"}});
         while (!stop_) {
+            bool connected = false;
             try {
                 socket_ = connect_tcp(config_.primary);
+                connected = true;
+                ++connection_epoch_;
+                if (evidence_handler_) evidence({{"event", "connection_open"}});
                 log("Connected to " + config_.primary.host + ":" + std::to_string(config_.primary.port));
                 handshake();
                 std::string buffer;
@@ -374,7 +466,11 @@ public:
 #else
                     const auto count = recv(socket_, chunk.data(), chunk.size(), 0);
 #endif
-                    if (count <= 0) throw std::runtime_error("pool disconnected");
+                    if (count <= 0) {
+                        if (!buffer.empty() && evidence_handler_) evidence({
+                            {"event", "invalid_message"}, {"phase", "truncated_line"}});
+                        throw std::runtime_error("pool disconnected");
+                    }
                     buffer.append(chunk.data(), static_cast<std::size_t>(count));
                     std::size_t newline = 0;
                     while ((newline = buffer.find('\n')) != std::string::npos) {
@@ -388,9 +484,17 @@ public:
                 if (!stop_) log(std::string("Stratum connection error: ") + error.what());
             }
             clear_pending("connection reset");
+            if (connected && evidence_handler_) evidence({{"event", "connection_close"}});
             if (socket_ != invalid_socket) { close_socket(socket_); socket_ = invalid_socket; }
             if (!stop_) { ++reconnects_; std::this_thread::sleep_for(std::chrono::seconds(config_.reconnect_seconds)); }
         }
+    }
+
+    void finish_evidence() {
+        if (evidence_handler_) evidence({{"event", "stream_end"},
+            {"accepted", accepted_.load()}, {"rejected_inclusive", rejected_.load()},
+            {"temporal_stale", clean_job_stale_.load()}, {"reconnects", reconnects_.load()},
+            {"evidence_errors", evidence_errors_.load()}});
     }
 
     void stop() {
@@ -411,6 +515,8 @@ public:
         {
             std::lock_guard lock(pending_mutex_);
             pending_submit_[id] = PendingSubmit{share.job_id, false};
+            if (evidence_handler_) evidence({{"event", "submit_attempt"},
+                {"submit_id", id}, {"job_ref", job_ref(share.job_id)}});
         }
         try {
             send_json({{"id",id},{"method","mining.submit"},{"params",json::array({config_.username,share.job_id,share.extranonce2,share.ntime,share.nonce})}});
@@ -418,6 +524,7 @@ public:
         } catch (const std::exception& error) {
             std::lock_guard lock(pending_mutex_);
             pending_submit_.erase(id);
+            if (evidence_handler_) evidence({{"event", "submit_failed"}, {"submit_id", id}});
             log(std::string("Submit failed: ") + error.what());
             return false;
         }
@@ -426,17 +533,26 @@ public:
     Config config_;
     JobHandler job_handler_;
     LogHandler log_handler_;
+    EvidenceHandler evidence_handler_;
+    std::mutex evidence_mutex_;
+    const std::chrono::steady_clock::time_point evidence_origin_{std::chrono::steady_clock::now()};
+    std::uint64_t evidence_seq_{0};
+    bool evidence_disabled_{false};
+    std::atomic_uint64_t connection_epoch_{0}, evidence_errors_{0};
     std::atomic_bool stop_{false};
     socket_handle socket_{invalid_socket};
     std::mutex send_mutex_;
     struct PendingSubmit {
         std::string job_id;
         bool invalidated_by_clean_job{false};
+        std::uint64_t clean_ref{0};
     };
     struct RecentUnspecifiedReject {
         std::string job_id;
         std::chrono::steady_clock::time_point received_at;
         bool attributed{false};
+        int submit_id{0};
+        std::uint64_t response_ref{0};
     };
     static constexpr auto kPreNotifyStaleWindow = std::chrono::seconds(2);
 
@@ -454,12 +570,14 @@ Client::Client(Config config) : impl_(std::make_unique<Impl>(std::move(config)))
 Client::~Client() = default;
 void Client::set_job_handler(JobHandler handler) { impl_->job_handler_ = std::move(handler); }
 void Client::set_log_handler(LogHandler handler) { impl_->log_handler_ = std::move(handler); }
+void Client::set_evidence_handler(EvidenceHandler handler) { impl_->evidence_handler_ = std::move(handler); }
+void Client::finish_evidence() { impl_->finish_evidence(); }
 void Client::run() { impl_->run(); }
 void Client::stop() { impl_->stop(); }
 bool Client::submit(const Share& share) { return impl_->submit(share); }
 Stats Client::stats() const noexcept {
     return {impl_->accepted_.load(), impl_->rejected_.load(),
-            impl_->clean_job_stale_.load(), impl_->reconnects_.load()};
+            impl_->clean_job_stale_.load(), impl_->reconnects_.load(), impl_->evidence_errors_.load()};
 }
 
 Endpoint parse_endpoint(const std::string& url) {

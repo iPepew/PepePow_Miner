@@ -27,6 +27,8 @@ int main() {
 
 #else
 
+#include "pepepow/stratum/evidence_file.hpp"
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -105,7 +107,7 @@ bool wait_for(const std::function<bool()>& predicate,
 }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     Fd listener(::socket(AF_INET, SOCK_STREAM, 0));
     if (listener.value < 0) throw std::runtime_error("socket failed");
 
@@ -204,9 +206,16 @@ int main() {
     config.agent = "PepeW/socket-replay";
     config.reconnect_seconds = 1;
 
+    std::unique_ptr<pepepow::stratum::EvidenceFile> evidence_file;
+    if (argc > 1) evidence_file = std::make_unique<pepepow::stratum::EvidenceFile>(argv[1]);
     pepepow::stratum::Client client(std::move(config));
     std::mutex logs_mutex;
     std::vector<std::string> logs;
+    std::vector<json> evidence;
+    client.set_evidence_handler([&](const std::string& line) {
+        if (evidence_file) evidence_file->write(line);
+        evidence.push_back(json::parse(line));
+    });
     client.set_log_handler([&](const std::string& message) {
         std::lock_guard lock(logs_mutex);
         logs.push_back(message);
@@ -249,6 +258,8 @@ int main() {
     }
     finish_cv.notify_all();
     if (server.joinable()) server.join();
+    client.finish_evidence();
+    if (evidence_file) evidence_file->close();
     if (server_error) std::rethrow_exception(server_error);
 
     assert(jobs.size() == 2U);
@@ -277,6 +288,49 @@ int main() {
     assert(saw_stale);
     assert(saw_pre_notify_stale);
     assert(saw_explicit_reject);
+
+    assert(client.stats().evidence_errors == 0);
+    assert(evidence.front().at("event") == "stream_start");
+    assert(evidence.back().at("event") == "stream_end");
+    std::uint64_t clean_ref = 0, rejected_ref = 0, seq = 0, previous_us = 0;
+    unsigned pre = 0, post = 0, matched = 0;
+    for (const auto& event : evidence) {
+        assert(event.at("seq").get<std::uint64_t>() == ++seq);
+        const auto us = event.at("monotonic_us").get<std::uint64_t>();
+        assert(us >= previous_us);
+        previous_us = us;
+        if (event.at("event") == "job" && event.at("clean") == true) clean_ref = seq;
+        if (event.at("event") == "response" && event.at("matched") == true) {
+            ++matched;
+            if (matched == 1) {
+                rejected_ref = seq;
+                assert(event.at("classification") == "rejected");
+                assert(event.at("clean_ref") == 0);
+            } else if (matched <= 4) {
+                assert(clean_ref != 0 && event.at("clean_ref") == clean_ref);
+                if (matched == 2) assert(event.at("classification") == "accepted");
+                if (matched == 3) {
+                    assert(event.at("classification") == "suspected_post_notify_stale");
+                    ++post;
+                }
+                if (matched == 4) {
+                    assert(event.at("classification") == "rejected");
+                    assert(event.at("error_code") == 23);
+                }
+            } else assert(event.at("clean_ref") == 0);
+        }
+        if (event.at("event") == "temporal_attribution") {
+            ++pre;
+            assert(event.at("classification") == "suspected_pre_notify_stale");
+            assert(event.at("response_ref") == rejected_ref);
+            assert(event.at("clean_ref") == clean_ref);
+            assert(rejected_ref < clean_ref && clean_ref < seq);
+        }
+    }
+    assert(pre == 1 && post == 1 && matched == 5);
+    assert(evidence.back().at("accepted") == 2);
+    assert(evidence.back().at("rejected_inclusive") == 3);
+    assert(evidence.back().at("temporal_stale") == 2);
 
     std::cout << "PASS: socket clean-job replay accepted=2 rejected=3 clean_job_stale=2\n";
     return 0;

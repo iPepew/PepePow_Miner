@@ -57,6 +57,8 @@ struct Stats {
     std::uint64_t rejected{0};
     std::uint64_t clean_job_stale{0};
     std::uint64_t reconnects{0};
+    // A failed evidence sink disables journaling for this Client; mining continues.
+    std::uint64_t evidence_errors{0};
 };
 
 enum class ShareResponseKind {
@@ -72,6 +74,7 @@ class Client {
 public:
     using JobHandler = std::function<void(const Job&)>;
     using LogHandler = std::function<void(const std::string&)>;
+    using EvidenceHandler = std::function<void(const std::string&)>;
 
     explicit Client(Config config);
     ~Client();
@@ -80,6 +83,13 @@ public:
 
     void set_job_handler(JobHandler handler);
     void set_log_handler(LogHandler handler);
+    // Optional JSONL sink, separate from human logs. Set before run/submit only.
+    // Calls are serialized. The sink must be bounded, non-reentrant and throw
+    // on write failure. A thrown exception disables evidence, not mining.
+    void set_evidence_handler(EvidenceHandler handler);
+    // Emit the final snapshot exactly once, after run and all submit calls
+    // have returned (join/stop the mining worker first). No implicit finalizer.
+    void finish_evidence();
     void run();
     void stop();
     bool submit(const Share& share);
