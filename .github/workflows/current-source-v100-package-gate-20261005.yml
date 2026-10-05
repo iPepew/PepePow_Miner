@@ -1,8 +1,6 @@
 name: Current-source V100 CUDA package gate 2026-10-05
 on:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: ['.github/workflows/current-source-v100-package-gate-20261005.yml']
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -40,6 +38,7 @@ jobs:
       - name: Verify workflow-only handoff
         run: |
           set -Eeuo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           actual_head="$(git rev-parse HEAD)"
           changed="$(git diff --name-only "$EXPECTED_SOURCE" "$actual_head")"
           printf 'actual_head=%s\nsource_commit=%s\nchanged=%s\n' "$actual_head" "$EXPECTED_SOURCE" "$changed"
