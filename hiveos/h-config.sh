@@ -50,6 +50,10 @@ if [[ -n "${pepew_extra_raw}" ]]; then
   eval "pepew_extra=( ${pepew_extra_raw} )"
   for pepew_token in "${pepew_extra[@]}"; do
     case "${pepew_token}" in
+      --stratum-evidence|--stratum-evidence=*)
+        echo "--stratum-evidence requires a unique file per process; shared HiveOS extra arguments are unsupported" >&2
+        return 1 2>/dev/null || exit 1
+        ;;
       -o|--pool|-O|--pool2|-u|--user|-p|--pass|--diagnostic-log)
         echo "Reserved option is managed by the multi-GPU wrapper: ${pepew_token}" >&2
         return 1 2>/dev/null || exit 1
