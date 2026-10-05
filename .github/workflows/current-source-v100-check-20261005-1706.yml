@@ -1,0 +1,209 @@
+name: Current-source V100 CUDA package gate 2026-10-05
+on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: ['.github/workflows/current-source-v100-check-20261005-1706.yml']
+permissions:
+  contents: read
+concurrency:
+  group: pepew-current-source-v100-package-20261005
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 18
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      EXPECTED_SOURCE: 811cc0a7d3aa91b11db682dc77295d14a9699936
+      SESSION_DEADLINE_UTC: '2026-10-05T18:06:21Z'
+      ROOT: PepeW-Miner
+      ASSET: PepeW-Miner-current-source-V100.tar.gz
+    steps:
+      - name: Reject late start
+        run: |
+          set -Eeuo pipefail
+          [[ "$SESSION_DEADLINE_UTC" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+          deadline_epoch="$(date -u -d "$SESSION_DEADLINE_UTC" +%s)"
+          now_epoch="$(date -u +%s)"
+          remaining="$((deadline_epoch - now_epoch))"
+          # 18-minute job timeout plus 5-minute cleanup margin; no queue-relative extension.
+          test "$remaining" -ge 1380
+          test "$remaining" -le 3600
+          printf 'session_deadline_utc=%s\n' "$SESSION_DEADLINE_UTC"
+      - name: Install bounded build tools
+        run: |
+          set -Eeuo pipefail
+          timeout -k 15s 300s bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip tar gzip file binutils'
+          timeout -k 10s 180s python3 -m pip install --no-cache-dir "cmake==3.31.10"
+          rm -rf /var/lib/apt/lists/*
+          /usr/local/cuda/bin/nvcc --list-gpu-code | grep -F sm_70
+      - name: Checkout immutable production source
+        uses: actions/checkout@v4
+        timeout-minutes: 2
+        with:
+          ref: ${{ env.EXPECTED_SOURCE }}
+          fetch-depth: 1
+          persist-credentials: false
+          set-safe-directory: true
+      - name: Verify immutable source
+        run: |
+          set -Eeuo pipefail
+          # Trust only this ephemeral checkout, never a wildcard.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          test -z "$(git status --porcelain)"
+          printf 'workflow_commit=%s\nsource_commit=%s\n' "$GITHUB_SHA" "$EXPECTED_SOURCE" | tee /tmp/source.env
+      - name: Validate wrapper and configure current source
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          test "$(tr -d '\r\n' < VERSION)" = "2.1-beta.1"
+          grep -F 'CUSTOM_VERSION="v2.1 BETA"' hiveos/h-manifest.conf
+          bash -n hiveos/h-config.sh
+          bash -n hiveos/h-run.sh
+          bash -n hiveos/h-stats.sh
+          timeout -k 5s 60s python3 -m unittest discover -s tests -p 'test_hiveos_evidence_config.py' -v
+          export CUDACXX=/usr/local/cuda/bin/nvcc
+          timeout -k 15s 300s cmake -S native -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DPEPEPOW_ENABLE_CUDA=ON \
+            -DPEPEPOW_BUILD_TESTS=ON \
+            -DPEPEPOW_CUDA_PTXAS_VERBOSE=ON \
+            -DPEPEPOW_CUDA_ARCHITECTURES=70-real \
+            -DPEPEPOW_CUDA_THREADS=128 \
+            -DPEPEPOW_CUDA_MIN_BLOCKS=1 \
+            -DPEPEPOW_CUDA_SPLIT_PIPELINE=ON \
+            -DPEPEPOW_CUDA_HOTRUN8=ON \
+            -DPEPEPOW_CUDA_SCALED_MATRIX=OFF \
+            -DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON \
+            -DPEPEPOW_CUDA_ASSUME_FINITE=ON \
+            -DPEPEPOW_CUDA_SW_STATE_MODE=3 \
+            -DPEPEPOW_CUDA_BYTE_UNROLL=1 \
+            -DPEPEPOW_CUDA_DEMAND_SLICED_REDUCER=ON \
+            '-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1'
+      - name: Build production and verification targets
+        run: |
+          set -Eeuo pipefail
+          timeout -k 15s 480s cmake --build build --parallel 4 --target \
+            pepepowminer pepepow_core_tests pepepow_stratum_clean_job_replay \
+            pepepow_stratum_reconnect_replay pepepow_stratum_evidence_file \
+            pepepow_cuda_tests pepepow_cuda_header80_validation \
+            pepepow_header80_benchmark pepepow_header80_differential \
+            2>&1 | tee /tmp/build.log
+      - name: Verify CPU tests and CUDA package identity
+        run: |
+          set -Eeuo pipefail
+          timeout -k 5s 180s ctest --test-dir build -C Release --output-on-failure \
+            -R '^(pepepow_core_tests|pepepow_stratum_.*)$' 2>&1 | tee /tmp/ctest.log
+          grep -F '100% tests passed, 0 tests failed out of 7' /tmp/ctest.log
+          timeout -k 2s 10s ./build/pepepowminer --version | tee /tmp/version.log
+          timeout -k 2s 10s ./build/pepepowminer --help | grep -F -- '--stratum-evidence P'
+          /usr/local/cuda/bin/cuobjdump --list-elf build/pepepowminer | tee /tmp/elf.log
+          grep -F sm_70 /tmp/elf.log
+          ! grep -Eq 'sm_(61|75|86|89|120)' /tmp/elf.log
+          ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
+          timeout -k 5s 120s /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepowminer > /tmp/sass.txt
+          python3 - <<'PY'
+          import json, re
+          log = open('/tmp/build.log', errors='replace').read().splitlines()
+          resource = None
+          for i, line in enumerate(log):
+              if 'Function properties for' in line and 'hoohash_final_hotrun8_local_phase_kernel' in line:
+                  block = '\n'.join(log[i:i+8])
+                  resource = {
+                      'registers': int(re.search(r'Used (\d+) registers', block).group(1)),
+                      'stack_bytes': int(re.search(r'(\d+) bytes stack frame', block).group(1)),
+                  }
+                  break
+          if resource is None:
+              raise SystemExit('missing production kernel resources')
+          ops = []
+          active = False
+          for line in open('/tmp/sass.txt', errors='replace'):
+              if 'Function :' in line:
+                  active = 'hoohash_final_hotrun8_local_phase_kernel' in line
+                  continue
+              if active and '/*' in line and '*/' in line and ';' in line:
+                  op = line.split('*/', 1)[1].strip().split()[0]
+                  if op != 'NOP':
+                      ops.append(op)
+          result = {
+              'sm': 70,
+              'kernel_sass': len(ops),
+              'registers': resource['registers'],
+              'stack_bytes': resource['stack_bytes'],
+              'spill_bytes': 0,
+          }
+          expected = {'sm': 70, 'kernel_sass': 1968, 'registers': 54, 'stack_bytes': 80, 'spill_bytes': 0}
+          result['identity_pass'] = all(result[k] == v for k, v in expected.items())
+          print('CUDA_PACKAGE_IDENTITY ' + json.dumps(result, sort_keys=True))
+          open('/tmp/resources.json', 'w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          if not result['identity_pass']:
+              raise SystemExit('current package differs from admitted CUDA identity')
+          PY
+      - name: Assemble deterministic verification package
+        run: |
+          set -Eeuo pipefail
+          timeout -k 5s 120s bash -c '
+            rm -rf stage dist
+            mkdir -p "stage/$ROOT" dist
+            install -m 0755 build/pepepowminer "stage/$ROOT/pepepowminer"
+            install -m 0755 hiveos/h-config.sh "stage/$ROOT/h-config.sh"
+            install -m 0755 hiveos/h-run.sh "stage/$ROOT/h-run.sh"
+            install -m 0755 hiveos/h-stats.sh "stage/$ROOT/h-stats.sh"
+            install -m 0755 hiveos/stratum-replay-proxy.py "stage/$ROOT/stratum-replay-proxy.py"
+            install -m 0644 hiveos/h-manifest.conf "stage/$ROOT/h-manifest.conf"
+            install -m 0644 /tmp/resources.json "stage/$ROOT/resources.json"
+            install -m 0644 /tmp/source.env "stage/$ROOT/SOURCE.env"
+            {
+              printf "scope=CUDA_COMPILE_AND_PACKAGE_VERIFICATION_ONLY\n"
+              printf "source_commit=%s\n" "$EXPECTED_SOURCE"
+              printf "cuda_toolkit=12.8.1\n"
+              printf "cuda_architectures=70-real\n"
+              printf "gpu_or_pool_run=false\n"
+              printf "promotion_eligible=false\n"
+            } > "stage/$ROOT/BUILD_INFO.txt"
+            (cd "stage/$ROOT" && sha256sum pepepowminer > pepepowminer.sha256 && sha256sum -c pepepowminer.sha256)
+            tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="UTC 2026-10-05" -C stage -cf - "$ROOT" | gzip -n > "dist/$ASSET"
+            sha256sum "dist/$ASSET" | tee "dist/$ASSET.sha256"
+          '
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          binary = pathlib.Path('stage') / os.environ['ROOT'] / 'pepepowminer'
+          package = pathlib.Path('dist') / os.environ['ASSET']
+          resources = json.loads(pathlib.Path('/tmp/resources.json').read_text())
+          result = {
+              'status': 'PASS',
+              'source_commit': os.environ['EXPECTED_SOURCE'],
+              'workflow_commit': os.environ['GITHUB_SHA'],
+              'registered_cpu_tests_passed': 7,
+              'registered_cpu_tests_failed': 0,
+              'cuda_compiled': True,
+              'cuda_executed': False,
+              'gpu_or_pool_run': False,
+              'promotion_eligible': False,
+              'resources': resources,
+              'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+              'package_sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
+          }
+          pathlib.Path('dist/result.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+          print('CURRENT_SOURCE_CUDA_PACKAGE_RESULT ' + json.dumps(result, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && !cancelled() }}
+        timeout-minutes: 2
+        with:
+          name: current-source-v100-package-${{ env.EXPECTED_SOURCE }}
+          path: |
+            dist/
+            /tmp/build.log
+            /tmp/ctest.log
+            /tmp/version.log
+            /tmp/elf.log
+            /tmp/resources.json
+          retention-days: 30
