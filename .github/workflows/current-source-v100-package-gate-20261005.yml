@@ -29,12 +29,15 @@ jobs:
           test "$(date -u +%s)" -lt "$(date -u -d "$ABSOLUTE_START_DEADLINE" +%s)"
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 3
       - name: Verify workflow-only handoff
         run: |
           set -Eeuo pipefail
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_SOURCE"
-          test "$(git diff --name-only HEAD^ HEAD)" = '.github/workflows/current-source-v100-package-gate-20261005.yml'
+          actual_head="$(git rev-parse HEAD)"
+          changed="$(git diff --name-only "$EXPECTED_SOURCE" "$actual_head")"
+          printf 'actual_head=%s\nsource_commit=%s\nchanged=%s\n' "$actual_head" "$EXPECTED_SOURCE" "$changed"
+          git merge-base --is-ancestor "$EXPECTED_SOURCE" "$actual_head"
+          test "$changed" = '.github/workflows/current-source-v100-package-gate-20261005.yml'
           printf 'workflow_commit=%s\nsource_commit=%s\n' "$GITHUB_SHA" "$EXPECTED_SOURCE" | tee /tmp/source.env
       - name: Checkout immutable production source
         uses: actions/checkout@v4
