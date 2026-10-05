@@ -1,0 +1,99 @@
+name: Stratum CMake CPU gate 2026-10-05
+on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: ['.github/workflows/stratum-cmake-gate-20261005.yml']
+permissions:
+  contents: read
+concurrency:
+  group: pepew-stratum-cmake-cpu-20261005
+  cancel-in-progress: false
+jobs:
+  cmake-cpu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      EXPECTED_PARENT: fb634d897d7b57b4b513e9b49b7d7bbc59960db2
+      ABSOLUTE_START_DEADLINE: '2026-10-05T12:15:00Z'
+    steps:
+      - name: Reject late start
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(date -u +%s)" -lt "$(date -u -d "$ABSOLUTE_START_DEADLINE" +%s)"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Verify immutable handoff
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = '.github/workflows/stratum-cmake-gate-20261005.yml'
+          printf 'source_commit=%s\nparent_commit=%s\n' "$GITHUB_SHA" "$EXPECTED_PARENT" | tee /tmp/source.env
+      - name: Configure Release CPU build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 10s 180s cmake -S native -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DPEPEPOW_ENABLE_CUDA=OFF             -DPEPEPOW_BUILD_TESTS=ON
+      - name: Build production console and registered tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 10s 240s cmake --build build --parallel 2 --target             pepepowminer pepepow_core_tests pepepow_stratum_clean_job_replay             pepepow_stratum_reconnect_replay pepepow_stratum_evidence_file             2>&1 | tee /tmp/build.log
+      - name: Run full registered CPU test suite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 5s 150s ctest --test-dir build -C Release --output-on-failure             2>&1 | tee /tmp/ctest.log
+          grep -F '100% tests passed, 0 tests failed out of 7' /tmp/ctest.log
+          ./build/pepepowminer --version | tee /tmp/version.log
+          ./build/pepepowminer --help | grep -F -- '--stratum-evidence P'
+      - name: Assemble deterministic CPU verification package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p stage/PepeW-CMake-CPU-Gate dist
+          install -m 0755 build/pepepowminer stage/PepeW-CMake-CPU-Gate/pepepowminer
+          install -m 0644 /tmp/source.env stage/PepeW-CMake-CPU-Gate/SOURCE.env
+          {
+            printf 'scope=CPU_CMAKE_VERIFICATION_ONLY\n'
+            printf 'source_commit=%s\n' "$GITHUB_SHA"
+            printf 'parent_commit=%s\n' "$EXPECTED_PARENT"
+            printf 'cmake=%s\n' "$(cmake --version | head -n1)"
+            printf 'compiler=%s\n' "$(c++ --version | head -n1)"
+            printf 'cuda_built=false\n'
+            printf 'gpu_or_pool_run=false\n'
+            printf 'promotion_eligible=false\n'
+          } > stage/PepeW-CMake-CPU-Gate/BUILD_INFO.txt
+          sha256sum stage/PepeW-CMake-CPU-Gate/pepepowminer | tee stage/PepeW-CMake-CPU-Gate/pepepowminer.sha256
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime='UTC 2026-10-05'             -C stage -cf - PepeW-CMake-CPU-Gate | gzip -n > dist/PepeW-CMake-CPU-Gate.tar.gz
+          sha256sum dist/PepeW-CMake-CPU-Gate.tar.gz | tee dist/PepeW-CMake-CPU-Gate.tar.gz.sha256
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib
+          package = pathlib.Path('dist/PepeW-CMake-CPU-Gate.tar.gz')
+          binary = pathlib.Path('stage/PepeW-CMake-CPU-Gate/pepepowminer')
+          result = {
+              'status': 'PASS',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'parent_commit': os.environ['EXPECTED_PARENT'],
+              'registered_tests_passed': 7,
+              'registered_tests_failed': 0,
+              'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+              'package_sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
+              'cuda_built': False,
+              'gpu_or_pool_run': False,
+              'promotion_eligible': False,
+          }
+          pathlib.Path('dist/result.json').write_text(json.dumps(result, indent=2) + '\n')
+          print('CMAKE_GATE_RESULT ' + json.dumps(result, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stratum-cmake-cpu-${{ github.sha }}
+          path: |
+            dist/
+            /tmp/build.log
+            /tmp/ctest.log
+            /tmp/version.log
+          retention-days: 30
