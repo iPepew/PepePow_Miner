@@ -19,7 +19,7 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
       EXPECTED_SOURCE: 811cc0a7d3aa91b11db682dc77295d14a9699936
-      SESSION_DEADLINE_UTC: 2026-10-06T03:46:28Z
+      SESSION_DEADLINE_UTC: 2026-10-06T08:38:39Z
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-current-source-V100.tar.gz
     steps:
@@ -55,6 +55,10 @@ jobs:
           # Trust only this ephemeral checkout, never a wildcard.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          test "$source_date_epoch" -gt 0
+          git ls-files -z | xargs -0r touch --date="@$source_date_epoch"
+          printf 'SOURCE_DATE_EPOCH=%s\n' "$source_date_epoch" >> "$GITHUB_ENV"
           test -z "$(git status --porcelain)"
           printf 'workflow_commit=%s\nsource_commit=%s\n' "$GITHUB_SHA" "$EXPECTED_SOURCE" | tee /tmp/source.env
       - name: Validate wrapper and configure current source
@@ -158,6 +162,12 @@ jobs:
             for target in pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_benchmark pepepow_header80_differential; do
               install -m 0755 "build/$target" "stage/$ROOT/verification/$target"
             done
+            for binary in "stage/$ROOT/pepepowminer" "stage/$ROOT/verification/"*; do
+              file "$binary" | grep -F "ELF 64-bit"
+              strip --strip-all --remove-section=.note.gnu.build-id "$binary"
+            done
+            "stage/$ROOT/pepepowminer" --version
+            "stage/$ROOT/pepepowminer" --help | grep -F -- "--stratum-evidence P"
             install -m 0755 hiveos/h-config.sh "stage/$ROOT/h-config.sh"
             install -m 0755 hiveos/h-run.sh "stage/$ROOT/h-run.sh"
             install -m 0755 hiveos/h-stats.sh "stage/$ROOT/h-stats.sh"
@@ -217,3 +227,4 @@ jobs:
             /tmp/elf.log
             /tmp/resources.json
           retention-days: 30
+

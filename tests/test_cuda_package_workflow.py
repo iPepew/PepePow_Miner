@@ -46,7 +46,13 @@ class GateTests(unittest.TestCase):
         self.assertIn('SOURCE_DATE_EPOCH=%s', WORKFLOW.read_text())
 
     def test_no_auto_trigger_or_gpu_execution(self):
-        self.assertEqual(set(DOC['on']), {'workflow_dispatch'})
+        if 'PEPEW_GATE_FILE' in os.environ:
+            self.assertEqual(set(DOC['on']), {'push'})
+            self.assertEqual(DOC['on']['push']['branches'],
+                             ['agent/demand-sliced-batch-correctness-20260917'])
+            self.assertEqual(DOC['on']['push']['paths'], [str(WORKFLOW)])
+        else:
+            self.assertEqual(set(DOC['on']), {'workflow_dispatch'})
         self.assertEqual(DOC['permissions'], {'contents': 'read'})
         self.assertEqual(DOC['jobs']['package']['timeout-minutes'], '18')
         self.assertNotIn('./build/pepepow_header80_differential', WORKFLOW.read_text())
