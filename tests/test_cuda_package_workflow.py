@@ -41,6 +41,9 @@ class GateTests(unittest.TestCase):
         self.assertEqual(checkouts[0]['with']['persist-credentials'], 'false')
         self.assertNotIn('merge-base', WORKFLOW.read_text())
         self.assertIn('git config --global --add safe.directory "$GITHUB_WORKSPACE"', WORKFLOW.read_text())
+        self.assertIn('git show -s --format=%ct HEAD', WORKFLOW.read_text())
+        self.assertIn('git ls-files -z | xargs -0r touch --date="@$source_date_epoch"', WORKFLOW.read_text())
+        self.assertIn('SOURCE_DATE_EPOCH=%s', WORKFLOW.read_text())
 
     def test_no_auto_trigger_or_gpu_execution(self):
         self.assertEqual(set(DOC['on']), {'workflow_dispatch'})
@@ -63,9 +66,14 @@ class PackageTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for directory in ('build', 'hiveos', 'logs'):
             (self.root / directory).mkdir()
-        # Deliberately non-executable contents: packaging must never run CUDA tools.
+        source = self.root / 'fixture.c'
+        source.write_text('#include <stdio.h>\n#include <string.h>\nint main(int n,char**v){if(n>1&&!strcmp(v[1],"--help"))puts("--stratum-evidence P");else puts("fixture 1");return 0;}\n')
+        subprocess.run(['cc', '-O2', str(source), '-o', str(self.root / 'fixture')],
+                       check=True, timeout=10)
+        # Host ELFs stand in for CUDA outputs; the packaging step must not execute
+        # verification tools, while production CLI probes are harmless and bounded.
         for name in ('pepepowminer',) + self.targets:
-            (self.root / 'build' / name).write_text('fixture binary ' + name + '\n')
+            (self.root / 'build' / name).write_bytes((self.root / 'fixture').read_bytes())
         for name in ('h-config.sh', 'h-run.sh', 'h-stats.sh', 'stratum-replay-proxy.py', 'h-manifest.conf'):
             (self.root / 'hiveos' / name).write_text('fixture ' + name + '\n')
         (self.root / 'logs/resources.json').write_text('{"identity_pass": true}\n')
@@ -97,12 +105,18 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(set(report['verification_binaries']), set(self.targets))
         for name, digest in report['verification_binaries'].items():
             self.assertEqual(digest, sums['./verification/' + name])
+        sections = subprocess.run(['readelf', '-SW', stage / 'pepepowminer'],
+                                  capture_output=True, text=True, check=True, timeout=3).stdout
+        self.assertNotIn('.note.gnu.build-id', sections)
+        self.assertNotIn('.symtab', sections)
         self.assertFalse(report['cuda_executed'])
         self.assertFalse(report['promotion_eligible'])
         with tarfile.open(package) as archive:
             for name in self.targets:
                 member = archive.getmember('PepeW-Miner/verification/' + name)
                 self.assertEqual(member.mode, 0o755)
+        for path in (self.root / 'build').iterdir():
+            os.utime(path, (1_800_000_000, 1_800_000_000))
         self.assertEqual(self.assemble().returncode, 0)
         self.assertEqual(first, package.read_bytes())
 

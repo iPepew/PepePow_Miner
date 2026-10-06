@@ -22,7 +22,7 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
       EXPECTED_SOURCE: 811cc0a7d3aa91b11db682dc77295d14a9699936
-      SESSION_DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
+      SESSION_DEADLINE_UTC: 2026-10-06T08:38:39Z
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-current-source-V100.tar.gz
     steps:
