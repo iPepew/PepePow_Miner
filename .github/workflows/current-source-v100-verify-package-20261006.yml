@@ -1,11 +1,8 @@
 name: Current-source V100 CUDA package gate 2026-10-05
 on:
-  workflow_dispatch:
-    inputs:
-      session_deadline_utc:
-        description: 'Absolute authorized session end, UTC YYYY-MM-DDTHH:MM:SSZ; never derive from queue start'
-        required: true
-        type: string
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: ['.github/workflows/current-source-v100-verify-package-20261006.yml']
 permissions:
   contents: read
 concurrency:
@@ -22,7 +19,7 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
       EXPECTED_SOURCE: 811cc0a7d3aa91b11db682dc77295d14a9699936
-      SESSION_DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
+      SESSION_DEADLINE_UTC: 2026-10-06T03:46:28Z
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-current-source-V100.tar.gz
     steps:
