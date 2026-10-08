@@ -163,8 +163,8 @@ __device__ __forceinline__ double nonlinear_pipeline(double x) {
     const double one = one_base - floor(one_base);
     const double two = two_base - floor(two_base);
     double y;
-    if (two < 0.25) y = x + 1.0 + two;
-    else if (two < 0.50) y = x - 1.0 - two;
+    if (two < 0.25) y = x + (1.0 + two);
+    else if (two < 0.50) y = x - (1.0 + two);
     else if (two < 0.75) y = x * (1.0 + two);
     else y = x / (1.0 + two);
     if (one < 0.33) {
@@ -201,8 +201,11 @@ __device__ __forceinline__ void accumulate_matrix_cell(
     double& sum,
     double& sw) {
     if (sw <= 0.02) {
-        const double x = cell * hash_mod * value + nonce_mod;
-        sum += safe_nonlinear_pipeline(x) * value * 1234.0;
+        // Match the CPU reference exactly: zero nibbles bypass nonlinear math.
+        if (value != 0.0) {
+            const double x = cell * hash_mod * value + nonce_mod;
+            sum += safe_nonlinear_pipeline(x) * value * 1234.0;
+        }
     } else {
         sum += cell * 0.0001 * value;
     }
