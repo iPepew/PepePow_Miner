@@ -52,8 +52,8 @@ __device__ __forceinline__ double complex_nonlinear_device(double x) {
     const double two = two_base - floor(two_base);
 
     double transformed;
-    if (two < 0.25) transformed = x + 1.0 + two;
-    else if (two < 0.50) transformed = x - 1.0 - two;
+    if (two < 0.25) transformed = x + (1.0 + two);
+    else if (two < 0.50) transformed = x - (1.0 + two);
     else if (two < 0.75) transformed = x * (1.0 + two);
     else transformed = x / (1.0 + two);
 
@@ -109,8 +109,11 @@ __global__ void hoohash_matrix_mix_kernel(
             const double cell = matrix[row * 64 + column];
             const double value = static_cast<double>(vector[column]);
             if (sw <= 0.02) {
-                const double input = cell * static_cast<double>(hash_mod) * value + nonce_mod;
-                sum += for_complex_device(input) * value * 1234.0;
+                // Match the CPU reference exactly: zero nibbles bypass nonlinear math.
+                if (vector[column] != 0U) {
+                    const double input = cell * static_cast<double>(hash_mod) * value + nonce_mod;
+                    sum += for_complex_device(input) * value * 1234.0;
+                }
             } else {
                 sum += cell * 0.0001 * value;
             }
