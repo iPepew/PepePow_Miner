@@ -44,7 +44,12 @@
         }
         check_cuda_header80(
             cudaMalloc(&device_work_, count *
-#if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
+// Only the global resident variant needs the second mixed-word region.
+// The local-phase variant stores those words in thread-local phase_cache.
+#if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY && \
+    !(defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && \
+      defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2 && \
+      defined(PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE) && PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE)
                        16U *
 #else
                        8U *
