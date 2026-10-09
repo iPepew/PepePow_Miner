@@ -64,7 +64,7 @@ jobs:
             /Function :/ { target=(tolower($0) ~ /(header80|hoohash)/); if (target) print }
             target && /\/\*[0-9a-fA-F]+\*\// { print }
           ' sass.txt > target-sass.txt
-          sed -E 's#.*\*/[[:space:]]+(@!?P[0-9]+[[:space:]]+)?([A-Z][A-Z0-9_.]*).*#\2#; s/\..*//' target-sass.txt \
+          sed -E 's#.*\*/[[:space:]]+(@!?P([0-9]+|T)[[:space:]]+)?([A-Z][A-Z0-9_.]*).*#\3#; s/\..*//' target-sass.txt \
             | grep -E '^[A-Z][A-Z0-9]*$' | sort | uniq -c | sort -nr > opcode-counts.txt
           total="$(awk '{s+=$1} END{print s+0}' opcode-counts.txt)"
           test "$total" -gt 0
