@@ -1,8 +1,5 @@
 name: Exact production static SASS census 2026-10-09
 on:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: ['.github/workflows/exact-production-static-sass-census-20261009.yml']
   workflow_dispatch:
     inputs:
       session_deadline_utc:
@@ -24,7 +21,7 @@ jobs:
       run:
         shell: bash
     env:
-      DEADLINE_UTC: '2026-10-09T06:48:05Z'
+      DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
     steps:
       - name: Enforce absolute deadline
         run: |
