@@ -1,0 +1,84 @@
+name: Exact production static SASS census 2026-10-09
+on:
+  workflow_dispatch:
+    inputs:
+      session_deadline_utc:
+        description: 'Absolute authorized session deadline in UTC'
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: exact-production-static-sass-census-20261009
+  cancel-in-progress: false
+jobs:
+  census:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    container: nvidia/cuda:12.4.1-devel-ubuntu22.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
+    steps:
+      - name: Enforce absolute deadline
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          test "$remaining" -ge 1200
+          test "$remaining" -le 3600
+      - name: Download exact verified artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: iPepew/PepePow_Miner
+          run-id: 37836012726
+          artifact-ids: 11575592458
+          path: fetched
+      - name: Verify and disassemble exact production package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tarball="$(find fetched -type f -name 'PepeW-Miner-current-source-V100.tar.gz' -print -quit)"
+          test -f "$tarball"
+          test "$(sha256sum "$tarball" | cut -d' ' -f1)" = d3192e21ca37ffce756d9b37acbf753b5fb5c8f230f4aad8f635a04b8646a341
+          mkdir pkg
+          tar -xzf "$tarball" -C pkg
+          (cd pkg/PepeW-Miner && sha256sum -c SHA256SUMS)
+          test "$(sha256sum pkg/PepeW-Miner/pepepowminer | cut -d' ' -f1)" = 85a14cdc4722fcab123003b7c9cf3ad9deb7a0c3b47042f12feeb97bb78e2c98
+          command -v cuobjdump
+          cuobjdump --dump-sass pkg/PepeW-Miner/pepepowminer > sass.txt
+          awk '
+            /Function :/ { target=(tolower($0) ~ /(header80|hoohash)/) }
+            target && /\/\*[0-9a-fA-F]+\*\// { print }
+          ' sass.txt > target-sass.txt
+          sed -E 's#.*\*/[[:space:]]+(@!?P[0-9]+[[:space:]]+)?([A-Z][A-Z0-9_.]*).*#\2#; s/\..*//' target-sass.txt \
+            | grep -E '^[A-Z][A-Z0-9]*$' | sort | uniq -c | sort -nr > opcode-counts.txt
+          total="$(awk '{s+=$1} END{print s+0}' opcode-counts.txt)"
+          test "$total" -gt 0
+          {
+            echo '## Exact production static SASS census'
+            echo
+            echo "- status: PASS_STATIC"
+            echo "- artifact_id: 11575592458"
+            echo "- source_commit: e5a76307f1327d7f579c8e300a616f538e037b5f"
+            echo "- production_binary_sha256: 85a14cdc4722fcab123003b7c9cf3ad9deb7a0c3b47042f12feeb97bb78e2c98"
+            echo "- target_static_instruction_total: $total"
+            echo "- measured_offline_baseline_mhs: 13.696"
+            echo "- GPU/runtime attribution: not performed"
+            echo
+            echo 'Top target opcodes:'
+            echo '~~~'
+            head -n 20 opcode-counts.txt
+            echo '~~~'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload static evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-production-static-sass-20261009
+          path: |
+            opcode-counts.txt
+            target-sass.txt
+          retention-days: 30
