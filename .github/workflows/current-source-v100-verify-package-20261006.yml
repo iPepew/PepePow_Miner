@@ -1,8 +1,6 @@
 name: Current-source V100 CUDA package gate 2026-10-05
 on:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: ['.github/workflows/current-source-v100-verify-package-20261006.yml']
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
