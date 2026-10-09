@@ -1,5 +1,8 @@
 name: Exact production static SASS census 2026-10-09
 on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: ['.github/workflows/exact-production-static-sass-census-20261009.yml']
   workflow_dispatch:
     inputs:
       session_deadline_utc:
@@ -21,7 +24,7 @@ jobs:
       run:
         shell: bash
     env:
-      DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
+      DEADLINE_UTC: '2026-10-09T06:48:05Z'
     steps:
       - name: Enforce absolute deadline
         run: |
@@ -50,6 +53,15 @@ jobs:
           test "$(sha256sum pkg/PepeW-Miner/pepepowminer | cut -d' ' -f1)" = 85a14cdc4722fcab123003b7c9cf3ad9deb7a0c3b47042f12feeb97bb78e2c98
           command -v cuobjdump
           cuobjdump --dump-sass pkg/PepeW-Miner/pepepowminer > sass.txt
+          awk '
+            /arch =/ { arch=$3 }
+            /Function :/ {
+              if (name != "") print arch, name, count
+              name=$3; count=0
+            }
+            /\/\*[0-9a-fA-F]+\*\// && /;[[:space:]]*\/\*/ { count++ }
+            END { if (name != "") print arch, name, count }
+          ' OFS="\t" sass.txt | tee function-counts.tsv
           awk '
             /arch =/ { print }
             /Function :/ { target=(tolower($0) ~ /(header80|hoohash)/); if (target) print }
@@ -82,4 +94,6 @@ jobs:
           path: |
             opcode-counts.txt
             target-sass.txt
+            function-counts.tsv
+            sass.txt
           retention-days: 30
