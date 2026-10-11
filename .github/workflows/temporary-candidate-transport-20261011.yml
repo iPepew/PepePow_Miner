@@ -1,5 +1,8 @@
 name: Temporary candidate package transport 20261011
 on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/temporary-candidate-transport-20261011.yml]
   workflow_dispatch:
 permissions:
   actions: read
@@ -44,7 +47,7 @@ jobs:
             timeout -k 2s 30s gh release delete "$TAG" --yes --cleanup-tag
           }
           trap cleanup EXIT
-          timeout -k 2s 60s gh release create "$TAG" "${files[0]}#candidate.tar.gz" --target fd3596ee813583490635bc019f63fad2e5055919 --prerelease --latest=false --title "Temporary offline candidate transport - not a release" --notes "Exact candidate package for bounded offline V100 validation. No promotion or performance claim. Automatically removed after transport window."
+          timeout -k 2s 60s gh release create "$TAG" "${files[0]}#candidate.tar.gz" --target "$GITHUB_SHA" --prerelease --latest=false --title "Temporary offline candidate transport - not a release" --notes "Exact candidate package for bounded offline V100 validation. No promotion or performance claim. Automatically removed after transport window."
           echo EXACT_PACKAGE_TRANSPORT_READY
           sleep 420
           cleanup
