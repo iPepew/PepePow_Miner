@@ -1,8 +1,5 @@
 name: Temporary candidate package transport 20261011
 on:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: [.github/workflows/temporary-candidate-transport-20261011.yml]
   workflow_dispatch:
 permissions:
   actions: read
