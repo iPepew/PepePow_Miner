@@ -1,0 +1,64 @@
+name: Temporary candidate package transport 20261011
+on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/temporary-candidate-transport-20261011.yml]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: pepew-candidate-transport
+  cancel-in-progress: false
+jobs:
+  transport:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: iPepew/PepePow_Miner
+      SESSION_DEADLINE_UTC: '2026-10-11T14:27:48Z'
+      TAG: temporary-candidate-fd3596e-20261011
+    steps:
+      - name: Absolute deadline gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          test "$remaining" -ge 1200
+          test "$remaining" -le 3600
+      - uses: actions/download-artifact@v4
+        timeout-minutes: 2
+        with:
+          github-token: ${{ github.token }}
+          run-id: 37957390770
+          artifact-ids: 11628662005
+          merge-multiple: true
+          path: candidate
+      - name: Verify and temporarily expose only exact public-source binary package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +x
+          mapfile -t files < <(find candidate -name PepeW-Miner-current-source-V100.tar.gz -type f)
+          test "${#files[@]}" -eq 1
+          test "$(sha256sum "${files[0]}" | cut -d' ' -f1)" = 0559aacbd77fdb2e66899f8cf22af2c64ca1bf3cfa13f322c56e9e3a578ac71e
+          cleanup() {
+            timeout -k 2s 30s gh release delete "$TAG" --yes --cleanup-tag
+          }
+          trap cleanup EXIT
+          timeout -k 2s 60s gh release create "$TAG" "${files[0]}#candidate.tar.gz" --target fd3596ee813583490635bc019f63fad2e5055919 --prerelease --latest=false --title "Temporary offline candidate transport - not a release" --notes "Exact candidate package for bounded offline V100 validation. No promotion or performance claim. Automatically removed after transport window."
+          echo EXACT_PACKAGE_TRANSPORT_READY
+          sleep 420
+          cleanup
+          trap - EXIT
+          echo TEMPORARY_TRANSPORT_REMOVED
+      - name: Ensure temporary transport cleanup
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +x
+          if timeout -k 2s 15s gh release view "$TAG" >/dev/null 2>&1; then
+            timeout -k 2s 30s gh release delete "$TAG" --yes --cleanup-tag
+          fi
