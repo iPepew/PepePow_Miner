@@ -11,6 +11,7 @@
 
 struct Event {
     std::uint64_t sum_bits, sw_bits;
+    bool cold;
     bool operator==(const Event&) const = default;
 };
 static std::array<std::vector<Event>,32> expected_trace, actual_trace;
@@ -20,7 +21,7 @@ static bool collective_vote=false;
 static std::uint64_t observed_votes=0, observed_barriers=0, finished_lane_votes=0;
 static void record_reference(std::size_t i,std::size_t j,double sum,double sw) {
     if (expected_trace[current_lane].size()!=i*64+j) throw std::runtime_error("reference cell order");
-    expected_trace[current_lane].push_back({std::bit_cast<std::uint64_t>(sum),std::bit_cast<std::uint64_t>(sw)});
+    expected_trace[current_lane].push_back({std::bit_cast<std::uint64_t>(sum),std::bit_cast<std::uint64_t>(sw),sw<=0.02});
 }
 
 // @REFERENCE@
@@ -55,13 +56,17 @@ struct VoteAwaiter {
     }
     bool await_resume() const noexcept { return collective_vote; }
 };
-using HooHashSwState=double;
-static double initial_sw_state() { return 0.0; }
-static bool sw_state_is_cold(double sw) { return sw<=0.02; }
-static void update_sw_state(double& sw,double sum) {
-    sw=sum/1024.0-std::floor(sum/1024.0);
-    actual_trace[current_lane].push_back({std::bit_cast<std::uint64_t>(sum),std::bit_cast<std::uint64_t>(sw)});
+#define __device__
+#define __forceinline__ inline
+static unsigned long long __double2ull_rd(double x) {
+    if(!std::isfinite(x) || x<0.0 || x>=0x1.0p64) throw std::runtime_error("SW intrinsic host domain");
+    return static_cast<unsigned long long>(x);
 }
+static void trace_gpu_sw(double sum,bool cold) {
+    const double sw=sum/1024.0-std::floor(sum/1024.0);
+    actual_trace[current_lane].push_back({std::bit_cast<std::uint64_t>(sum),std::bit_cast<std::uint64_t>(sw),cold});
+}
+// @SW_HELPERS@
 static std::uint32_t byte_swap32(std::uint32_t x) { return __builtin_bswap32(x); }
 static double u32_to_double_exact(std::uint32_t x) { return static_cast<double>(x); }
 static double nibble_to_double(std::uint32_t x) { return static_cast<double>(x&15U); }
