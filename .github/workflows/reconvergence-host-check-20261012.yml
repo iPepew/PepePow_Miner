@@ -1,6 +1,9 @@
 name: Pinned reconvergence host scheduling and mode3 check 20261012
 on:
   workflow_dispatch:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/reconvergence-host-check-20261012.yml]
 permissions:
   contents: read
 concurrency:
@@ -9,22 +12,29 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-22.04
-    timeout-minutes: 6
+    timeout-minutes: 8
     env:
-      SESSION_DEADLINE_UTC: '2026-10-12T17:02:51Z'
+      SESSION_DEADLINE_UTC: '2026-10-12T20:00:42Z'
     steps:
       - name: Absolute deadline with completion reserve
         shell: bash
         run: |
           set -Eeuo pipefail
           remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
-          test "$remaining" -ge 600
+          test "$remaining" -ge 780
           test "$remaining" -le 3600
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        timeout-minutes: 2
+        with:
+          repository: BLAKE3-team/BLAKE3
+          ref: 1.8.5
+          path: blake3-source
           persist-credentials: false
       - name: Verify pinned CUDA body and reference with host-only collective model
         shell: bash
         run: |
           set -Eeuo pipefail
-          timeout --signal=TERM --kill-after=5s 180s python3 scripts/ci/check_reconvergence_host.py
+          timeout --signal=TERM --kill-after=5s 240s python3 scripts/ci/check_reconvergence_host.py --blake3-root blake3-source/c
