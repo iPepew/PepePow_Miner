@@ -170,14 +170,14 @@ jobs:
           # structured joins and the completion vote/backedge; do not accept
           # arbitrary BSYNC instructions elsewhere in final BLAKE/math code.
           pinned_fragments = [
-              '/*3300*/                   BSSY B0, 0x3ce0 ;',
-              '/*3cd0*/                   BSYNC B0 ;',
-              '/*3d00*/                   BSSY B0, 0x3df0 ;',
-              '/*3d30*/                   CALL.REL.NOINC 0x3e60 ;',
-              '/*3de0*/                   BSYNC B0 ;',
-              '/*3e20*/                   VOTE.ANY R2, PT, !P0 ;',
-              '/*3e40*/              @!P0 RET.REL.NODEC R34 0x0 ;',
-              '/*3e50*/                   BRA 0x32d0 ;',
+              '/*3300*/                   BSSY B0, 0x3ea0 ;',
+              '/*3e90*/                   BSYNC B0 ;',
+              '/*3ec0*/                   BSSY B0, 0x3fb0 ;',
+              '/*3ef0*/                   CALL.REL.NOINC 0x4020 ;',
+              '/*3fa0*/                   BSYNC B0 ;',
+              '/*3fe0*/                   VOTE.ANY R2, PT, !P0 ;',
+              '/*4000*/              @!P0 RET.REL.NODEC R34 0x0 ;',
+              '/*4010*/                   BRA 0x32d0 ;',
           ]
           body = '\n'.join(line for lines in selected.values() for line in lines)
           positions = [body.find(fragment) for fragment in pinned_fragments]
