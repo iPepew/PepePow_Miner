@@ -1,6 +1,11 @@
 name: Temporary candidate package transport 20261011
 on:
   workflow_dispatch:
+    inputs:
+      session_deadline_utc:
+        description: Absolute authorized session end YYYY-MM-DDTHH:MM:SSZ
+        required: true
+        type: string
 permissions:
   actions: read
   contents: write
@@ -12,9 +17,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 6
     env:
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.PEPEW_RELEASE_TRANSPORT_TOKEN || github.token }}
+      TRANSPORT_TOKEN_CONFIGURED: ${{ secrets.PEPEW_RELEASE_TRANSPORT_TOKEN != '' }}
+      EXPECTED_SOURCE: 69982736eb073a8df53fbdbe4dc02509fc760807
       GH_REPO: iPepew/PepePow_Miner
-      SESSION_DEADLINE_UTC: '2026-10-12T15:50:24Z'
+      SESSION_DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
       TAG: temporary-reconv-6998273-20261012
     steps:
       - name: Absolute deadline gate
@@ -24,6 +31,17 @@ jobs:
           remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
           test "$remaining" -ge 660
           test "$remaining" -le 3600
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Read-only release permission admission before artifact or release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 2s 20s python3 -m unittest discover -s tests -p test_release_transport_preflight.py -v
+          token_class=github_token
+          if [ "$TRANSPORT_TOKEN_CONFIGURED" = true ]; then token_class=configured_transport_token; fi
+          timeout -k 2s 90s python3 scripts/ci/release_transport_preflight.py --repository "$GH_REPO" --target "$EXPECTED_SOURCE" --token-class "$token_class"
       - uses: actions/download-artifact@v4
         timeout-minutes: 2
         with:
@@ -44,7 +62,7 @@ jobs:
             timeout -k 2s 30s gh release delete "$TAG" --yes --cleanup-tag
           }
           trap cleanup EXIT
-          timeout -k 2s 60s gh release create "$TAG" "${files[0]}#candidate.tar.gz" --target "$GITHUB_SHA" --prerelease --latest=false --title "Temporary offline candidate transport - not a release" --notes "Exact CUDA Event diagnostic package for bounded offline V100 timing. No promotion or performance claim. Automatically removed after transport window."
+          timeout -k 2s 60s gh release create "$TAG" "${files[0]}#candidate.tar.gz" --target "$EXPECTED_SOURCE" --prerelease --latest=false --title "Temporary offline candidate transport - not a release" --notes "Exact CUDA Event diagnostic package for bounded offline V100 timing. No promotion or performance claim. Automatically removed after transport window."
           echo EXACT_PACKAGE_TRANSPORT_READY
           sleep 180
           cleanup
