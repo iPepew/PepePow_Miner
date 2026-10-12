@@ -151,10 +151,21 @@ jobs:
               'spill_bytes': 0,
           }
           result['experimental_cold_reconvergence'] = True
-          result['warp_sync_instructions'] = sum(op.startswith('WARPSYNC') for op in ops)
-          result['vote_instructions'] = sum(op.startswith('VOTE') for op in ops)
+          sections = {}
+          name = ''
+          for line in open('/tmp/sass.txt', errors='replace'):
+              if 'Function :' in line:
+                  name = line.split('Function :',1)[1].strip()
+                  sections.setdefault(name, [])
+              elif name and '/*' in line and '*/' in line and ';' in line:
+                  sections[name].append(line.strip())
+          selected = {name:lines for name,lines in sections.items() if 'hoohash_mix_words_hotrun8_reconverged' in name or 'hoohash_final_hotrun8_local_phase_kernel' in name}
+          collective_lines = [line for lines in selected.values() for line in lines if 'WARPSYNC' in line or 'VOTE' in line]
+          print('RECONVERGENCE_SASS_INSPECTION ' + json.dumps({'functions':list(selected),'collective_lines':collective_lines},sort_keys=True))
+          result['warp_sync_instructions'] = sum('WARPSYNC' in line for line in collective_lines)
+          result['vote_instructions'] = sum('VOTE' in line for line in collective_lines)
           if not result['warp_sync_instructions'] or not result['vote_instructions']:
-              raise SystemExit('missing rendezvous/completion collectives')
+              raise SystemExit('missing rendezvous/completion collectives after callee/predicate inspection')
           expected = {'sm': 70, 'spill_bytes': 0}
           result['identity_pass'] = all(result[k] == v for k, v in expected.items())
           print('CUDA_PACKAGE_IDENTITY ' + json.dumps(result, sort_keys=True))
