@@ -13,7 +13,11 @@ int main(int argc, char** argv) {
     std::uint64_t count = 1048576ULL;
     if (argc > 1) count = std::strtoull(argv[1], nullptr, 10);
     const unsigned header_id = argc > 2 ? static_cast<unsigned>(std::strtoul(argv[2], nullptr, 10)) : 0U;
-    if (argc > 3 || header_id > 255U) { std::cerr << "invalid arguments\n"; return 2; }
+    const unsigned warmup_count = argc > 3 ? static_cast<unsigned>(std::strtoul(argv[3], nullptr, 10)) : 1U;
+    if (argc > 4 || header_id > 255U || warmup_count > 16U) {
+        std::cerr << "invalid arguments\n";
+        return 2;
+    }
     if (count == 0 || count > 0x100000000ULL) {
         std::cerr << "invalid nonce count\n";
         return 2;
@@ -37,7 +41,11 @@ int main(int argc, char** argv) {
         if (devices.empty()) throw std::runtime_error("no CUDA device detected");
 
         // Warm up the CUDA context, matrix upload and persistent result buffer.
-        (void)backend.search(job, pepepow::SearchRange{0, 65536}, impossible_target);
+        // A diagnostic build can request two launches so CUDA-event analysis
+        // discards both first-use paths before the measured search.
+        for (unsigned warmup = 0; warmup < warmup_count; ++warmup) {
+            (void)backend.search(job, pepepow::SearchRange{0, 65536}, impossible_target);
+        }
 
         const auto start = std::chrono::steady_clock::now();
         const auto candidate = backend.search(
@@ -51,6 +59,7 @@ int main(int argc, char** argv) {
         const double hps = static_cast<double>(count) / seconds;
         std::cout << "PERFORMANCE_BENCHMARK device=\"" << devices.front().name << "\""
                   << " header=" << header_id
+                  << " warmups=" << warmup_count
                   << " nonces=" << count
                   << " seconds=" << std::fixed << std::setprecision(4) << seconds
                   << " hps=" << std::setprecision(0) << hps
