@@ -1,4 +1,4 @@
-name: Pinned reconvergence host scheduling check 20261012
+name: Pinned reconvergence host scheduling and mode3 check 20261012
 on:
   workflow_dispatch:
   push:
