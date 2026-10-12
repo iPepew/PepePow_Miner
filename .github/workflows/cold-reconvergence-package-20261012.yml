@@ -165,8 +165,27 @@ jobs:
           print('RECONVERGENCE_SASS_INSPECTION ' + json.dumps({'functions':list(selected),'collective_lines':collective_lines},sort_keys=True))
           result['warp_sync_instructions'] = sum('WARPSYNC' in line or 'BAR.WARP.SYNC' in line for line in collective_lines)
           result['vote_instructions'] = sum('VOTE' in line for line in collective_lines)
-          if not result['warp_sync_instructions'] or not result['vote_instructions']:
-              raise SystemExit('missing rendezvous/completion collectives after callee/predicate inspection')
+          # Pinned nvcc 12.8 sm70 lowering: reconverged noinline code is embedded
+          # in the kernel SASS section. Verify exact before-call and after-call
+          # structured joins and the completion vote/backedge; do not accept
+          # arbitrary BSYNC instructions elsewhere in final BLAKE/math code.
+          pinned_fragments = [
+              '/*3300*/                   BSSY B0, 0x3ce0 ;',
+              '/*3cd0*/                   BSYNC B0 ;',
+              '/*3d00*/                   BSSY B0, 0x3df0 ;',
+              '/*3d30*/                   CALL.REL.NOINC 0x3e60 ;',
+              '/*3de0*/                   BSYNC B0 ;',
+              '/*3e20*/                   VOTE.ANY R2, PT, !P0 ;',
+              '/*3e40*/              @!P0 RET.REL.NODEC R34 0x0 ;',
+              '/*3e50*/                   BRA 0x32d0 ;',
+          ]
+          body = '\n'.join(line for lines in selected.values() for line in lines)
+          positions = [body.find(fragment) for fragment in pinned_fragments]
+          structured_pass = all(p >= 0 for p in positions) and positions == sorted(positions)
+          result['structured_reconvergence_pass'] = structured_pass
+          result['rendezvous_lowering'] = 'pinned_BSSY_BSYNC' if structured_pass else 'explicit_warp_barrier'
+          if not result['vote_instructions'] or not (result['warp_sync_instructions'] or structured_pass):
+              raise SystemExit('missing verified rendezvous/completion sequence')
           expected = {'sm': 70, 'spill_bytes': 0}
           result['identity_pass'] = all(result[k] == v for k, v in expected.items())
           print('CUDA_PACKAGE_IDENTITY ' + json.dumps(result, sort_keys=True))
