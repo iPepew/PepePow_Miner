@@ -251,7 +251,7 @@ jobs:
             /tmp/ctest.log
             /tmp/version.log
             /tmp/elf.log
-          /tmp/sass.txt
+            /tmp/sass.txt
             /tmp/resources.json
           retention-days: 30
 
