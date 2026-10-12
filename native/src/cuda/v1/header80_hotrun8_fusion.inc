@@ -2,6 +2,12 @@
 // This file is included inside pepepow's anonymous CUDA namespace after
 // header80_hotrun8.inc, so all exact BLAKE3/HooHash helpers are available.
 
+#if defined(PEPEPOW_CUDA_SUBSTAGE_TIMING) && PEPEPOW_CUDA_SUBSTAGE_TIMING
+// One lane in each of up to 1024 blocks; elapsed SM cycles include scheduling.
+// Diagnostic storage is absent from ordinary builds.
+__device__ unsigned long long kHeader80SubstageCycles[1024 * 2];
+#endif
+
 // Stage A+B fused: Header80 BLAKE3 -> exact hotrun8 HooHash -> global mixed[8].
 // Removes the first_pass global round-trip while keeping final BLAKE3 separate.
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
@@ -164,9 +170,16 @@ void hoohash_final_hotrun8_local_phase_kernel(
     const std::uint32_t nonce =
         first_nonce + static_cast<std::uint32_t>(index);
     std::uint32_t phase_cache[8];
+#if defined(PEPEPOW_CUDA_SUBSTAGE_TIMING) && PEPEPOW_CUDA_SUBSTAGE_TIMING
+    const bool sample = threadIdx.x == 0 && blockIdx.x < 1024;
+    const auto mix_start = sample ? clock64() : 0ULL;
+#endif
     hoohash_mix_words_hotrun8_resident(
         matrix, scaled_nibble_table, byte_swap32(nonce),
         first_words + base, phase_cache);
+#if defined(PEPEPOW_CUDA_SUBSTAGE_TIMING) && PEPEPOW_CUDA_SUBSTAGE_TIMING
+    const auto mix_stop = sample ? clock64() : 0ULL;
+#endif
 
     // The runtime-indexed noinline producer is the lifetime boundary. The
     // consumer retains the proven exact BLAKE3 and target comparison.
@@ -175,6 +188,13 @@ void hoohash_final_hotrun8_local_phase_kernel(
     blake3_32_words_static_schedule(phase_cache, final_hash);
 #else
     blake3_32_words(phase_cache, final_hash);
+#endif
+#if defined(PEPEPOW_CUDA_SUBSTAGE_TIMING) && PEPEPOW_CUDA_SUBSTAGE_TIMING
+    if (sample) {
+        const auto final_stop = clock64();
+        kHeader80SubstageCycles[blockIdx.x * 2] = mix_stop - mix_start;
+        kHeader80SubstageCycles[blockIdx.x * 2 + 1] = final_stop - mix_stop;
+    }
 #endif
     if (!hash_words_meet_target(final_hash)) return;
     if (atomicCAS(&result->found, 0U, 1U) == 0U) {
