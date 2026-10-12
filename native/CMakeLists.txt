@@ -11,6 +11,7 @@ option(PEPEPOW_ENABLE_CUDA "Build the NVIDIA CUDA backend" OFF)
 option(PEPEPOW_BUILD_TESTS "Build unit tests" ON)
 option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statistics" OFF)
 option(PEPEPOW_CUDA_STAGE_TIMING "Emit diagnostic CUDA Event timings for Header80 stages" OFF)
+option(PEPEPOW_CUDA_SUBSTAGE_TIMING "Sample elapsed SM cycles for local-phase mixer and final BLAKE3 (diagnostic only)" OFF)
 set(PEPEPOW_CUDA_ARCHITECTURES "61-real;75-real;86-real;89-real;120" CACHE STRING "CUDA targets for GTX 10, RTX 20, RTX 30, RTX 40 and RTX 50")
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_THREADS "768" CACHE STRING "CUDA threads per Header80 search block")
@@ -111,6 +112,7 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_ASSUME_FINITE=$<BOOL:${PEPEPOW_CUDA_ASSUME_FINITE}>
         PEPEPOW_CUDA_DEMAND_SLICED_REDUCER=$<BOOL:${PEPEPOW_CUDA_DEMAND_SLICED_REDUCER}>
         PEPEPOW_CUDA_STAGE_TIMING=$<BOOL:${PEPEPOW_CUDA_STAGE_TIMING}>
+        PEPEPOW_CUDA_SUBSTAGE_TIMING=$<BOOL:${PEPEPOW_CUDA_SUBSTAGE_TIMING}>
         PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
         PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
     set_target_properties(pepepow_cuda PROPERTIES
