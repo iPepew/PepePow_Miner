@@ -1,6 +1,9 @@
 name: Temporary candidate package transport 20261011
 on:
   workflow_dispatch:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/temporary-candidate-transport-20261011.yml]
 permissions:
   actions: read
   contents: write
@@ -10,26 +13,26 @@ concurrency:
 jobs:
   transport:
     runs-on: ubuntu-22.04
-    timeout-minutes: 12
+    timeout-minutes: 6
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: iPepew/PepePow_Miner
-      SESSION_DEADLINE_UTC: '2026-10-12T15:35:24Z'
-      TAG: temporary-census-52e135b-20261012
+      SESSION_DEADLINE_UTC: '2026-10-12T15:50:24Z'
+      TAG: temporary-reconv-6998273-20261012
     steps:
       - name: Absolute deadline gate
         shell: bash
         run: |
           set -Eeuo pipefail
           remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
-          test "$remaining" -ge 1200
+          test "$remaining" -ge 660
           test "$remaining" -le 3600
       - uses: actions/download-artifact@v4
         timeout-minutes: 2
         with:
           github-token: ${{ github.token }}
-          run-id: 38265807116
-          artifact-ids: 11754921243
+          run-id: 38271073899
+          artifact-ids: 11757241914
           merge-multiple: true
           path: candidate
       - name: Verify and temporarily expose only exact public-source binary package
@@ -39,14 +42,14 @@ jobs:
           set +x
           mapfile -t files < <(find candidate -name PepeW-Miner-current-source-V100.tar.gz -type f)
           test "${#files[@]}" -eq 1
-          test "$(sha256sum "${files[0]}" | cut -d' ' -f1)" = 7179f8c176902e51ef0e6b58c0d1cf750da7d45448b4c58ebb4970a6b9e5f875
+          test "$(sha256sum "${files[0]}" | cut -d' ' -f1)" = 98e63d4b75dda951b0591346954cc43eab569e7b02d96b191cac15164fe6a713
           cleanup() {
             timeout -k 2s 30s gh release delete "$TAG" --yes --cleanup-tag
           }
           trap cleanup EXIT
           timeout -k 2s 60s gh release create "$TAG" "${files[0]}#candidate.tar.gz" --target "$GITHUB_SHA" --prerelease --latest=false --title "Temporary offline candidate transport - not a release" --notes "Exact CUDA Event diagnostic package for bounded offline V100 timing. No promotion or performance claim. Automatically removed after transport window."
           echo EXACT_PACKAGE_TRANSPORT_READY
-          sleep 420
+          sleep 180
           cleanup
           trap - EXIT
           echo TEMPORARY_TRANSPORT_REMOVED
