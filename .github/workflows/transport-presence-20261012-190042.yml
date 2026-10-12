@@ -1,0 +1,26 @@
+name: Read-only transport credential presence 20261012 190042
+on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/transport-presence-20261012-190042.yml]
+permissions:
+  contents: read
+jobs:
+  presence:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 2
+    env:
+      SESSION_DEADLINE_UTC: '2026-10-12T20:00:42Z'
+      CONFIGURED: ${{ secrets.PEPEW_RELEASE_TRANSPORT_TOKEN != '' }}
+    steps:
+      - name: Bound read-only check and emit only credential presence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          test "$remaining" -ge 240
+          test "$remaining" -le 3600
+          timeout -k 2s 5s python3 - <<'PY'
+          import json,os
+          print('TRANSPORT_PRESENCE '+json.dumps({'configured_transport_token_present':os.environ['CONFIGURED']=='true','token_value_exposed':False,'permission_verified':False,'release_attempted':False},sort_keys=True))
+          PY
