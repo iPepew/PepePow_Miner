@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 3
     env:
       GH_TOKEN: ${{ github.token }}
+      TRANSPORT_TOKEN_CONFIGURED: ${{ secrets.PEPEW_RELEASE_TRANSPORT_TOKEN != '' }}
       SESSION_DEADLINE_UTC: '2026-10-12T17:02:51Z'
     steps:
       - name: Enforce absolute boundary
@@ -28,6 +29,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Report configured credential presence without reading its value
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 2s 5s python3 - <<'PY'
+          import json,os
+          print('RELEASE_TRANSPORT_CONFIGURATION '+json.dumps({'configured_transport_token_present':os.environ.get('TRANSPORT_TOKEN_CONFIGURED')=='true','token_value_exposed':False,'token_permissions_verified':False},sort_keys=True))
+          PY
       - name: Test fail-closed admission without network
         shell: bash
         run: |
