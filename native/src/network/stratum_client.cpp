@@ -221,6 +221,11 @@ public:
 
     void log(const std::string& text) { if (log_handler_) log_handler_(text); else std::cout << text << '\n'; }
 
+    std::int64_t monotonic_us() const {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - evidence_origin_).count();
+    }
+
     std::uint64_t evidence(json fields) {
         if (!evidence_handler_) return 0;
         std::lock_guard lock(evidence_mutex_);
@@ -228,8 +233,7 @@ public:
         try {
             fields["schema"] = "pepew-stratum-evidence-v1";
             fields["seq"] = ++evidence_seq_;
-            fields["monotonic_us"] = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - evidence_origin_).count();
+            fields["monotonic_us"] = monotonic_us();
             fields["connection_epoch"] = connection_epoch_.load();
             evidence_handler_(fields.dump() + "\n");
             return evidence_seq_;
@@ -240,7 +244,7 @@ public:
         }
     }
 
-    void send_json(const json& value) {
+    std::int64_t send_json(const json& value) {
         const auto line = value.dump() + "\n";
         std::lock_guard lock(send_mutex_);
         if (socket_ == invalid_socket) throw std::runtime_error("not connected");
@@ -254,6 +258,8 @@ public:
             if (count <= 0) throw std::runtime_error("pool send failed");
             sent += static_cast<std::size_t>(count);
         }
+        // Local socket acceptance, not peer receipt. Capture before journaling.
+        return evidence_handler_ ? monotonic_us() : 0;
     }
 
     void handshake() {
@@ -261,7 +267,7 @@ public:
         send_json({{"id",2},{"method","mining.authorize"},{"params",json::array({config_.username,config_.password})}});
     }
 
-    void handle_response(const json& message, int id) {
+    void handle_response(const json& message, int id, std::int64_t received_us) {
         if (id == 1) {
             if (!response_success(message) || !message.contains("result") || !message["result"].is_array()) {
                 throw std::runtime_error("pool subscription rejected: " + error_text(message.value("error", json(nullptr))));
@@ -288,7 +294,7 @@ public:
             if (it == pending_submit_.end()) {
                 if (evidence_handler_) {
                     auto fields = safe_response(message);
-                    fields.update({{"event", "response"}, {"submit_id", id}, {"matched", false}});
+                    fields.update({{"event", "response"}, {"receive_monotonic_us", received_us}, {"submit_id", id}, {"matched", false}});
                     evidence(std::move(fields));
                 }
                 return;
@@ -304,7 +310,7 @@ public:
         std::uint64_t response_seq = 0;
         if (evidence_handler_) {
             auto fields = safe_response(message);
-            fields.update({{"event", "response"}, {"submit_id", id}, {"matched", true},
+            fields.update({{"event", "response"}, {"receive_monotonic_us", received_us}, {"submit_id", id}, {"matched", true},
                            {"job_ref", job_ref(pending.job_id)},
                            {"success", success}, {"clean_ref", pending.clean_ref},
                            {"classification", success ? "accepted" :
@@ -361,7 +367,7 @@ public:
         }
     }
 
-    void handle_notification(const json& message) {
+    void handle_notification(const json& message, std::int64_t received_us) {
         if (!message.contains("method") || !message["method"].is_string()) return;
         const auto method = message["method"].get<std::string>();
         if (method == "mining.set_difficulty") {
@@ -387,7 +393,7 @@ public:
             job.difficulty = difficulty_;
             std::uint64_t clean_ref = 0;
             if (evidence_handler_) clean_ref = evidence({
-                {"event", "job"}, {"job_ref", job_ref(job.job_id)}, {"clean", job.clean_jobs}});
+                {"event", "job"}, {"receive_monotonic_us", received_us}, {"job_ref", job_ref(job.job_id)}, {"clean", job.clean_jobs}});
             if (job.clean_jobs) {
                 attribute_pre_notify_stale(job.job_id, clean_ref);
                 std::lock_guard lock(pending_mutex_);
@@ -408,7 +414,7 @@ public:
         }
     }
 
-    void handle_line(const std::string& line) {
+    void handle_line(const std::string& line, std::int64_t received_us) {
         json message;
         try {
             message = json::parse(line);
@@ -431,10 +437,10 @@ public:
                     const auto value = id.get<std::int64_t>();
                     valid_id = value >= 0 && value <= std::numeric_limits<int>::max();
                 }
-                if (valid_id) handle_response(message, id.get<int>());
+                if (valid_id) handle_response(message, id.get<int>(), received_us);
                 else if (evidence_handler_) evidence({{"event", "invalid_message"}, {"phase", "response_id"}});
             }
-            handle_notification(message);
+            handle_notification(message, received_us);
         } catch (const std::exception& error) {
             if (evidence_handler_) evidence({{"event", "invalid_message"}, {"phase", "message_fields"}});
             log(std::string("Ignoring invalid Stratum message: ") + error.what() + " raw=" + line);
@@ -486,13 +492,16 @@ public:
                             {"event", "invalid_message"}, {"phase", "truncated_line"}});
                         throw std::runtime_error("pool disconnected");
                     }
+                    // Completion of the recv supplying each complete frame. Includes
+                    // buffering/parse/handler delay, not time spent blocked in recv.
+                    const auto received_us = evidence_handler_ ? monotonic_us() : 0;
                     buffer.append(chunk.data(), static_cast<std::size_t>(count));
                     std::size_t newline = 0;
                     while ((newline = buffer.find('\n')) != std::string::npos) {
                         auto line = buffer.substr(0, newline);
                         buffer.erase(0, newline + 1U);
                         if (!line.empty() && line.back() == '\r') line.pop_back();
-                        if (!line.empty()) handle_line(line);
+                        if (!line.empty()) handle_line(line, received_us);
                     }
                 }
             } catch (const std::exception& error) {
@@ -534,7 +543,10 @@ public:
                 {"submit_id", id}, {"job_ref", job_ref(share.job_id)}});
         }
         try {
-            send_json({{"id",id},{"method","mining.submit"},{"params",json::array({config_.username,share.job_id,share.extranonce2,share.ntime,share.nonce})}});
+            const auto sent_us = send_json({{"id",id},{"method","mining.submit"},{"params",json::array({config_.username,share.job_id,share.extranonce2,share.ntime,share.nonce})}});
+            if (evidence_handler_) evidence({{"event", "submit_sent"},
+                {"submit_id", id}, {"job_ref", job_ref(share.job_id)},
+                {"send_monotonic_us", sent_us}});
             return true;
         } catch (const std::exception& error) {
             std::lock_guard lock(pending_mutex_);
