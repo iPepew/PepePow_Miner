@@ -1,6 +1,9 @@
 name: Temporary candidate package transport 20261011
 on:
   workflow_dispatch:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/temporary-candidate-transport-20261011.yml]
 permissions:
   actions: read
   contents: write
@@ -14,8 +17,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: iPepew/PepePow_Miner
-      SESSION_DEADLINE_UTC: '2026-10-12T12:16:15Z'
-      TAG: temporary-nodelay-c01bfb5-20261012
+      SESSION_DEADLINE_UTC: '2026-10-12T14:50:24Z'
+      TAG: temporary-socket-boundary-8bd546b-20261012
     steps:
       - name: Absolute deadline gate
         shell: bash
@@ -28,8 +31,8 @@ jobs:
         timeout-minutes: 2
         with:
           github-token: ${{ github.token }}
-          run-id: 38242312144
-          artifact-ids: 11744080869
+          run-id: 38258844248
+          artifact-ids: 11751087882
           merge-multiple: true
           path: candidate
       - name: Verify and temporarily expose only exact public-source binary package
@@ -39,7 +42,7 @@ jobs:
           set +x
           mapfile -t files < <(find candidate -name PepeW-Miner-current-source-V100.tar.gz -type f)
           test "${#files[@]}" -eq 1
-          test "$(sha256sum "${files[0]}" | cut -d' ' -f1)" = 866aa1898a165a37f85e369d9dbc41e9a2cdd0d10f0cada73a30684b1a66a07a
+          test "$(sha256sum "${files[0]}" | cut -d' ' -f1)" = 7b7610863853db8742930d3d96718e2b5f735162085b9cac9759d5996c651310
           cleanup() {
             timeout -k 2s 30s gh release delete "$TAG" --yes --cleanup-tag
           }
