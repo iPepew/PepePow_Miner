@@ -27,6 +27,11 @@
         target_cached = true;
     }
 
+#if defined(PEPEPOW_CUDA_NONLINEAR_CENSUS) && PEPEPOW_CUDA_NONLINEAR_CENSUS
+    const std::array<unsigned long long, 10> empty_census{};
+    check_cuda_header80(cudaMemcpyToSymbol(kHeader80NonlinearCensus, empty_census.data(), sizeof(empty_census)),
+                        "cudaMemcpyToSymbol(clear nonlinear census)");
+#endif
     if (device_result_ == nullptr) {
         check_cuda_header80(cudaMalloc(&device_result_, sizeof(DeviceShareResult)),
                             "cudaMalloc(header80 result)");
@@ -249,6 +254,18 @@
     std::fprintf(stderr, "CUDA_SUBSTAGE_TIMING nonces=%zu samples=%zu mix_cycles_mean=%.3f final_blake_cycles_mean=%.3f mix_cycles_min=%llu mix_cycles_max=%llu final_cycles_min=%llu final_cycles_max=%llu diagnostic_only=1\n",
                  count, substage_samples, mix_sum / substage_samples, final_sum / substage_samples,
                  mix_min, mix_max, final_min, final_max);
+#endif
+#if defined(PEPEPOW_CUDA_NONLINEAR_CENSUS) && PEPEPOW_CUDA_NONLINEAR_CENSUS
+    std::array<unsigned long long, 10> census{};
+    check_cuda_header80(cudaMemcpyFromSymbol(census.data(), kHeader80NonlinearCensus, sizeof(census)),
+                        "cudaMemcpyFromSymbol(nonlinear census)");
+    if (census[0] != census[3] + census[4] + census[5] ||
+        census[6] + census[7] + census[8] != census[3] + census[4] ||
+        census[2] > census[1] || census[1] > census[0] || census[9] > census[0])
+        throw std::runtime_error("nonlinear census partition mismatch");
+    std::fprintf(stderr, "CUDA_NONLINEAR_CENSUS nonces=%zu sampled_blocks=%zu active_lane_entries=%llu entry_groups=%llu partial_entry_groups=%llu exp_sincos_calls=%llu sin_squared_calls=%llu inverse_sqrt_calls=%llu trig_low_calls=%llu trig_window_calls=%llu trig_other_calls=%llu division_transform_calls=%llu diagnostic_only=1\n",
+                 count, std::min<std::size_t>(blocks, 128), census[0], census[1], census[2],
+                 census[3], census[4], census[5], census[6], census[7], census[8], census[9]);
 #endif
     if (host_result.found == 0U) return std::nullopt;
 
