@@ -17,6 +17,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <unordered_map>
 
 #ifdef _WIN32
 
@@ -293,12 +294,26 @@ int main(int argc, char** argv) {
     assert(evidence.front().at("event") == "stream_start");
     assert(evidence.back().at("event") == "stream_end");
     std::uint64_t clean_ref = 0, rejected_ref = 0, seq = 0, previous_us = 0;
-    unsigned pre = 0, post = 0, matched = 0;
+    unsigned pre = 0, post = 0, matched = 0, sent = 0;
+    std::unordered_map<int, std::uint64_t> attempts, completions, receives;
     for (const auto& event : evidence) {
         assert(event.at("seq").get<std::uint64_t>() == ++seq);
         const auto us = event.at("monotonic_us").get<std::uint64_t>();
         assert(us >= previous_us);
         previous_us = us;
+        if (event.at("event") == "submit_attempt") attempts[event.at("submit_id").get<int>()] = us;
+        if (event.at("event") == "submit_sent") {
+            ++sent;
+            const auto completed = event.at("send_monotonic_us").get<std::uint64_t>();
+            assert(completed <= us);
+            completions[event.at("submit_id").get<int>()] = completed;
+        }
+        if (event.at("event") == "job" || event.at("event") == "response") {
+            const auto received = event.at("receive_monotonic_us").get<std::uint64_t>();
+            assert(received <= us);
+            if (event.at("event") == "response" && event.at("matched") == true)
+                receives[event.at("submit_id").get<int>()] = received;
+        }
         if (event.at("event") == "job" && event.at("clean") == true) clean_ref = seq;
         if (event.at("event") == "response" && event.at("matched") == true) {
             ++matched;
@@ -327,7 +342,13 @@ int main(int argc, char** argv) {
             assert(rejected_ref < clean_ref && clean_ref < seq);
         }
     }
-    assert(pre == 1 && post == 1 && matched == 5);
+    assert(pre == 1 && post == 1 && matched == 5 && sent == 5);
+    for (const auto& [id, completed] : completions) {
+        assert(attempts.at(id) <= completed);
+        assert(attempts.at(id) <= receives.at(id));
+        // Peer can respond before sender is scheduled to timestamp send return.
+        // Do not assume completion event seq precedes response event seq.
+    }
     assert(evidence.back().at("accepted") == 2);
     assert(evidence.back().at("rejected_inclusive") == 3);
     assert(evidence.back().at("temporal_stale") == 2);
