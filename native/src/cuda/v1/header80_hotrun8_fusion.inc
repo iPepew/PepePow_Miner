@@ -172,7 +172,25 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8_reconverged(
                     break;
                 }
             } else {
-                sum += hotrun8_warm_contribution(matrix, scaled_nibble_table, cell, nibble);
+                // Preserve the baseline's two-value warm preload window.
+                // Only commit the second cell if the exact SW state stays warm.
+                const double contribution0 = hotrun8_warm_contribution(
+                    matrix, scaled_nibble_table, cell, nibble);
+                const bool have_second = (col & 7) != 7;
+                double contribution1 = 0.0;
+                if (have_second) {
+                    const unsigned int nibble1 = hotrun8_word_nibble(packed_word, (col & 7) + 1);
+                    contribution1 = hotrun8_warm_contribution(
+                        matrix, scaled_nibble_table, cell + 1, nibble1);
+                }
+                sum += contribution0;
+                update_sw_state(sw, sum);
+                ++col;
+                if (sw_state_is_cold(sw) || !have_second) continue;
+                sum += contribution1;
+                update_sw_state(sw, sum);
+                ++col;
+                continue;
             }
             update_sw_state(sw, sum);
             ++col;
