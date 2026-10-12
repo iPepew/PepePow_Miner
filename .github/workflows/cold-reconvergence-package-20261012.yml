@@ -15,7 +15,7 @@ defaults:
 jobs:
   package:
     runs-on: ubuntu-22.04
-    timeout-minutes: 18
+    timeout-minutes: 8
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
@@ -32,8 +32,8 @@ jobs:
           deadline_epoch="$(date -u -d "$SESSION_DEADLINE_UTC" +%s)"
           now_epoch="$(date -u +%s)"
           remaining="$((deadline_epoch - now_epoch))"
-          # 18-minute job timeout plus 5-minute cleanup margin; no queue-relative extension.
-          test "$remaining" -ge 1380
+          # 8-minute job timeout plus 5-minute cleanup margin; no queue-relative extension.
+          test "$remaining" -ge 780
           test "$remaining" -le 3600
           printf 'session_deadline_utc=%s\n' "$SESSION_DEADLINE_UTC"
       - name: Install bounded build tools
