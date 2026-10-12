@@ -174,9 +174,21 @@ void hoohash_final_hotrun8_local_phase_kernel(
     const bool sample = threadIdx.x == 0 && blockIdx.x < 1024;
     const auto mix_start = sample ? clock64() : 0ULL;
 #endif
+#if defined(PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE) && PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE
+    // Experiment: address-stable local input across the noinline mixer.
+    // Values and all mixer arithmetic/transition order remain unchanged.
+    std::uint32_t first_cache[8];
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) first_cache[i] = first_words[base + i];
+#endif
     hoohash_mix_words_hotrun8_resident(
         matrix, scaled_nibble_table, byte_swap32(nonce),
-        first_words + base, phase_cache);
+#if defined(PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE) && PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE
+        first_cache,
+#else
+        first_words + base,
+#endif
+        phase_cache);
 #if defined(PEPEPOW_CUDA_SUBSTAGE_TIMING) && PEPEPOW_CUDA_SUBSTAGE_TIMING
     const auto mix_stop = sample ? clock64() : 0ULL;
 #endif
