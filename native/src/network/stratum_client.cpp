@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <deque>
 #include <iomanip>
 #include <iostream>
@@ -24,6 +25,7 @@ constexpr socket_handle invalid_socket = INVALID_SOCKET;
 #else
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
 using socket_handle = int;
@@ -153,6 +155,17 @@ socket_handle connect_tcp(const Endpoint& endpoint) {
     }
     freeaddrinfo(addresses);
     if (socket == invalid_socket) throw std::runtime_error("pool connection failed");
+    // Opt-in transport experiment: keep the default path unchanged until
+    // submit/response timing and accepted-share evidence demonstrate benefit.
+    const char* nodelay = std::getenv("PEPEPOW_TCP_NODELAY");
+    if (nodelay != nullptr && std::strcmp(nodelay, "1") == 0) {
+        const int enabled = 1;
+        if (::setsockopt(socket, IPPROTO_TCP, TCP_NODELAY,
+                         reinterpret_cast<const char*>(&enabled), sizeof(enabled)) != 0) {
+            close_socket(socket);
+            throw std::runtime_error("TCP_NODELAY configuration failed");
+        }
+    }
     return socket;
 }
 
@@ -455,7 +468,9 @@ public:
                 socket_ = connect_tcp(config_.primary);
                 connected = true;
                 ++connection_epoch_;
-                if (evidence_handler_) evidence({{"event", "connection_open"}});
+                if (evidence_handler_) evidence({{"event", "connection_open"},
+                    {"tcp_nodelay", std::getenv("PEPEPOW_TCP_NODELAY") != nullptr &&
+                        std::strcmp(std::getenv("PEPEPOW_TCP_NODELAY"), "1") == 0}});
                 log("Connected to " + config_.primary.host + ":" + std::to_string(config_.primary.port));
                 handshake();
                 std::string buffer;
