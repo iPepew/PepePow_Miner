@@ -1,5 +1,8 @@
 name: Temporary candidate package transport 20261011
 on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/temporary-candidate-transport-20261011.yml]
   workflow_dispatch:
     inputs:
       session_deadline_utc:
@@ -21,7 +24,7 @@ jobs:
       TRANSPORT_TOKEN_CONFIGURED: ${{ secrets.PEPEW_RELEASE_TRANSPORT_TOKEN != '' }}
       EXPECTED_SOURCE: 69982736eb073a8df53fbdbe4dc02509fc760807
       GH_REPO: iPepew/PepePow_Miner
-      SESSION_DEADLINE_UTC: ${{ inputs.session_deadline_utc }}
+      SESSION_DEADLINE_UTC: '2026-10-12T21:57:26Z'
       TAG: temporary-reconv-6998273-20261012
     steps:
       - name: Absolute deadline gate
