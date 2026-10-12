@@ -129,3 +129,12 @@ this configuration change still needs a real CMake run. CUDA syntax-path
 checking by the host compiler is not an nvcc build, GPU gate, or artifact
 promotion. Source/binary hashes and exact commands are saved with Lab's
 bounded local gate results. No speed improvement is claimed.
+
+
+## Socket boundary timing (2026-10-12)
+
+Opt-in evidence now emits `submit_sent` with `send_monotonic_us`, captured after the complete JSON line is accepted by local `send` calls and before evidence journaling. This is local socket acceptance, not peer receipt or acknowledgement. The interval from `submit_attempt` includes JSON serialization, send mutex waiting, socket writes, and scheduling.
+
+Response and job events include `receive_monotonic_us`, captured immediately after the `recv` that supplied the completed frame. Frames completed by the same receive share that timestamp; partial frames use the receive completing their newline. The interval to the response evidence timestamp includes buffer extraction, parsing, pending-map lookup, hashing, evidence mutex waiting, and scheduling. It does not isolate parser cost. The interval between send completion and receive includes client scheduling, network transit, and pool processing; it does not isolate server delay.
+
+Correlate by `(connection_epoch, submit_id)` in two passes: a fast reply may be journaled before `submit_sent`. A peer can also respond before the sender is scheduled to timestamp its send return; such cases must be flagged rather than represented as negative network latency. Missing component timestamps in old journals remain unknown. No credentials or share payload fields are added. Timing is disabled when no evidence handler is installed. This instrumentation changes neither consensus nor rejection accounting and is not a real-pool validation.
