@@ -223,6 +223,33 @@
                  count, static_cast<double>(first_ms), static_cast<double>(final_ms),
                  static_cast<double>(first_ms + final_ms));
 #endif
+#if defined(PEPEPOW_CUDA_SUBSTAGE_TIMING) && PEPEPOW_CUDA_SUBSTAGE_TIMING
+#if !(defined(PEPEPOW_CUDA_SPLIT_PIPELINE) && PEPEPOW_CUDA_SPLIT_PIPELINE && \
+      defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && \
+      defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2 && \
+      defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY && \
+      defined(PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE) && PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE)
+#error "SUBSTAGE_TIMING requires split hotrun8 fusion2 local-phase configuration"
+#endif
+    std::array<unsigned long long, 1024 * 2> substage_cycles{};
+    const std::size_t substage_samples = std::min<std::size_t>(blocks, 1024);
+    check_cuda_header80(cudaMemcpyFromSymbol(substage_cycles.data(), kHeader80SubstageCycles,
+                          substage_samples * 2 * sizeof(unsigned long long)),
+                        "cudaMemcpyFromSymbol(substage cycles)");
+    double mix_sum = 0.0, final_sum = 0.0;
+    unsigned long long mix_min = ~0ULL, mix_max = 0, final_min = ~0ULL, final_max = 0;
+    for (std::size_t i = 0; i < substage_samples; ++i) {
+        const auto mix = substage_cycles[i * 2], final = substage_cycles[i * 2 + 1];
+        if (mix == 0 || final == 0) throw std::runtime_error("invalid substage sample");
+        mix_sum += static_cast<double>(mix);
+        final_sum += static_cast<double>(final);
+        mix_min = std::min(mix_min, mix); mix_max = std::max(mix_max, mix);
+        final_min = std::min(final_min, final); final_max = std::max(final_max, final);
+    }
+    std::fprintf(stderr, "CUDA_SUBSTAGE_TIMING nonces=%zu samples=%zu mix_cycles_mean=%.3f final_blake_cycles_mean=%.3f mix_cycles_min=%llu mix_cycles_max=%llu final_cycles_min=%llu final_cycles_max=%llu diagnostic_only=1\n",
+                 count, substage_samples, mix_sum / substage_samples, final_sum / substage_samples,
+                 mix_min, mix_max, final_min, final_max);
+#endif
     if (host_result.found == 0U) return std::nullopt;
 
     Hash256 hash{};
