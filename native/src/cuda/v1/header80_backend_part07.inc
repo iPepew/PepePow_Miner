@@ -104,9 +104,23 @@
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "header80_final_kernel launch");
 #elif defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
+#if defined(PEPEPOW_CUDA_STAGE_TIMING) && PEPEPOW_CUDA_STAGE_TIMING
+    static thread_local cudaEvent_t stage_start = nullptr;
+    static thread_local cudaEvent_t stage_boundary = nullptr;
+    static thread_local cudaEvent_t stage_stop = nullptr;
+    if (stage_start == nullptr) {
+        check_cuda_header80(cudaEventCreate(&stage_start), "cudaEventCreate(stage start)");
+        check_cuda_header80(cudaEventCreate(&stage_boundary), "cudaEventCreate(stage boundary)");
+        check_cuda_header80(cudaEventCreate(&stage_stop), "cudaEventCreate(stage stop)");
+    }
+    check_cuda_header80(cudaEventRecord(stage_start), "cudaEventRecord(stage start)");
+#endif
     header80_first_kernel<<<blocks, threads>>>(
         static_cast<std::uint32_t>(range.begin), work_words, count);
     check_cuda_header80(cudaGetLastError(), "header80_first_kernel launch");
+#if defined(PEPEPOW_CUDA_STAGE_TIMING) && PEPEPOW_CUDA_STAGE_TIMING
+    check_cuda_header80(cudaEventRecord(stage_boundary), "cudaEventRecord(stage boundary)");
+#endif
 #if defined(PEPEPOW_CUDA_LOCAL_RESIDENCY) && PEPEPOW_CUDA_LOCAL_RESIDENCY
   #if defined(PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE) && PEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE
     hoohash_final_hotrun8_local_phase_kernel<<<blocks, threads>>>(
@@ -131,6 +145,9 @@
         static_cast<const double*>(device_scaled_nibble_), work_words,
         static_cast<DeviceShareResult*>(device_result_), count);
     check_cuda_header80(cudaGetLastError(), "hoohash_final_hotrun8_fused_kernel launch");
+#endif
+#if defined(PEPEPOW_CUDA_STAGE_TIMING) && PEPEPOW_CUDA_STAGE_TIMING
+    check_cuda_header80(cudaEventRecord(stage_stop), "cudaEventRecord(stage stop)");
 #endif
 #else
     header80_first_kernel<<<blocks, threads>>>(
@@ -189,6 +206,23 @@
     check_cuda_header80(
         cudaMemcpy(&host_result, device_result_, sizeof(host_result), cudaMemcpyDeviceToHost),
         "cudaMemcpy(header80 result)");
+#if defined(PEPEPOW_CUDA_STAGE_TIMING) && PEPEPOW_CUDA_STAGE_TIMING && \
+    defined(PEPEPOW_CUDA_SPLIT_PIPELINE) && PEPEPOW_CUDA_SPLIT_PIPELINE && \
+    defined(PEPEPOW_CUDA_HOTRUN8) && PEPEPOW_CUDA_HOTRUN8 && \
+    defined(PEPEPOW_CUDA_HOTRUN8_FUSION_MODE) && PEPEPOW_CUDA_HOTRUN8_FUSION_MODE == 2
+    float first_ms = 0.0F;
+    float final_ms = 0.0F;
+    check_cuda_header80(
+        cudaEventElapsedTime(&first_ms, stage_start, stage_boundary),
+        "cudaEventElapsedTime(header80 first)");
+    check_cuda_header80(
+        cudaEventElapsedTime(&final_ms, stage_boundary, stage_stop),
+        "cudaEventElapsedTime(hoohash final)");
+    std::fprintf(stderr,
+                 "CUDA_STAGE_TIMING nonces=%zu first_ms=%.6f hoohash_final_ms=%.6f total_ms=%.6f\n",
+                 count, static_cast<double>(first_ms), static_cast<double>(final_ms),
+                 static_cast<double>(first_ms + final_ms));
+#endif
     if (host_result.found == 0U) return std::nullopt;
 
     Hash256 hash{};
