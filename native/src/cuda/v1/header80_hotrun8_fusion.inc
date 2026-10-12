@@ -113,6 +113,81 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8_resident(
     }
 }
 
+#if defined(PEPEPOW_CUDA_COLD_RECONVERGENCE) && PEPEPOW_CUDA_COLD_RECONVERGENCE
+// Experimental per-warp rendezvous at each lane's next nonzero cold cell.
+// Every lane preserves its row/cell/FP64/SW order; finished lanes remain in
+// collectives until all members of the entry mask have completed.
+__device__ __noinline__ void hoohash_mix_words_hotrun8_reconverged(
+    const double* __restrict__ matrix,
+    const double* __restrict__ scaled_nibble_table,
+    std::uint32_t mix_nonce,
+    const std::uint32_t* __restrict__ first_pass,
+    std::uint32_t* __restrict__ mixed_out) {
+    const unsigned int warp_mask = __activemask();
+    std::uint32_t hash_xor = 0U;
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) hash_xor ^= first_pass[i];
+    const double hash_mod_fp64 = u32_to_double_exact(byte_swap32(hash_xor));
+    const double nonce_mod = u32_to_double_exact(mix_nonce & 0xffU);
+    HooHashSwState sw = initial_sw_state();
+    std::uint32_t mixed_word = first_pass[0], packed_word = 0U;
+    int row = 0, col = 0;
+    double sum = 0.0, even_sum = 0.0;
+    bool done = false;
+    do {
+        bool pending = false;
+        double pending_x = 0.0, pending_value = 0.0;
+        // Advance this lane in consensus order until a nonzero cold cell or
+        // completion. Zero cold cells still perform their original SW update.
+        while (!done) {
+            if (col == 64) {
+                if ((row & 1) == 0) {
+                    even_sum = sum;
+                } else {
+                    const std::uint64_t combined =
+                        positive_double_to_u64_rz(even_sum) +
+                        positive_double_to_u64_rz(sum);
+                    const int pair = row >> 1;
+                    const unsigned int byte_lane = static_cast<unsigned int>(pair & 3);
+                    mixed_word ^= static_cast<std::uint32_t>(combined & 0xffU) << (byte_lane * 8U);
+                    if (byte_lane == 3U) {
+                        const int word = pair >> 2;
+                        mixed_out[word] = mixed_word;
+                        if (word != 7) mixed_word = first_pass[word + 1];
+                    }
+                }
+                ++row;
+                col = 0;
+                sum = 0.0;
+                if (row == 64) { done = true; break; }
+            }
+            if ((col & 7) == 0) packed_word = first_pass[col >> 3];
+            const unsigned int nibble = hotrun8_word_nibble(packed_word, col & 7);
+            const int cell = row * 64 + col;
+            if (sw_state_is_cold(sw)) {
+                if (nibble != 0U) {
+                    pending_value = nibble_to_double(nibble);
+                    pending_x = matrix[cell] * hash_mod_fp64 * pending_value + nonce_mod;
+                    pending = true;
+                    break;
+                }
+            } else {
+                sum += hotrun8_warm_contribution(matrix, scaled_nibble_table, cell, nibble);
+            }
+            update_sw_state(sw, sum);
+            ++col;
+        }
+        __syncwarp(warp_mask);
+        if (pending) {
+            sum += safe_nonlinear(pending_x) * pending_value * 1234.0;
+            update_sw_state(sw, sum);
+            ++col;
+        }
+        __syncwarp(warp_mask);
+    } while (__any_sync(warp_mask, !done));
+}
+#endif
+
 __global__ __launch_bounds__(PEPEPOW_CUDA_THREADS, PEPEPOW_CUDA_MIN_BLOCKS)
 void hoohash_final_hotrun8_resident_kernel(
     std::uint32_t first_nonce,
@@ -181,7 +256,11 @@ void hoohash_final_hotrun8_local_phase_kernel(
     #pragma unroll
     for (int i = 0; i < 8; ++i) first_cache[i] = first_words[base + i];
 #endif
+#if defined(PEPEPOW_CUDA_COLD_RECONVERGENCE) && PEPEPOW_CUDA_COLD_RECONVERGENCE
+    hoohash_mix_words_hotrun8_reconverged(
+#else
     hoohash_mix_words_hotrun8_resident(
+#endif
         matrix, scaled_nibble_table, byte_swap32(nonce),
 #if defined(PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE) && PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE
         first_cache,
