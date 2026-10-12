@@ -21,7 +21,7 @@ For full 32-member warps on Header80 fixtures:
 - 2043 frontiers (39.0930%) have all 32 pending lanes; those contain 65376 calls (67.8266%).
 - There are 24 final zero-pending frontiers, reported separately and excluded from these averages.
 
-Synthetic edge-case inputs have mean 15.5495 pending lanes; their deliberately all-zero lanes make them unsuitable as a throughput proxy. Header80 benchmark fixtures are deterministic test inputs, not captured pool jobs.
+Synthetic edge-case inputs have mean 15.5495 pending lanes; their deliberately all-zero lanes make them unsuitable as a throughput proxy. Header80 benchmark fixtures are deterministic test inputs, not captured pool jobs. Each family's 2520 hash executions include replays across masks and three execution orders. The Header80 family contains 256 distinct header/nonce pairs; its full-warp histogram covers eight distinct 32-lane groups replayed three times. It is not a sample of 2520 independent pool inputs.
 
 ## Interpretation and limits
 
