@@ -2,6 +2,7 @@
 """Pinned CUDA-body coroutine check on CPU. No GPU/codegen/libdevice performance claims."""
 import hashlib,json,pathlib,subprocess,tempfile,sys
 PINS={
+ 'native/src/cuda/v1/header80_backend_part02.inc':'01beeeb3e6e1d7b9a0af58c1c8231cde507650ca',
  'native/src/cuda/v1/header80_hotrun8_fusion.inc':'0332314f6b18c86995273020d90484c2b5800a6a',
  'native/src/cuda/v1/header80_hotrun8.inc':'7d10b86bc58b5f75fae4647705c6bf0fcf634444',
  'native/src/crypto/hoohash_reference.cpp':'b71fcfb8775a534db14084f8cd4fcb3277d4fa23',
@@ -39,9 +40,16 @@ def generate(root):
         'sw = product[i] / 1024.0 - std::floor(product[i] / 1024.0);\n            ::record_reference(i,j,product[i],sw);')
     hotrun=contents['native/src/cuda/v1/header80_hotrun8.inc']
     helpers=extract(hotrun,'hotrun8_warm_contribution')+'\n'+extract(hotrun,'hotrun8_word_nibble')
+    state_source=contents['native/src/cuda/v1/header80_backend_part02.inc']
+    marker='#else\nusing HooHashSwState = bool;'
+    if state_source.count(marker)!=1:raise RuntimeError('SW_MODE3_EXTRACTION')
+    state_section=state_source.split(marker,1)[1].split('#endif',1)[0]
+    state_helpers='using HooHashSwState = bool;'+state_section
+    state_helpers=replace_once(state_helpers,'state = (scaled - static_cast<double>(whole)) <= 0.02;',
+                               'state = (scaled - static_cast<double>(whole)) <= 0.02;\n    trace_gpu_sw(sum,state);')
     harness=(root/'native/tests/reconvergence_host_harness.inc').read_text()
     def assemble(candidate):
-        return replace_once(replace_once(replace_once(harness,'// @REFERENCE@',reference),'// @HELPERS@',helpers),'// @CANDIDATE@',candidate)
+        return replace_once(replace_once(replace_once(replace_once(harness,'// @REFERENCE@',reference),'// @HELPERS@',helpers),'// @SW_HELPERS@',state_helpers),'// @CANDIDATE@',candidate)
     return assemble,body
 def main():
     root=pathlib.Path(sys.argv[1]).resolve() if len(sys.argv)==2 else pathlib.Path(__file__).resolve().parents[2]
@@ -52,12 +60,17 @@ def main():
       ('finished_lane_early_exit',replace_once(body,'co_await SyncAwaiter{warp_mask,0};','if (done) co_return;\n        co_await SyncAwaiter{warp_mask,0};'),'early lane completion before cohort'),
       ('skipped_zero_state_update',body.replace('update_sw_state(sw, sum);','if (nibble != 0U) update_sw_state(sw, sum);',1),'per-cell FP64/SW trace mismatch'),
     ]
+    mutations.append(('incorrect_sw_mode3_predicate',body,'per-cell FP64/SW trace mismatch'))
     result=None;detected=[]
     with tempfile.TemporaryDirectory(prefix='pepew-host-reconvergence-') as directory:
         work=pathlib.Path(directory)
         for name,candidate,error in [('baseline',body,None)]+mutations:
             source=work/(name+'.cpp');binary=work/name
-            source.write_text(assemble(candidate))
+            assembled=assemble(candidate)
+            if name=='incorrect_sw_mode3_predicate':
+                assembled=replace_once(assembled,'state = (scaled - static_cast<double>(whole)) <= 0.02;',
+                    'state = (scaled - static_cast<double>(whole)) > 0.02;')
+            source.write_text(assembled)
             subprocess.run(['g++','-std=c++20','-O2','-ffp-contract=off','-fno-fast-math','-Wno-unknown-pragmas',
               '-I',str(root/'native/include'),str(source),'-o',str(binary)],check=True,timeout=30,capture_output=True,text=True)
             run=subprocess.run([str(binary)],timeout=20,capture_output=True,text=True)
@@ -72,9 +85,9 @@ def main():
                 if run.returncode!=1 or error not in run.stderr:raise RuntimeError('MUTATION_NOT_DETECTED:'+name)
                 detected.append({'mutation':name,'detected':True,'reason':error})
     result.update(candidate_source=SOURCE,source_blobs=PINS,mutations=detected,
-      actual_cuda_body_extracted=True,oracle_source_extracted=True,
+      actual_cuda_body_extracted=True,oracle_source_extracted=True,actual_cuda_sw_mode3_helper_extracted=True,
       gpu_gate_pass=False,promotion_eligible=False,
-      limitations=['CPU libm replaces CUDA/libdevice nonlinear and reference SW formula replaces CUDA encoded SW helper',
+      limitations=['CPU libm replaces CUDA/libdevice nonlinear; actual CUDA mode3 SW helper is extracted with a positive-finite host shim for __double2ull_rd',
                    'Coroutines model collective participation; real GPU scheduling, barriers and code generation remain unverified',
                    'Mixer bytes and per-cell traces only; final BLAKE, full Header80 consensus and performance are not measured'])
     print('HOST_RECONVERGENCE_VALIDATION '+json.dumps(result,sort_keys=True))
