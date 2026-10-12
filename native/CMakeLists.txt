@@ -13,6 +13,7 @@ option(PEPEPOW_CUDA_PTXAS_VERBOSE "Print ptxas register, stack and spill statist
 option(PEPEPOW_CUDA_STAGE_TIMING "Emit diagnostic CUDA Event timings for Header80 stages" OFF)
 option(PEPEPOW_CUDA_SUBSTAGE_TIMING "Sample elapsed SM cycles for local-phase mixer and final BLAKE3 (diagnostic only)" OFF)
 option(PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE "Experiment: cache mixer input in address-stable per-thread local storage" OFF)
+option(PEPEPOW_CUDA_NONLINEAR_CENSUS "Count bounded production nonlinear branches and active entry groups (diagnostic only)" OFF)
 set(PEPEPOW_CUDA_ARCHITECTURES "61-real;75-real;86-real;89-real;120" CACHE STRING "CUDA targets for GTX 10, RTX 20, RTX 30, RTX 40 and RTX 50")
 set(PEPEPOW_CUDA_MAX_REGISTERS "" CACHE STRING "Optional CUDA max registers per thread; empty keeps compiler default")
 set(PEPEPOW_CUDA_THREADS "768" CACHE STRING "CUDA threads per Header80 search block")
@@ -115,6 +116,7 @@ if(PEPEPOW_ENABLE_CUDA)
         PEPEPOW_CUDA_STAGE_TIMING=$<BOOL:${PEPEPOW_CUDA_STAGE_TIMING}>
         PEPEPOW_CUDA_SUBSTAGE_TIMING=$<BOOL:${PEPEPOW_CUDA_SUBSTAGE_TIMING}>
         PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE=$<BOOL:${PEPEPOW_CUDA_FIRST_PASS_LOCAL_CACHE}>
+        PEPEPOW_CUDA_NONLINEAR_CENSUS=$<BOOL:${PEPEPOW_CUDA_NONLINEAR_CENSUS}>
         PEPEPOW_CUDA_SW_STATE_MODE=${PEPEPOW_CUDA_SW_STATE_MODE}
         PEPEPOW_CUDA_BYTE_UNROLL=${PEPEPOW_CUDA_BYTE_UNROLL})
     set_target_properties(pepepow_cuda PROPERTIES
