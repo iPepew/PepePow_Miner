@@ -1,8 +1,6 @@
 name: Read-only transport credential presence 20261012 190042
 on:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: [.github/workflows/transport-presence-20261012-190042.yml]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
