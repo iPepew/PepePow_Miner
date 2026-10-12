@@ -1,9 +1,6 @@
 name: Read-only transport credential presence 20261012 190042
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: [.github/workflows/transport-presence-20261012-190042.yml]
 permissions:
   contents: read
 jobs:
@@ -11,7 +8,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 2
     env:
-      SESSION_DEADLINE_UTC: '2026-10-12T21:20:00Z'
+      SESSION_DEADLINE_UTC: '2026-10-12T20:00:42Z'
       CONFIGURED: ${{ secrets.PEPEW_RELEASE_TRANSPORT_TOKEN != '' }}
     steps:
       - name: Bound read-only check and emit only credential presence
