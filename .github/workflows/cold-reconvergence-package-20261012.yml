@@ -161,6 +161,7 @@ jobs:
                   sections[name].append(line.strip())
           selected = {name:lines for name,lines in sections.items() if 'hoohash_mix_words_hotrun8_reconverged' in name or 'hoohash_final_hotrun8_local_phase_kernel' in name}
           collective_lines = [line for lines in selected.values() for line in lines if 'WARPSYNC' in line or 'BAR.WARP.SYNC' in line or 'VOTE' in line]
+          print('RECONVERGENCE_CONTROL_FLOW ' + json.dumps({name:[line for line in lines if any(op in line for op in ('SYNC','BSSY','BRA','VOTE','CALL','RET'))] for name,lines in selected.items()},sort_keys=True))
           print('RECONVERGENCE_SASS_INSPECTION ' + json.dumps({'functions':list(selected),'collective_lines':collective_lines},sort_keys=True))
           result['warp_sync_instructions'] = sum('WARPSYNC' in line or 'BAR.WARP.SYNC' in line for line in collective_lines)
           result['vote_instructions'] = sum('VOTE' in line for line in collective_lines)
@@ -250,6 +251,7 @@ jobs:
             /tmp/ctest.log
             /tmp/version.log
             /tmp/elf.log
+          /tmp/sass.txt
             /tmp/resources.json
           retention-days: 30
 
