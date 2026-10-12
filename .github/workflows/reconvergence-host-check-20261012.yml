@@ -1,0 +1,33 @@
+name: Pinned reconvergence host scheduling check 20261012
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/reconvergence-host-check-20261012.yml]
+permissions:
+  contents: read
+concurrency:
+  group: pepew-reconvergence-host-check
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 6
+    env:
+      SESSION_DEADLINE_UTC: '2026-10-12T17:02:51Z'
+    steps:
+      - name: Absolute deadline with completion reserve
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          test "$remaining" -ge 600
+          test "$remaining" -le 3600
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify pinned CUDA body and reference with host-only collective model
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout --signal=TERM --kill-after=5s 180s python3 scripts/ci/check_reconvergence_host.py
