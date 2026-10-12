@@ -1,9 +1,6 @@
 name: Read-only release transport diagnosis 20261012
 on:
   workflow_dispatch:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: [.github/workflows/release-transport-preflight-20261012.yml]
 permissions:
   contents: read
   actions: read
