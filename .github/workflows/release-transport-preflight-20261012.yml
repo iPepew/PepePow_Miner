@@ -1,0 +1,41 @@
+name: Read-only release transport diagnosis 20261012
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/release-transport-preflight-20261012.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: pepew-release-transport-readonly-diagnosis
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SESSION_DEADLINE_UTC: '2026-10-12T17:02:51Z'
+    steps:
+      - name: Enforce absolute boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$SESSION_DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          test "$remaining" -ge 300
+          test "$remaining" -le 3600
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test fail-closed admission without network
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 2s 20s python3 -m unittest discover -s tests -p test_release_transport_preflight.py -v
+      - name: Diagnose original denied target and candidate using GET only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout -k 2s 90s python3 scripts/ci/release_transport_preflight.py --repository iPepew/PepePow_Miner --target d64c2a4623b042178960a27bcd409f5ed8a06ed1 --token-class github_token --report-only
+          timeout -k 2s 90s python3 scripts/ci/release_transport_preflight.py --repository iPepew/PepePow_Miner --target 69982736eb073a8df53fbdbe4dc02509fc760807 --token-class github_token --report-only
