@@ -167,10 +167,24 @@ __device__ __forceinline__ void exact_fixed_window_sincos(
 }
 #endif
 
+#if defined(PEPEPOW_CUDA_NONLINEAR_CENSUS) && PEPEPOW_CUDA_NONLINEAR_CENSUS
+// Diagnostic only: bounded to the first 128 blocks, no math replacements.
+__device__ unsigned long long kHeader80NonlinearCensus[10];
+#endif
+
 #if PEPEPOW_CUDA_COLD_OUTLINE
 __device__ __noinline__ double nonlinear(double x) {
 #else
 __device__ __forceinline__ double nonlinear(double x) {
+#endif
+#if defined(PEPEPOW_CUDA_NONLINEAR_CENSUS) && PEPEPOW_CUDA_NONLINEAR_CENSUS
+    const bool census_sample = blockIdx.x < 128;
+    const unsigned int census_mask = __activemask();
+    if (census_sample && (threadIdx.x & 31U) == static_cast<unsigned int>(__ffs(census_mask) - 1)) {
+        atomicAdd(&kHeader80NonlinearCensus[0], static_cast<unsigned long long>(__popc(census_mask)));
+        atomicAdd(&kHeader80NonlinearCensus[1], 1ULL);
+        if (__popc(census_mask) < 32) atomicAdd(&kHeader80NonlinearCensus[2], 1ULL);
+    }
 #endif
     const double one_base = x * kTransformMultiplier * 0.125;
     const HooHashSelectorParts selector = decode_selector_parts(one_base);
@@ -180,6 +194,17 @@ __device__ __forceinline__ double nonlinear(double x) {
     else if (two < 0.50) y = x - (1.0 + two);
     else if (two < 0.75) y = x * (1.0 + two);
     else y = x / (1.0 + two);
+#if defined(PEPEPOW_CUDA_NONLINEAR_CENSUS) && PEPEPOW_CUDA_NONLINEAR_CENSUS
+    if (census_sample) {
+        atomicAdd(&kHeader80NonlinearCensus[3 + selector.one_region], 1ULL);
+        if (selector.two >= 0.75) atomicAdd(&kHeader80NonlinearCensus[9], 1ULL);
+        if (selector.one_region < 2U) {
+            const auto bits = static_cast<std::uint64_t>(__double_as_longlong(y));
+            const int exponent = static_cast<int>((bits >> 52U) & 0x7ffU) - 1023;
+            atomicAdd(&kHeader80NonlinearCensus[exponent < 31 ? 6 : exponent <= 56 ? 7 : 8], 1ULL);
+        }
+    }
+#endif
     // Regions 0 and 1 share the exact trigonometric range-reduction entry.
     // The region-specific result expressions and their FP64 order stay intact;
     // V100 differential validation must additionally prove that libdevice's
