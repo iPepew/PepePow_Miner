@@ -1,5 +1,8 @@
 name: Experimental cold-call rendezvous CUDA package 20261012
 on:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/cold-reconvergence-package-20261012.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -16,8 +19,8 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      EXPECTED_SOURCE: 2cdc7804dad1254ffc33764bb279ea1e015904c9
-      SESSION_DEADLINE_UTC: 2026-10-13T08:57:50Z
+      EXPECTED_SOURCE: 456d231069060ae28ef4fe23e6ddf383ec0687a1
+      SESSION_DEADLINE_UTC: 2026-10-13T09:53:23Z
       PEPEPOW_TCP_NODELAY: '1'
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-current-source-V100.tar.gz
