@@ -140,6 +140,37 @@ __device__ __forceinline__ ExactTrigReduction exact_fixed_window_reduce(double v
     return {__longlong_as_double(static_cast<long long>(remainder_bits | sign)), quadrant};
 }
 
+#if defined(PEPEPOW_CUDA_INLINE_REDUCED_SINCOS) && PEPEPOW_CUDA_INLINE_REDUCED_SINCOS
+// Exact straight-line replay of the sm_70 libdevice polynomial after the
+// fixed-window reducer. Constants and FP64 operation order come from the
+// pinned PTX fixture; this avoids running libdevice range reduction twice.
+__device__ __forceinline__ void exact_reduced_sincos_polynomial(
+    double remainder, double* sine, double* cosine) {
+    const double z = __dmul_rn(remainder, remainder);
+
+    double c = __longlong_as_double(static_cast<long long>(0xBDA8FF8320FD8164ULL));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3E21EEA7C1EF8528ULL)));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0xBE927E4F8E06E6D9ULL)));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3EFA01A019DDBCE9ULL)));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0xBF56C16C16C15D47ULL)));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3FA5555555555551ULL)));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0xBFE0000000000000ULL)));
+    c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3FF0000000000000ULL)));
+
+    double s = __longlong_as_double(static_cast<long long>(0x3DE5DB65F9785EBAULL));
+    s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0xBE5AE5F12CB0D246ULL)));
+    s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0x3EC71DE369ACE392ULL)));
+    s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0xBF2A01A019DB62A1ULL)));
+    s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0x3F81111111110818ULL)));
+    s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0xBFC5555555555554ULL)));
+    s = __fma_rn(s, z, 0.0);
+    s = __fma_rn(s, remainder, remainder);
+
+    *sine = s;
+    *cosine = c;
+}
+#endif
+
 __device__ __forceinline__ void exact_fixed_window_sincos(
     double value, double* sine, double* cosine) {
     const std::uint64_t bits =
@@ -154,7 +185,11 @@ __device__ __forceinline__ void exact_fixed_window_sincos(
     }
     const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
     double reduced_sine, reduced_cosine;
+#if defined(PEPEPOW_CUDA_INLINE_REDUCED_SINCOS) && PEPEPOW_CUDA_INLINE_REDUCED_SINCOS
+    exact_reduced_sincos_polynomial(reduced.remainder, &reduced_sine, &reduced_cosine);
+#else
     sincos(reduced.remainder, &reduced_sine, &reduced_cosine);
+#endif
     const unsigned int q = static_cast<unsigned int>(reduced.quadrant) & 3U;
     const std::uint64_t sine_bits =
         static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_cosine : reduced_sine)) ^
