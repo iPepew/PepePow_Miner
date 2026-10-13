@@ -172,24 +172,27 @@ __device__ __noinline__ void hoohash_mix_words_hotrun8_reconverged(
                     break;
                 }
             } else {
-                // Preserve the baseline's two-value warm preload window.
-                // Only commit the second cell if the exact SW state stays warm.
-                const double contribution0 = hotrun8_warm_contribution(
-                    matrix, scaled_nibble_table, cell, nibble);
-                const bool have_second = (col & 7) != 7;
-                double contribution1 = 0.0;
-                if (have_second) {
-                    const unsigned int nibble1 = hotrun8_word_nibble(packed_word, (col & 7) + 1);
-                    contribution1 = hotrun8_warm_contribution(
-                        matrix, scaled_nibble_table, cell + 1, nibble1);
+                // Experimental four-value preload within this packed word.
+                // Contributions commit in original order while SW stays warm.
+                const int remaining = 8 - (col & 7);
+                const int count = remaining < 4 ? remaining : 4;
+                double contribution[4] = {0.0, 0.0, 0.0, 0.0};
+                #pragma unroll
+                for (int offset = 0; offset < 4; ++offset) {
+                    if (offset < count) {
+                        const unsigned int warm_nibble = hotrun8_word_nibble(
+                            packed_word, (col & 7) + offset);
+                        contribution[offset] = hotrun8_warm_contribution(
+                            matrix, scaled_nibble_table, cell + offset, warm_nibble);
+                    }
                 }
-                sum += contribution0;
-                update_sw_state(sw, sum);
-                ++col;
-                if (sw_state_is_cold(sw) || !have_second) continue;
-                sum += contribution1;
-                update_sw_state(sw, sum);
-                ++col;
+                #pragma unroll
+                for (int offset = 0; offset < 4; ++offset) {
+                    if (offset >= count || sw_state_is_cold(sw)) break;
+                    sum += contribution[offset];
+                    update_sw_state(sw, sum);
+                    ++col;
+                }
                 continue;
             }
             update_sw_state(sw, sum);
