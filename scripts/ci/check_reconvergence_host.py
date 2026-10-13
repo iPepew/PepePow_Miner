@@ -3,14 +3,14 @@
 import argparse,hashlib,json,pathlib,subprocess,tempfile,sys
 PINS={
  'native/src/cuda/v1/header80_backend_part02.inc':'01beeeb3e6e1d7b9a0af58c1c8231cde507650ca',
- 'native/src/cuda/v1/header80_hotrun8_fusion.inc':'fb7b38664ced745888714d7618d18a160777dea3',
+ 'native/src/cuda/v1/header80_hotrun8_fusion.inc':'109369dbcaf98c08a3f409ba834e2ffee6875af2',
  'native/src/cuda/v1/header80_hotrun8.inc':'7d10b86bc58b5f75fae4647705c6bf0fcf634444',
  'native/src/crypto/hoohash_reference.cpp':'b71fcfb8775a534db14084f8cd4fcb3277d4fa23',
  'native/include/pepepow/crypto/hoohash_reference.hpp':'c32830fb513f7843c92bff0a8a485f76c06f6c27',
 }
 HEADER_PINS={"native/src/core/header_builder.cpp":"548e5806f8c94442fb7dc07018044a7892d93c5f","native/include/pepepow/core/header_builder.hpp":"e9ec1bc963330ab1e33f7b2bb8fd5f8e1cc7458d","native/include/pepepow/core/types.hpp":"ce512d209426179099dbd917fbcba47d61a041a7","native/src/benchmark/header80_benchmark.cpp":"984fe247f231c70a5046b29845ad581485e3f8c3","native/src/crypto/pow.cpp":"cf4dc0fee5a01c21ecefce1390971adb527b9d38"}
 BLAKE3_PINS={"blake3.c":"00f91f444922df7c8e7b5ff69343852cbbf4c613","blake3.h":"423154ff75858d58cdb3f946a59426f8d9212012","blake3_impl.h":"88e71e41e90f3f3cca4d39f19d50e74325fb5ce2","blake3_portable.c":"062dd1b47fb6424f4d3db4c6edd2f90efcb92973","blake3_dispatch.c":"14dfbbe0c8f385296adf691643481b87e8768522"}
-SOURCE='3b545269cbdf6a9bbb9de37e43b96cb61077dc44'
+SOURCE='2cdc7804dad1254ffc33764bb279ea1e015904c9'
 def extract(text,name):
     at=text.index(name+'(');start=text.rfind('__device__',0,at)
     begin=text.index('{',at);depth=1;end=begin+1
