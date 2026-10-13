@@ -1,6 +1,9 @@
-name: Experimental cold-call rendezvous CUDA package 20261012
+name: Warm4 compile-only SASS audit 20261013
 on:
   workflow_dispatch:
+  push:
+    branches: [agent/demand-sliced-batch-correctness-20260917]
+    paths: [.github/workflows/cold-reconvergence-package-20261012.yml]
 permissions:
   contents: read
 concurrency:
@@ -16,8 +19,9 @@ jobs:
     container:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04
     env:
-      EXPECTED_SOURCE: 3b545269cbdf6a9bbb9de37e43b96cb61077dc44
-      SESSION_DEADLINE_UTC: 2026-10-13T00:04:19Z
+      EXPECTED_SOURCE: 2cdc7804dad1254ffc33764bb279ea1e015904c9
+      SESSION_DEADLINE_UTC: 2026-10-13T08:57:50Z
+      COMPILE_AUDIT_ONLY: 'true'
       PEPEPOW_TCP_NODELAY: '1'
       ROOT: PepeW-Miner
       ASSET: PepeW-Miner-current-source-V100.tar.gz
@@ -181,86 +185,21 @@ jobs:
           structured_pass = all(p >= 0 for p in positions) and positions == sorted(positions)
           result['structured_reconvergence_pass'] = structured_pass
           result['rendezvous_lowering'] = 'pinned_BSSY_BSYNC' if structured_pass else 'explicit_warp_barrier'
-          if not result['vote_instructions'] or not (result['warp_sync_instructions'] or structured_pass):
+          if (not result['vote_instructions'] or not (result['warp_sync_instructions'] or structured_pass)) and os.environ.get('COMPILE_AUDIT_ONLY') != 'true':
               raise SystemExit('missing verified rendezvous/completion sequence')
           expected = {'sm': 70, 'spill_bytes': 0}
           result['identity_pass'] = all(result[k] == v for k, v in expected.items())
-          print('CUDA_PACKAGE_IDENTITY ' + json.dumps(result, sort_keys=True))
+          result.update(source_commit=os.environ['EXPECTED_SOURCE'],cuda_compiled=True,cuda_executed=False,package_assembled=False,gpu_admission=False,status='COMPILE_ONLY_SASS_REVIEW_PENDING')
+          print('WARM4_COMPILE_AUDIT_RESULT ' + json.dumps(result, sort_keys=True))
           open('/tmp/resources.json', 'w').write(json.dumps(result, indent=2, sort_keys=True) + '\n')
           if not result['identity_pass']:
               raise SystemExit('rendezvous package fails architecture/spill gate')
-          PY
-      - name: Assemble deterministic verification package
-        run: |
-          set -Eeuo pipefail
-          timeout -k 5s 120s bash -c '
-            set -Eeuo pipefail
-            rm -rf stage dist
-            mkdir -p "stage/$ROOT" dist
-            install -m 0755 build/pepepowminer "stage/$ROOT/pepepowminer"
-            mkdir -p "stage/$ROOT/verification"
-            for target in pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_benchmark pepepow_header80_differential; do
-              install -m 0755 "build/$target" "stage/$ROOT/verification/$target"
-            done
-            for binary in "stage/$ROOT/pepepowminer" "stage/$ROOT/verification/"*; do
-              file "$binary" | grep -F "ELF 64-bit"
-              strip --strip-all --remove-section=.note.gnu.build-id "$binary"
-            done
-            "stage/$ROOT/pepepowminer" --version
-            "stage/$ROOT/pepepowminer" --help | grep -F -- "--stratum-evidence P"
-            install -m 0755 hiveos/h-config.sh "stage/$ROOT/h-config.sh"
-            install -m 0755 hiveos/h-run.sh "stage/$ROOT/h-run.sh"
-            install -m 0755 hiveos/h-stats.sh "stage/$ROOT/h-stats.sh"
-            install -m 0755 hiveos/stratum-replay-proxy.py "stage/$ROOT/stratum-replay-proxy.py"
-            install -m 0644 hiveos/h-manifest.conf "stage/$ROOT/h-manifest.conf"
-            install -m 0644 /tmp/resources.json "stage/$ROOT/resources.json"
-            install -m 0644 /tmp/source.env "stage/$ROOT/SOURCE.env"
-            {
-              printf "scope=CUDA_COMPILE_AND_PACKAGE_VERIFICATION_ONLY\n"
-              printf "source_commit=%s\n" "$EXPECTED_SOURCE"
-              printf "cuda_toolkit=12.8.1\n"
-              printf "cuda_architectures=70-real\n"
-              printf "gpu_or_pool_run=false\n"
-              printf "promotion_eligible=false\n"
-            } > "stage/$ROOT/BUILD_INFO.txt"
-            (cd "stage/$ROOT" && sha256sum pepepowminer > pepepowminer.sha256 && sha256sum -c pepepowminer.sha256)
-            (cd "stage/$ROOT" && find . -type f ! -name SHA256SUMS -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > SHA256SUMS && sha256sum -c SHA256SUMS)
-            tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="UTC 2026-10-05" -C stage -cf - "$ROOT" | gzip -n > "dist/$ASSET"
-            sha256sum "dist/$ASSET" | tee "dist/$ASSET.sha256"
-          '
-          python3 - <<'PY'
-          import hashlib, json, os, pathlib
-          binary = pathlib.Path('stage') / os.environ['ROOT'] / 'pepepowminer'
-          package = pathlib.Path('dist') / os.environ['ASSET']
-          resources = json.loads(pathlib.Path('/tmp/resources.json').read_text())
-          result = {
-              'status': 'PASS',
-              'source_commit': os.environ['EXPECTED_SOURCE'],
-              'workflow_commit': os.environ['GITHUB_SHA'],
-              'registered_cpu_tests_passed': 7,
-              'registered_cpu_tests_failed': 0,
-              'cuda_compiled': True,
-              'cuda_executed': False,
-              'experimental_cold_reconvergence': True,
-              'production_identity_claimed': False,
-              'gpu_or_pool_run': False,
-              'promotion_eligible': False,
-              'resources': resources,
-              'verification_binaries': {
-                  p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-                  for p in sorted((binary.parent / 'verification').iterdir())
-              },
-              'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
-              'package_sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
-          }
-          pathlib.Path('dist/result.json').write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
-          print('CURRENT_SOURCE_CUDA_PACKAGE_RESULT ' + json.dumps(result, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         if: ${{ always() && !cancelled() }}
         timeout-minutes: 2
         with:
-          name: current-source-v100-package-${{ env.EXPECTED_SOURCE }}
+          name: warm4-compile-audit-${{ env.EXPECTED_SOURCE }}
           path: |
             dist/
             /tmp/build.log
