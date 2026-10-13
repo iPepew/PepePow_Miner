@@ -1,0 +1,7 @@
+# Exact reduced-argument sincos candidate (2026-10-13)
+
+The default-OFF `PEPEPOW_CUDA_INLINE_REDUCED_SINCOS` option replaces the second libdevice `sincos()` entry only after the exact fixed-window reducer has already reduced an exponent-31..56 input. The straight-line FP64 polynomial uses the coefficient bits and operation order captured in `tools/fixtures/trig_polynomial_sm70.ptx`: one round-to-nearest multiply and fourteen round-to-nearest fused multiply-add operations. Quadrant reconstruction remains unchanged.
+
+Hosted run [38378284749](https://github.com/iPepew/PepePow_Lab/actions/runs/38378284749) built the same source with the option OFF and ON for sm_70. Both variants passed all seven registered CPU tests. OFF used 54 registers, an 80-byte stack frame, zero spills and 1968 kernel SASS instructions. ON used 56 registers, an 80-byte stack frame, zero spills and 1920 instructions, a static reduction of 48. The pinned PTX-derived CPU replay passed 1,000,000 random and 312 boundary vectors with zero mismatches.
+
+This is a hosted compile gate, not CUDA correctness or a speed result. The replay does not execute the compiled candidate, and static instruction count does not predict MH/s. Before any performance test, the exact source/package/binary must pass CUDA unit and Header80 consensus, at least 100,000 direct differential cases, the independent full/partial-warp search gate, and verified recovery. A comparable offline ABBA run is allowed only after those checks. Pool, production, stable and live remain unchanged.
