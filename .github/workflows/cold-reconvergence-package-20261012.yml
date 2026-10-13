@@ -1,8 +1,5 @@
 name: Experimental cold-call rendezvous CUDA package 20261012
 on:
-  push:
-    branches: [agent/demand-sliced-batch-correctness-20260917]
-    paths: [.github/workflows/cold-reconvergence-package-20261012.yml]
   workflow_dispatch:
 permissions:
   contents: read
