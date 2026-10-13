@@ -1,9 +1,6 @@
 name: Protocol Probe
 
 on:
-  push:
-    paths:
-      - '.github/workflows/protocol-probe.yml'
   workflow_dispatch:
 
 permissions:
@@ -11,6 +8,10 @@ permissions:
 
 jobs:
   inspect:
+    if: ${{ github.ref_type == 'branch' }}
+    timeout-minutes: 3
+    env:
+      TARGET_BRANCH: ${{ github.ref_name }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout destination
@@ -40,4 +41,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add "$REPORT"
           git commit -m 'Document PEPEPOW Stratum wire protocol'
-          git push origin main
+          case "$TARGET_BRANCH" in
+            main|agent/demand-sliced-batch-correctness-20260917) ;;
+            *) echo 'Unsupported destination branch'; exit 78 ;;
+          esac
+          timeout -k 2s 30s git push origin "HEAD:$TARGET_BRANCH"
