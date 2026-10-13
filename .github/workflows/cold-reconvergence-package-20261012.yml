@@ -121,7 +121,7 @@ jobs:
           ! grep -Eq '[1-9][0-9]* bytes spill (stores|loads)' /tmp/build.log
           timeout -k 5s 120s /usr/local/cuda/bin/cuobjdump --dump-sass build/pepepowminer > /tmp/sass.txt
           python3 - <<'PY'
-          import json, re
+          import json, os, re
           log = open('/tmp/build.log', errors='replace').read().splitlines()
           resource = None
           for i, line in enumerate(log):
