@@ -34,6 +34,8 @@ option(PEPEPOW_CUDA_INLINE_REDUCED_SINCOS "Inline exact sm_70 reduced-argument s
 set(PEPEPOW_CUDA_SW_STATE_MODE "3" CACHE STRING "HooHash SW state mode")
 set(PEPEPOW_CUDA_BYTE_UNROLL "1" CACHE STRING "HooHash byte-loop unroll factor")
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ValidateReducedSincos.cmake")
+
 execute_process(COMMAND git rev-parse --short=12 HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.." OUTPUT_VARIABLE PEPEPOW_GIT_COMMIT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(PEPEPOW_GIT_COMMIT STREQUAL "")
     set(PEPEPOW_GIT_COMMIT "unknown")
@@ -206,3 +208,4 @@ if(PEPEPOW_BUILD_TESTS)
         add_test(NAME pepepow_cuda_header80_validation COMMAND pepepow_cuda_header80_validation)
     endif()
 endif()
+
