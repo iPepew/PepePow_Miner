@@ -171,35 +171,6 @@ __device__ __forceinline__ void exact_reduced_sincos_polynomial(
 }
 #endif
 
-__device__ __forceinline__ void exact_fixed_window_sincos(
-    double value, double* sine, double* cosine) {
-    const std::uint64_t bits =
-        static_cast<std::uint64_t>(__double_as_longlong(value));
-    const unsigned int biased = static_cast<unsigned int>((bits >> 52U) & 0x7ffU);
-    const int exponent = static_cast<int>(biased) - 1023;
-    // libdevice uses its three-FMA fast reducer below 2^31. Preserve it
-    // bit-for-bit; the exact slow-path payload is not interchangeable there.
-    if (exponent < 31 || exponent > 56) {
-        sincos(value, sine, cosine);
-        return;
-    }
-    const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
-    double reduced_sine, reduced_cosine;
-#if defined(PEPEPOW_CUDA_INLINE_REDUCED_SINCOS) && PEPEPOW_CUDA_INLINE_REDUCED_SINCOS
-    exact_reduced_sincos_polynomial(reduced.remainder, &reduced_sine, &reduced_cosine);
-#else
-    sincos(reduced.remainder, &reduced_sine, &reduced_cosine);
-#endif
-    const unsigned int q = static_cast<unsigned int>(reduced.quadrant) & 3U;
-    const std::uint64_t sine_bits =
-        static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_cosine : reduced_sine)) ^
-        (static_cast<std::uint64_t>(q >> 1U) << 63U);
-    const std::uint64_t cosine_bits =
-        static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_sine : reduced_cosine)) ^
-        (static_cast<std::uint64_t>(((q + 1U) >> 1U) & 1U) << 63U);
-    *sine = __longlong_as_double(static_cast<long long>(sine_bits));
-    *cosine = __longlong_as_double(static_cast<long long>(cosine_bits));
-}
 #if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
 #if !PEPEPOW_CUDA_DEMAND_SLICED_REDUCER || !PEPEPOW_CUDA_INLINE_REDUCED_SINCOS
 #error "DEMAND_SINE_ONLY requires the exact reducer and inline reduced sincos"
@@ -207,18 +178,9 @@ __device__ __forceinline__ void exact_fixed_window_sincos(
 // Experimental region-1 specialization. Only one polynomial is needed for
 // sin(y): odd quadrants select reduced cosine; even select reduced sine.
 // Each selected chain retains the exact coefficient bits and FMA order.
-// Keep the existing sincos fallback outside the admitted reducer interval.
-__device__ __forceinline__ double exact_fixed_window_sine(double value) {
-    const auto bits = static_cast<std::uint64_t>(__double_as_longlong(value));
-    const int exponent = static_cast<int>((bits >> 52U) & 0x7ffU) - 1023;
-    if (exponent < 31 || exponent > 56) {
-        double sine, cosine;
-        exact_fixed_window_sincos(value, &sine, &cosine);
-        return sine;
-    }
-    const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
-    const unsigned int q = static_cast<unsigned int>(reduced.quadrant) & 3U;
-    const double remainder = reduced.remainder;
+// The caller shares the existing reducer and fallback with the sincos path.
+__device__ __forceinline__ double exact_reduced_sine_only(
+    double remainder, unsigned int q) {
     const double z = __dmul_rn(remainder, remainder);
     double selected;
     if (q & 1U) {
@@ -248,6 +210,48 @@ __device__ __forceinline__ double exact_fixed_window_sine(double value) {
     return __longlong_as_double(static_cast<long long>(result_bits));
 }
 #endif
+
+
+__device__ __forceinline__ void exact_fixed_window_sincos(
+    double value, double* sine, double* cosine
+#if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
+    , bool sine_only = false
+#endif
+    ) {
+    const std::uint64_t bits =
+        static_cast<std::uint64_t>(__double_as_longlong(value));
+    const unsigned int biased = static_cast<unsigned int>((bits >> 52U) & 0x7ffU);
+    const int exponent = static_cast<int>(biased) - 1023;
+    // libdevice uses its three-FMA fast reducer below 2^31. Preserve it
+    // bit-for-bit; the exact slow-path payload is not interchangeable there.
+    if (exponent < 31 || exponent > 56) {
+        sincos(value, sine, cosine);
+        return;
+    }
+    const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
+#if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
+    if (sine_only) {
+        *sine = exact_reduced_sine_only(reduced.remainder,
+            static_cast<unsigned int>(reduced.quadrant) & 3U);
+        return;
+    }
+#endif
+    double reduced_sine, reduced_cosine;
+#if defined(PEPEPOW_CUDA_INLINE_REDUCED_SINCOS) && PEPEPOW_CUDA_INLINE_REDUCED_SINCOS
+    exact_reduced_sincos_polynomial(reduced.remainder, &reduced_sine, &reduced_cosine);
+#else
+    sincos(reduced.remainder, &reduced_sine, &reduced_cosine);
+#endif
+    const unsigned int q = static_cast<unsigned int>(reduced.quadrant) & 3U;
+    const std::uint64_t sine_bits =
+        static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_cosine : reduced_sine)) ^
+        (static_cast<std::uint64_t>(q >> 1U) << 63U);
+    const std::uint64_t cosine_bits =
+        static_cast<std::uint64_t>(__double_as_longlong((q & 1U) ? reduced_sine : reduced_cosine)) ^
+        (static_cast<std::uint64_t>(((q + 1U) >> 1U) & 1U) << 63U);
+    *sine = __longlong_as_double(static_cast<long long>(sine_bits));
+    *cosine = __longlong_as_double(static_cast<long long>(cosine_bits));
+}
 
 #endif
 
@@ -294,16 +298,13 @@ __device__ __forceinline__ double nonlinear(double x) {
     // V100 differential validation must additionally prove that libdevice's
     // sincos sine output is bit-identical to the former standalone sin output.
     if (selector.one_region < 2U) {
-#if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
-        if (selector.one_region == 1U) {
-            if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) return 0.0;
-            const double sine = exact_fixed_window_sine(y);
-            return sine * sine;
-        }
-#endif
         double sine, cosine;
 #if PEPEPOW_CUDA_DEMAND_SLICED_REDUCER
-        exact_fixed_window_sincos(y, &sine, &cosine);
+        exact_fixed_window_sincos(y, &sine, &cosine
+#if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
+            , selector.one_region == 1U
+#endif
+            );
 #else
         sincos(y, &sine, &cosine);
 #endif
