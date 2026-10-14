@@ -200,6 +200,55 @@ __device__ __forceinline__ void exact_fixed_window_sincos(
     *sine = __longlong_as_double(static_cast<long long>(sine_bits));
     *cosine = __longlong_as_double(static_cast<long long>(cosine_bits));
 }
+#if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
+#if !PEPEPOW_CUDA_DEMAND_SLICED_REDUCER || !PEPEPOW_CUDA_INLINE_REDUCED_SINCOS
+#error "DEMAND_SINE_ONLY requires the exact reducer and inline reduced sincos"
+#endif
+// Experimental region-1 specialization. Only one polynomial is needed for
+// sin(y): odd quadrants select reduced cosine; even select reduced sine.
+// Each selected chain retains the exact coefficient bits and FMA order.
+// Keep the existing sincos fallback outside the admitted reducer interval.
+__device__ __forceinline__ double exact_fixed_window_sine(double value) {
+    const auto bits = static_cast<std::uint64_t>(__double_as_longlong(value));
+    const int exponent = static_cast<int>((bits >> 52U) & 0x7ffU) - 1023;
+    if (exponent < 31 || exponent > 56) {
+        double sine, cosine;
+        exact_fixed_window_sincos(value, &sine, &cosine);
+        return sine;
+    }
+    const ExactTrigReduction reduced = exact_fixed_window_reduce(value);
+    const unsigned int q = static_cast<unsigned int>(reduced.quadrant) & 3U;
+    const double remainder = reduced.remainder;
+    const double z = __dmul_rn(remainder, remainder);
+    double selected;
+    if (q & 1U) {
+        double c = __longlong_as_double(static_cast<long long>(0xBDA8FF8320FD8164ULL));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3E21EEA7C1EF8528ULL)));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0xBE927E4F8E06E6D9ULL)));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3EFA01A019DDBCE9ULL)));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0xBF56C16C16C15D47ULL)));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3FA5555555555551ULL)));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0xBFE0000000000000ULL)));
+        c = __fma_rn(c, z, __longlong_as_double(static_cast<long long>(0x3FF0000000000000ULL)));
+        selected = c;
+    } else {
+        double s = __longlong_as_double(static_cast<long long>(0x3DE5DB65F9785EBAULL));
+        s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0xBE5AE5F12CB0D246ULL)));
+        s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0x3EC71DE369ACE392ULL)));
+        s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0xBF2A01A019DB62A1ULL)));
+        s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0x3F81111111110818ULL)));
+        s = __fma_rn(s, z, __longlong_as_double(static_cast<long long>(0xBFC5555555555554ULL)));
+        s = __fma_rn(s, z, 0.0);
+        s = __fma_rn(s, remainder, remainder);
+        selected = s;
+    }
+    const auto result_bits =
+        static_cast<std::uint64_t>(__double_as_longlong(selected)) ^
+        (static_cast<std::uint64_t>(q >> 1U) << 63U);
+    return __longlong_as_double(static_cast<long long>(result_bits));
+}
+#endif
+
 #endif
 
 #if defined(PEPEPOW_CUDA_NONLINEAR_CENSUS) && PEPEPOW_CUDA_NONLINEAR_CENSUS
@@ -245,6 +294,13 @@ __device__ __forceinline__ double nonlinear(double x) {
     // V100 differential validation must additionally prove that libdevice's
     // sincos sine output is bit-identical to the former standalone sin output.
     if (selector.one_region < 2U) {
+#if defined(PEPEPOW_CUDA_DEMAND_SINE_ONLY) && PEPEPOW_CUDA_DEMAND_SINE_ONLY
+        if (selector.one_region == 1U) {
+            if (y == kPi / 2.0 || y == 3.0 * kPi / 2.0) return 0.0;
+            const double sine = exact_fixed_window_sine(y);
+            return sine * sine;
+        }
+#endif
         double sine, cosine;
 #if PEPEPOW_CUDA_DEMAND_SLICED_REDUCER
         exact_fixed_window_sincos(y, &sine, &cosine);
