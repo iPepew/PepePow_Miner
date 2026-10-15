@@ -14,10 +14,25 @@ def ts() -> str:
 
 
 def parse_pool(url: str) -> tuple[str, int]:
-    parsed = urlparse(url)
-    if parsed.scheme != "stratum+tcp" or not parsed.hostname or not parsed.port:
-        raise ValueError(f"unsupported upstream URL: {url}")
-    return parsed.hostname, parsed.port
+    # HiveOS can supply a bare host:port rather than a Stratum URL.
+    value = url.strip()
+    if not value or any(ch.isspace() for ch in value):
+        raise ValueError("invalid upstream address: expected host:port")
+    if "://" not in value:
+        value = "stratum+tcp://" + value
+    try:
+        parsed = urlparse(value)
+        host, port = parsed.hostname, parsed.port
+        valid = (
+            parsed.scheme == "stratum+tcp" and host and port
+            and parsed.username is None and parsed.password is None
+            and parsed.path in ("", "/") and not parsed.query and not parsed.fragment
+        )
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ValueError("unsupported upstream address: use stratum+tcp://host:port")
+    return host, port
 
 
 def reverse_u32_hex(value: str) -> str:
