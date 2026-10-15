@@ -1,0 +1,2763 @@
+{
+  "recorded_date": "2026-10-16 Europe/Moscow",
+  "deleted": false,
+  "warning": "Metadata inventory only; this is not a backup of binary assets. Do not delete assets required by recovery or evidence until preserved and replacement verified.",
+  "releases": [
+    {
+      "id": 397862290,
+      "tag": "v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate-r2",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate-r2",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate-r2/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:7d8b0edd3f132613a7826e0ed84f9f7af5fa8bcf6189fe69dd44b02a22c38569",
+          "size": 726213
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate-r2/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:8ecd6f0243f91865f2b129fcdf78fd1f2d2fcf0a0b2f1bb08d8157d36e62f803",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 397860412,
+      "tag": "v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:48bd305b7d4fcab42bf06bbce75e62a87566bce93f88a802e981c1d85094a0e3",
+          "size": 726219
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-9879165-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:a7d5392365e90e7dd41ef2584fdf7b4555156bb451d86dbc11b86c6aef5d8761",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 397340411,
+      "tag": "v2.1-demand-sliced-exact-reducer-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-demand-sliced-exact-reducer-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:fdbc3325c7d451d4e15ea7ee7651f35bfd06e6b0ee37a81f0d8b51015b6d6261",
+          "size": 725923
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:81cc9833226c5155ca660e0b81dce4f816ee947409adf0d5ac32a51cc4cc5b77",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 397343431,
+      "tag": "v2.1-demand-sliced-exact-reducer-5a49c6d-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-demand-sliced-exact-reducer-5a49c6d-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-5a49c6d-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:ef98b28625d93be50d0510ef2867f435cb61d61ea1db75e0ee4b051cc4cea6ae",
+          "size": 725925
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-demand-sliced-exact-reducer-5a49c6d-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:0ca7fe9e3542706cb2495159833bd3b161548e1f6d25b732e06131259a7977fd",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 384635715,
+      "tag": "v2.1-trig-region-fusion-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-trig-region-fusion-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:b28ba23f45d18b926df808b8e5251ffc52e7be1c433a1dbd40f8f148655f3f77",
+          "size": 715462
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:18a0ea463565c647fd3d307647921de67315d0a20dc7446744ac0e97a45494a9",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 384494931,
+      "tag": "v2.1-trig-region-fusion-aeed5c4-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-trig-region-fusion-aeed5c4-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-aeed5c4-v100/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz",
+          "digest": "sha256:1b09dfca991baf402791e8e4019efaf092315e069286996fec9f778ee9582907",
+          "size": 1170465
+        },
+        {
+          "name": "PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-aeed5c4-v100/PepeW-v2.1-TrigRegionFusion-V100-Diagnostic.tar.gz.sha256",
+          "digest": "sha256:f7a159436ff18c665d56c1a8d005df7de873aa2c3eccce58e85659fa439a10ad",
+          "size": 122
+        }
+      ]
+    },
+    {
+      "id": 384640261,
+      "tag": "v2.1-trig-region-fusion-a010b8c-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-trig-region-fusion-a010b8c-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-a010b8c-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:a1b6b6688ab58e6dc1a2ebd4705a0326e86a728f43b16141343d609df914dc51",
+          "size": 715453
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-a010b8c-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:799c001574acaafbd4b8ae9bf1d3c878acbb60f30a134ac37d0a66a45ebc8b1c",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 384452389,
+      "tag": "v2.1-sw-run-length-census-v100-diagnostic",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-sw-run-length-census-v100-diagnostic",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-run-length-census-v100-diagnostic/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:e50e0e91f25a6b15eb907778307e36599b81d12e04e974482adf1e11ecffe1a2",
+          "size": 1948941
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-run-length-census-v100-diagnostic/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:b9cdbea61cd5eaf3467f04ec370e9d96415c6cd83b82251be8fffdb23a9e9419",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 384428793,
+      "tag": "v2.1-rolling-nibble-stream-v100-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-rolling-nibble-stream-v100-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-rolling-nibble-stream-v100-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:7f9a599f6f43704ae45e4a919ebbc30724510a27ca072534e973eeeaa0eb80c5",
+          "size": 1895083
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-rolling-nibble-stream-v100-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:d865eb3456b7aad6ba41c9fe879ec48820111834b34e047dff8c8042711703ac",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 384025368,
+      "tag": "v2.1-static-blake32-8017cc3-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-static-blake32-8017cc3-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-static-blake32-8017cc3-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:7fbdb16f791c1d67ceb916d787e1fbf1d8ba636583176f9d856029a48182f63f",
+          "size": 718326
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-static-blake32-8017cc3-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:bf6ccc352f7b967742af6e26c9c40bdd4215ff2c3a3ef7ba6e33c8db4ab4eaec",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 384015361,
+      "tag": "v2.1-static-blake32-8017cc3-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-static-blake32-8017cc3-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-static-blake32-8017cc3-v100/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz",
+          "digest": "sha256:2ddfddad504e14d768da4aa302fce8f0b155f9338e0d19ee7167589a20a8e693",
+          "size": 1175505
+        },
+        {
+          "name": "PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-static-blake32-8017cc3-v100/PepeW-v2.1-StaticBlake32-V100-Diagnostic.tar.gz.sha256",
+          "digest": "sha256:4fe9e9ef165da21bacf111a0d47faaf0e057df86165ceb9aee69f13793ab2472",
+          "size": 119
+        }
+      ]
+    },
+    {
+      "id": 384365542,
+      "tag": "v2.1-cross-row-nibble-cache-v100-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-cross-row-nibble-cache-v100-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-cross-row-nibble-cache-v100-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:beae36d35acf8139278851d91238d0af2a629daff331cf7d05a517e128ab8d67",
+          "size": 1914618
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-cross-row-nibble-cache-v100-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:90d5cc474c27ce81a139653db0c8a54f3441b069a3747247bc15ba05063e4371",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 380988014,
+      "tag": "v2.1-exact-codegen-cuda12.4-2859860",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-exact-codegen-cuda12.4-2859860",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-exact-codegen-cuda12.4-2859860/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz",
+          "digest": "sha256:b8c25fc1cec47bb404034f4f319fc5b3fcb2deb28dd14dd1dac94d86b6f5af22",
+          "size": 1067090
+        },
+        {
+          "name": "PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-exact-codegen-cuda12.4-2859860/PepeW-ExactCodegen-CUDA12.4-V100-Diagnostic.tar.gz.sha256",
+          "digest": "sha256:e30dc24e565d9ce07b9e91fe5ee0eb05a8953941d532cb2b1e6a5c663555da37",
+          "size": 122
+        }
+      ]
+    },
+    {
+      "id": 380504386,
+      "tag": "v2.1-dual-nonce-ilp352-ffa4673-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-dual-nonce-ilp352-ffa4673-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-dual-nonce-ilp352-ffa4673-v100/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz",
+          "digest": "sha256:3957c49a0224a88fec3aae40c8163833827cc0acafa7031dacdb2505d61418a5",
+          "size": 1665441
+        },
+        {
+          "name": "PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-dual-nonce-ilp352-ffa4673-v100/PepeW-v2.1-DualNonceILP352-V100-Offline.tar.gz.sha256",
+          "digest": "sha256:6c1737a06e41d623217d222308144197150ddc10f5f501923bd1aa3d08b60a7c",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 380513339,
+      "tag": "v2.1-cross-function-overlap-7bfe2d8",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-cross-function-overlap-7bfe2d8",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-CrossFunctionOverlap-V100-Profile.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-cross-function-overlap-7bfe2d8/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz",
+          "digest": "sha256:0c650c2afce671581382380bce33b62adb33e7024467688f7f1103359feb91ac",
+          "size": 1622260
+        },
+        {
+          "name": "PepeW-CrossFunctionOverlap-V100-Profile.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-cross-function-overlap-7bfe2d8/PepeW-CrossFunctionOverlap-V100-Profile.tar.gz.sha256",
+          "digest": "sha256:0a69657f422eb12e842b44436d423f3271787d1bb1a0b8bcfcb65317137bdf15",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 380395490,
+      "tag": "v2.1-control-dataflow-6977f26-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-control-dataflow-6977f26-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-ControlDataflowExactCvt-V100-Offline.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-dataflow-6977f26-v100/PepeW-v2.1-ControlDataflowExactCvt-V100-Offline.tar.gz",
+          "digest": "sha256:dab7b508861f4d9414fbe96aa3767a70c04e26cb332a573bd681dde4afe99642",
+          "size": 1712073
+        },
+        {
+          "name": "PepeW-v2.1-ControlDataflowExactCvt-V100-Offline.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-dataflow-6977f26-v100/PepeW-v2.1-ControlDataflowExactCvt-V100-Offline.tar.gz.sha256",
+          "digest": "sha256:f69cadde77ab7c1d77ebc202ca1e342770e184831425468ff17056ed5c857eb5",
+          "size": 126
+        }
+      ]
+    },
+    {
+      "id": 380399705,
+      "tag": "v2.1-control-cvt-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-control-cvt-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-cvt-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:9af4948635f6289a299580c2dc24d9c512d3d6edf877f58707d83fab704923b8",
+          "size": 667988
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-cvt-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:7c23815ca011094c35a16b997f22412c42fc579af9c68dda39d77164729f7de7",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 379645404,
+      "tag": "v2.1-resource-split-ae9786c-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-resource-split-ae9786c-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-resource-split-ae9786c-v100/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz",
+          "digest": "sha256:64347f0d515c664444e8ea4450afdb54739190490b3e663ef4e0174cceabefd8",
+          "size": 1928955
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-resource-split-ae9786c-v100/PepeW-v2.1-HotRun8-ResourceSplit-V100-Offline.tar.gz.sha256",
+          "digest": "sha256:89669b637b7781f608db8753518a77dbd76d177202ef9161d4adbf295fced7f1",
+          "size": 124
+        }
+      ]
+    },
+    {
+      "id": 380008327,
+      "tag": "v2.1-control-dataflow-fece142-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-control-dataflow-fece142-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-dataflow-fece142-v100/PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz",
+          "digest": "sha256:95ece3266b746c54c50ea5232e98c5c7b2a682e2a49c2ccaab797731f4df4c4e",
+          "size": 1730410
+        },
+        {
+          "name": "PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-dataflow-fece142-v100/PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz.sha256",
+          "digest": "sha256:4270238d4834b56c162fe347a39b0f5f135af3f17b1a900e5c0efe73ea354c38",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 380007867,
+      "tag": "v2.1-control-dataflow-ea9d1f4-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-control-dataflow-ea9d1f4-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-dataflow-ea9d1f4-v100/PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz",
+          "digest": "sha256:b3277960491a157364874a7c0116279fa5cee09130577c4d13dfa62f173530b9",
+          "size": 1730403
+        },
+        {
+          "name": "PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-control-dataflow-ea9d1f4-v100/PepeW-v2.1-ControlDataflow-V100-Offline.tar.gz.sha256",
+          "digest": "sha256:8b92d4b17ac9afd2b592e918e1722ea3a2b92cb0257c86b4c39e4ff8f028956d",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 379367205,
+      "tag": "v2.1-hotrun8-row-dynamic-census-0f984a9-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-row-dynamic-census-0f984a9-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-RowDynamicCensus-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-row-dynamic-census-0f984a9-v100/PepeW-v2.1-HotRun8-RowDynamicCensus-V100.tar.gz",
+          "digest": "sha256:629ddaf5f291006f24e70378f1f1b61cded2d595ae8771ea5f2feb0db127eca5",
+          "size": 660690
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-RowDynamicCensus-V100.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-row-dynamic-census-0f984a9-v100/PepeW-v2.1-HotRun8-RowDynamicCensus-V100.tar.gz.sha256",
+          "digest": "sha256:7d9b1e151636ef3ca2df50584da36de7c105f090e2953a2d5566e5540ae9da77",
+          "size": 119
+        }
+      ]
+    },
+    {
+      "id": 379219727,
+      "tag": "v2.1-hotrun8-row-detail-profile-b150f26-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-row-detail-profile-b150f26-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-RowDetailProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-row-detail-profile-b150f26-v100/PepeW-v2.1-HotRun8-RowDetailProfile-V100.tar.gz",
+          "digest": "sha256:033b6cbdb7d02f5e86eeaa094825623fdf017daafce8a60f3aeb5cd6a1167790",
+          "size": 649082
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-RowDetailProfile-V100.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-row-detail-profile-b150f26-v100/PepeW-v2.1-HotRun8-RowDetailProfile-V100.tar.gz.sha256",
+          "digest": "sha256:d5179244d43971370ff415e650273b65ecb173810a7baeab204553caa2ee6c3e",
+          "size": 119
+        }
+      ]
+    },
+    {
+      "id": 379198355,
+      "tag": "v2.1-hotrun8-row-coarse-profile-cf79047-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-row-coarse-profile-cf79047-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-RowCoarseProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-row-coarse-profile-cf79047-v100/PepeW-v2.1-HotRun8-RowCoarseProfile-V100.tar.gz",
+          "digest": "sha256:dbddd7a85df7c12386917522d88e17595b3fa56a66f6c6d29bbd5aee85dc5bfb",
+          "size": 647053
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-RowCoarseProfile-V100.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-row-coarse-profile-cf79047-v100/PepeW-v2.1-HotRun8-RowCoarseProfile-V100.tar.gz.sha256",
+          "digest": "sha256:2abbc6f6d1ec2ce1e71a4b954a566cdc021d64a6411c0a03d78c99144270f16a",
+          "size": 119
+        }
+      ]
+    },
+    {
+      "id": 379180416,
+      "tag": "v2.1-hotrun8-residual-profile-3d7ad44-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-residual-profile-3d7ad44-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-residual-profile-3d7ad44-v100/PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz",
+          "digest": "sha256:76f1780b68b7c9eda778dae5485621fe0c54fc4f7def73e6679c6891c2ab428a",
+          "size": 651486
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-residual-profile-3d7ad44-v100/PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz.sha256",
+          "digest": "sha256:31937760be7ee197d961b449d4cce4c2c1c0bb02a252689031395c6428161d59",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 379188994,
+      "tag": "v2.1-hotrun8-residual-profile-093c814-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-residual-profile-093c814-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-residual-profile-093c814-v100/PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz",
+          "digest": "sha256:e2bfe5d570d7d4c058957c9dd03228a6a7427616140231e00e2bc1c3a836a272",
+          "size": 651490
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-residual-profile-093c814-v100/PepeW-v2.1-HotRun8-ResidualProfile-V100.tar.gz.sha256",
+          "digest": "sha256:25c0ee8e29324e12193c7deed59a8e30e152f1c302364b889cf9621d2914cd0d",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 379243352,
+      "tag": "v2.1-hotrun8-nonlinear-census-f4c9354-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-nonlinear-census-f4c9354-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-nonlinear-census-f4c9354-v100/PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz",
+          "digest": "sha256:3e5fb57076b913ef3f161ce1d2fb3142a1ea9c95a3c9afc5237a2c45eeaeb6be",
+          "size": 652699
+        },
+        {
+          "name": "PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-nonlinear-census-f4c9354-v100/PepeW-v2.1-HotRun8-NonlinearCensus-V100.tar.gz.sha256",
+          "digest": "sha256:e280dae96dd1ac9a602cf098c76d57e39c5fc40d774343cb7a0d1cc5ac139dc8",
+          "size": 118
+        }
+      ]
+    },
+    {
+      "id": 379320511,
+      "tag": "v2.1-fusion2-sharedfp128-fc47d55-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-fusion2-sharedfp128-fc47d55-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-fc47d55-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:5a929dafbb4135918826738c0e8278fad6c002a538d09e4e0c8a75d939912624",
+          "size": 1940777
+        },
+        {
+          "name": "PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-fc47d55-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz.sha256",
+          "digest": "sha256:605fb2e5ffa1285125360a0290ff0b33524dd44ebdd36e24ceed00e5e7fec5f9",
+          "size": 128
+        }
+      ]
+    },
+    {
+      "id": 379321390,
+      "tag": "v2.1-fusion2-sharedfp128-9ad6b96-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-fusion2-sharedfp128-9ad6b96-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-9ad6b96-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:aa3f5f637e452aa140a327e8bdd1e6fa5ec95445e7370cd9858fe384edda6f3c",
+          "size": 1940780
+        },
+        {
+          "name": "PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-9ad6b96-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz.sha256",
+          "digest": "sha256:8173234445098fae015385b7f040c396429e5f4e3df047138b758bb37d6e94cc",
+          "size": 128
+        }
+      ]
+    },
+    {
+      "id": 379322146,
+      "tag": "v2.1-fusion2-sharedfp128-81320e0-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-fusion2-sharedfp128-81320e0-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-81320e0-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:e2fa602a7cf9835da6542f8273897bd0f7c881c86c73527de0e9e20d19179646",
+          "size": 1940793
+        },
+        {
+          "name": "PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sharedfp128-81320e0-v100/PepeW-v2.1-Fusion2-SharedFP128-V100-Offline-Bench.tar.gz.sha256",
+          "digest": "sha256:7ad48a9b25087b53296f777e3bc58c7857a417cc90874d21d07f1f544224b00c",
+          "size": 128
+        }
+      ]
+    },
+    {
+      "id": 379117933,
+      "tag": "v2.1-hotrun8-body-profile-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-body-profile-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-body-profile-v100/PepeW-v2.1-HotRun8-BodyProfile-V100.tar.gz",
+          "digest": "sha256:82894095fd6bb7dd7cff2d248612d83c39c987ab80a25353eb22159700548cc2",
+          "size": 653751
+        }
+      ]
+    },
+    {
+      "id": 379128723,
+      "tag": "v2.1-hotrun8-body-profile-local-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-body-profile-local-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-body-profile-local-v100/PepeW-v2.1-HotRun8-BodyProfileLocal-V100.tar.gz",
+          "digest": "sha256:4d02501256109969348423458dcb3867fba9acf97fe2c371e989cb9957096e36",
+          "size": 652133
+        }
+      ]
+    },
+    {
+      "id": 378585258,
+      "tag": "v2.1.0-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1.0-v100",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "BUILD_INFO.txt",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1.0-v100/BUILD_INFO.txt",
+          "digest": "sha256:ca7c88811449e3e1b91303738ded8d7ada76269162b5f1b8fd3de8e5120c7427",
+          "size": 569
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1.0-v100/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:a56b6496283674fdfff11bd37eaef739dd6f9f39bc144d852ad63df33deef3eb",
+          "size": 764702
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1.0-v100/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:fe84702ee305346710351ff3a6d28bdb8e2003aa286aa29903ddafc9cd49ea08",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 378872519,
+      "tag": "v2.1-warm-stride4-e2e-sm70-offline-a8b5a55a4cf4df5c0501a84ab19007ca97a3f0dd",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-warm-stride4-e2e-sm70-offline-a8b5a55a4cf4df5c0501a84ab19007ca97a3f0dd",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "warm-stride4-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-warm-stride4-e2e-sm70-offline-a8b5a55a4cf4df5c0501a84ab19007ca97a3f0dd/warm-stride4-e2e-sm70.tar.gz",
+          "digest": "sha256:e7454fb7b03981f241d6f9b93d8dac1adda8f928418bd1a121f6fe341a2b0b04",
+          "size": 590452
+        },
+        {
+          "name": "warm-stride4-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-warm-stride4-e2e-sm70-offline-a8b5a55a4cf4df5c0501a84ab19007ca97a3f0dd/warm-stride4-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:6859e03aa5a78447263a629f00dbdf3b4cfafa91464c9c2b390bfa5120b8b2b1",
+          "size": 95
+        }
+      ]
+    },
+    {
+      "id": 378875095,
+      "tag": "v2.1-warm-stride2-e2e-sm70-offline-bd3c43f385e21205e1e28ea0a4c07aa73b9a9269",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-warm-stride2-e2e-sm70-offline-bd3c43f385e21205e1e28ea0a4c07aa73b9a9269",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "warm-stride2-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-warm-stride2-e2e-sm70-offline-bd3c43f385e21205e1e28ea0a4c07aa73b9a9269/warm-stride2-e2e-sm70.tar.gz",
+          "digest": "sha256:32980f7dec4173fb1f7106347490af58d1ae4c3a3995a8582060a58e79ef21fe",
+          "size": 591312
+        },
+        {
+          "name": "warm-stride2-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-warm-stride2-e2e-sm70-offline-bd3c43f385e21205e1e28ea0a4c07aa73b9a9269/warm-stride2-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:94da5d23bc4c6e05fbc9abf51acba5df991b88b8d82bcdc22588234d1a3d551a",
+          "size": 95
+        }
+      ]
+    },
+    {
+      "id": 378275633,
+      "tag": "v2.1-sw-monotonic2-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-sw-monotonic2-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-SW-Monotonic2-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-monotonic2-v100-offline-bench/PepeW-v2.1-SW-Monotonic2-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:812c1177524117d2a1d1f411c151b3891931bcd0fe6f212e55fe50a2b6670974",
+          "size": 1968736
+        }
+      ]
+    },
+    {
+      "id": 378351113,
+      "tag": "v2.1-sw-firstwarm2-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-sw-firstwarm2-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-firstwarm2-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:e5d36ad29988e1b9a0c1233ee72d443135ee3002a051f9dabbea55d6f85ecd0f",
+          "size": 767466
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-firstwarm2-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:fcd46360af361f16304b915f53c8735eb692e97cd08ada2e83c4476083b565a2",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 378321952,
+      "tag": "v2.1-sw-firstwarm2-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-sw-firstwarm2-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-firstwarm2-v100-offline-bench/PepeW-v2.1-SW-FirstWarm2-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:bdf1f0cd69ae2f6a12535e948e8d426bfcf75c1f3c4c00e684142708484e397f",
+          "size": 1963937
+        }
+      ]
+    },
+    {
+      "id": 378463472,
+      "tag": "v2.1-sw-cvt-remmask-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-sw-cvt-remmask-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-sw-cvt-remmask-v100-offline-bench/PepeW-v2.1-SW-CVT-RemMask-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:c0922eeb160914c62ef484d543885a62d51e264536e78aff58374d711a9cd3b9",
+          "size": 2997249
+        }
+      ]
+    },
+    {
+      "id": 378993709,
+      "tag": "v2.1-q20-guarded8-e2e-sm70-offline-1013aca061e3c9e3bbf76a117aa3b182b6929ead",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-guarded8-e2e-sm70-offline-1013aca061e3c9e3bbf76a117aa3b182b6929ead",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-guarded8-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-guarded8-e2e-sm70-offline-1013aca061e3c9e3bbf76a117aa3b182b6929ead/q20-guarded8-e2e-sm70.tar.gz",
+          "digest": "sha256:d0bd649028a6ee76e5125ba355f4ba8dd6bf4c1f9d9d23c06c3ddfe1b4b52978",
+          "size": 603572
+        },
+        {
+          "name": "q20-guarded8-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-guarded8-e2e-sm70-offline-1013aca061e3c9e3bbf76a117aa3b182b6929ead/q20-guarded8-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:428eb143d6afc03abe12b489552a75e473eee7d2d607b0e3688c354e381f518f",
+          "size": 95
+        }
+      ]
+    },
+    {
+      "id": 378935395,
+      "tag": "v2.1-q20-guarded4-e2e-sm70-offline-801fd10037e5a8e94b5610110c0a1290e2fa0cdd",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-guarded4-e2e-sm70-offline-801fd10037e5a8e94b5610110c0a1290e2fa0cdd",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-guarded4-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-guarded4-e2e-sm70-offline-801fd10037e5a8e94b5610110c0a1290e2fa0cdd/q20-guarded4-e2e-sm70.tar.gz",
+          "digest": "sha256:35187a7ba1639b80995e8477bfed515ea2487c56548526cb834ab3a43ffd5741",
+          "size": 595919
+        },
+        {
+          "name": "q20-guarded4-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-guarded4-e2e-sm70-offline-801fd10037e5a8e94b5610110c0a1290e2fa0cdd/q20-guarded4-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:252d6565f6e8d628031115d96909c2ac28d0bbd1b5c451e58d16a68577926bce",
+          "size": 95
+        }
+      ]
+    },
+    {
+      "id": 378896951,
+      "tag": "v2.1-q20-guarded-pair-e2e-sm70-offline-1c49267ebc91175c78802c910c04cf69efc1c0c2",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-guarded-pair-e2e-sm70-offline-1c49267ebc91175c78802c910c04cf69efc1c0c2",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-guarded-pair-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-guarded-pair-e2e-sm70-offline-1c49267ebc91175c78802c910c04cf69efc1c0c2/q20-guarded-pair-e2e-sm70.tar.gz",
+          "digest": "sha256:6e7c0c2aff715573f1dcbd8347de9ab90f369ffd6d5ae594095b44425dffe4e6",
+          "size": 593305
+        },
+        {
+          "name": "q20-guarded-pair-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-guarded-pair-e2e-sm70-offline-1c49267ebc91175c78802c910c04cf69efc1c0c2/q20-guarded-pair-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:53962cc646c4c836f426132de80100a57a8c39672851fd7cd23b619dd2f2c37b",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 378875949,
+      "tag": "v2.1-q20-cold-direct-e2e-sm70-offline-fee94b5ba6dc3c4f0c4dff17148ddef4feb65a8a",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-cold-direct-e2e-sm70-offline-fee94b5ba6dc3c4f0c4dff17148ddef4feb65a8a",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-cold-direct-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-cold-direct-e2e-sm70-offline-fee94b5ba6dc3c4f0c4dff17148ddef4feb65a8a/q20-cold-direct-e2e-sm70.tar.gz",
+          "digest": "sha256:f62b84f17942aa90c172e5048c4e1ad4767d9b9b1bcf57feedac8a26162b7866",
+          "size": 574559
+        },
+        {
+          "name": "q20-cold-direct-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-cold-direct-e2e-sm70-offline-fee94b5ba6dc3c4f0c4dff17148ddef4feb65a8a/q20-cold-direct-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:b4a9dd987ac73913c704ba77fd7599b20beda25e037d9d00d407ce0ccb8ffc0b",
+          "size": 98
+        }
+      ]
+    },
+    {
+      "id": 378836825,
+      "tag": "v2.1-q20-coeff-u32state-e2e-sm70-offline-b211dd41e38103783fdc7e3c09c3fff1a11ffd3c",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-coeff-u32state-e2e-sm70-offline-b211dd41e38103783fdc7e3c09c3fff1a11ffd3c",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-coeff-u32state-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-coeff-u32state-e2e-sm70-offline-b211dd41e38103783fdc7e3c09c3fff1a11ffd3c/q20-coeff-u32state-e2e-sm70.tar.gz",
+          "digest": "sha256:ff59b89fcf71500f0e6fe741efc564f55ada8eccf26d84c7c44c39d262f0351a",
+          "size": 590744
+        },
+        {
+          "name": "q20-coeff-u32state-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-coeff-u32state-e2e-sm70-offline-b211dd41e38103783fdc7e3c09c3fff1a11ffd3c/q20-coeff-u32state-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:ddae83686ff61fd230fd450c99f5f36bbc27a2f74e8db22f6ecbae4ddf9dca2f",
+          "size": 101
+        }
+      ]
+    },
+    {
+      "id": 378748628,
+      "tag": "v2.1-q20-coeff-e2e-sm70-offline-2d93c757d6b74df3a44e8046753efdf563743ecb",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-coeff-e2e-sm70-offline-2d93c757d6b74df3a44e8046753efdf563743ecb",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-coeff-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-coeff-e2e-sm70-offline-2d93c757d6b74df3a44e8046753efdf563743ecb/q20-coeff-e2e-sm70.tar.gz",
+          "digest": "sha256:da40f2a8f3456157f44d49d96c4e8473c2bc76974dcf09889d09adad4e36fe78",
+          "size": 591424
+        },
+        {
+          "name": "q20-coeff-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-coeff-e2e-sm70-offline-2d93c757d6b74df3a44e8046753efdf563743ecb/q20-coeff-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:b15509679cc7a76ac7059bbd45a94680d33f7122b6b64ecbc7468c6558eba635",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 378809044,
+      "tag": "v2.1-q20-coeff-const-e2e-sm70-offline-9e9e5ba83064e96d1bbb4e10822a8b3c5f3055f0",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-coeff-const-e2e-sm70-offline-9e9e5ba83064e96d1bbb4e10822a8b3c5f3055f0",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-coeff-const-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-coeff-const-e2e-sm70-offline-9e9e5ba83064e96d1bbb4e10822a8b3c5f3055f0/q20-coeff-const-e2e-sm70.tar.gz",
+          "digest": "sha256:b003f2b4879d6940eef2b0a7da3a92d3e5c4b074ad5769e2463a576ece7e1590",
+          "size": 592680
+        },
+        {
+          "name": "q20-coeff-const-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-coeff-const-e2e-sm70-offline-9e9e5ba83064e96d1bbb4e10822a8b3c5f3055f0/q20-coeff-const-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:6206b630b66d2f545b4718a2b2c0d73da9de39c3670537368b61f5cad3388c53",
+          "size": 98
+        }
+      ]
+    },
+    {
+      "id": 378674989,
+      "tag": "v2.1-q20-bitmask-e2e-sm70-offline-93b1c69e7cf0c102132c6d6b8ab3c45ebf11fc2b",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-bitmask-e2e-sm70-offline-93b1c69e7cf0c102132c6d6b8ab3c45ebf11fc2b",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-bitmask-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-bitmask-e2e-sm70-offline-93b1c69e7cf0c102132c6d6b8ab3c45ebf11fc2b/q20-bitmask-e2e-sm70.tar.gz",
+          "digest": "sha256:1e5a04193fd641a6682728807798c72456d8a7edc733a6341232e8e3f08c45f7",
+          "size": 448942
+        },
+        {
+          "name": "q20-bitmask-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-bitmask-e2e-sm70-offline-93b1c69e7cf0c102132c6d6b8ab3c45ebf11fc2b/q20-bitmask-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:a75eaf06451c7dcb637eab6a0cb6a4503248196efeda11737c94a764c3c94ef3",
+          "size": 94
+        }
+      ]
+    },
+    {
+      "id": 378229962,
+      "tag": "v2.1-hotrun8-three-stage-profile-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-three-stage-profile-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-three-stage-profile-v100/PepeW-v2.1-HotRun8-ThreeStageProfile-V100.tar.gz",
+          "digest": "sha256:b736cb8db8ef60a39bb7b7c39d12cbf8d6c54ec6a78aaefff0f2741d3522ad6e",
+          "size": 644390
+        }
+      ]
+    },
+    {
+      "id": 378214290,
+      "tag": "v2.1-hotrun8-shared-boundary-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-shared-boundary-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-SharedBoundary-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-shared-boundary-v100-offline-bench/PepeW-v2.1-HotRun8-SharedBoundary-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:9b90fdfe66762c0443b72b5f0144d3bc35741665f1b250681df9ed7deb29b86d",
+          "size": 2185890
+        }
+      ]
+    },
+    {
+      "id": 378257615,
+      "tag": "v2.1-hotrun8-segment-cert-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-segment-cert-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-SegmentCert-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-segment-cert-v100-offline-bench/PepeW-v2.1-HotRun8-SegmentCert-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:03cf5b75f5936106790a4ed4bc6eca9f5b557feff351e86d909e6a457fc21d55",
+          "size": 2027821
+        }
+      ]
+    },
+    {
+      "id": 378243786,
+      "tag": "v2.1-hoohash-cycle-profile-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hoohash-cycle-profile-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HooHash-CycleProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hoohash-cycle-profile-v100/PepeW-v2.1-HooHash-CycleProfile-V100.tar.gz",
+          "digest": "sha256:6a5cebfabf0b80e75b0384e61d0d975537fb0e07f34ca9de43cea0a08d9b95c8",
+          "size": 647189
+        }
+      ]
+    },
+    {
+      "id": 378362560,
+      "tag": "v2.1-fusion2-sw-cvt-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-fusion2-sw-cvt-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sw-cvt-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:a56b6496283674fdfff11bd37eaef739dd6f9f39bc144d852ad63df33deef3eb",
+          "size": 764702
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sw-cvt-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:09dff07d35a4eb5dffc034ba588e416851f8c8460a221a97e246ef0eb4b8ee31",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 378359034,
+      "tag": "v2.1-fusion2-sw-cvt-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-fusion2-sw-cvt-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-Fusion2-SW-CVT-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-sw-cvt-v100-offline-bench/PepeW-v2.1-Fusion2-SW-CVT-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:c77c7f13eeca83518559671950fe6fa97d0c989007a38f1cc463a3f2f5b1cba4",
+          "size": 3020795
+        }
+      ]
+    },
+    {
+      "id": 378226435,
+      "tag": "v2.1-fusion2-stage-profile-v100",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-fusion2-stage-profile-v100",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-fusion2-stage-profile-v100/PepeW-v2.1-Fusion2-StageProfile-V100.tar.gz",
+          "digest": "sha256:1209a48844e630506c989b01a85f23433634b97beb06f076d91c929f0f8a0239",
+          "size": 644472
+        }
+      ]
+    },
+    {
+      "id": 377531420,
+      "tag": "v2.1-warp-pair256-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-warp-pair256-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-WarpPair256-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-warp-pair256-v100-offline-bench/PepeW-WarpPair256-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:c13f40692ed81d15f120908ab5f1b5b3f74fb2ace7d68a2ac25949b098c02b63",
+          "size": 1997587
+        }
+      ]
+    },
+    {
+      "id": 377491227,
+      "tag": "v2.1-warp-pair128-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-warp-pair128-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-WarpPair128-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-warp-pair128-v100-offline-bench/PepeW-WarpPair128-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:f82d8b05c3e0423bef8bec945f3b842479bc728b872e2fa50fe1163571025d8a",
+          "size": 1997645
+        }
+      ]
+    },
+    {
+      "id": 377602103,
+      "tag": "v2.1-static-service704-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-static-service704-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-StaticService704-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-static-service704-v100-offline-bench/PepeW-StaticService704-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:0ae1aa0bec8c29bcc7164c8cd6c598aec4efbc6c826617fe63d72b233255a906",
+          "size": 1670462
+        }
+      ]
+    },
+    {
+      "id": 377513186,
+      "tag": "v2.1-noncelocal128-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-noncelocal128-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-NonceLocal128-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-noncelocal128-v100-offline-bench/PepeW-NonceLocal128-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:19b6681dce4cf69da2ab0d52b518b4c4b65a0bc929cf24f122354b2056e6d7c5",
+          "size": 1981685
+        }
+      ]
+    },
+    {
+      "id": 377979035,
+      "tag": "v2.1-hotrun8-split-v100-realpool-smoke",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-split-v100-realpool-smoke",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-split-v100-realpool-smoke/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:d549e3a7b54060a1bb8b4949520f25718b886a842c23eacc7e55b611f13939f2",
+          "size": 714309
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-split-v100-realpool-smoke/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:822f91d87ad5d99f1b942e220e1d821f61a52f395a73d2071c35382b7d6ea402",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 377969312,
+      "tag": "v2.1-hotrun8-split-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-split-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-split-v100-offline-bench/PepeW-v2.1-HotRun8-Split-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:b57974ac7d6ee514cf0045b52b5545e71afb9c0b3d578b3e5acff277dbeb5a80",
+          "size": 1802745
+        }
+      ]
+    },
+    {
+      "id": 378176589,
+      "tag": "v2.1-hotrun8-fusion2-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-fusion2-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-fusion2-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:7aa3ec48b3d4ae4dad26ffa92d4179b3056ae67387f3a8b927d5a1fe8b92a0db",
+          "size": 771125
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-fusion2-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:bc361e1b524be347dcf8f3ad0c10d309da941b0fe36c5c047558eef2d1d3cd25",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 378162062,
+      "tag": "v2.1-hotrun8-fusion2-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-fusion2-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-Fusion2-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-fusion2-v100-offline-bench/PepeW-v2.1-HotRun8-Fusion2-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:64bb40e95df633b123a4ce52e9d7b8da5518c64abf1f6814fcd4749b0c0fb60f",
+          "size": 1976618
+        }
+      ]
+    },
+    {
+      "id": 378138759,
+      "tag": "v2.1-hotrun8-fusion1-v100-pool-candidate",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-fusion1-v100-pool-candidate",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-fusion1-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:7a349bd8fb7c2d76527985f5cad6fe3eca5933187dd5643ee2c7fd4bd59c3684",
+          "size": 770850
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-fusion1-v100-pool-candidate/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:35bf871fec528acd6e68abc593cdc8d564f2be394f3701cdba17f2ae0237b8ee",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 378136086,
+      "tag": "v2.1-hotrun8-fusion1-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun8-fusion1-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun8-Fusion1-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun8-fusion1-v100-offline-bench/PepeW-v2.1-HotRun8-Fusion1-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:837fe3a21854f4741065055f51cd71aeeed04774b2cbb58613ebe64fb24a381e",
+          "size": 1976742
+        }
+      ]
+    },
+    {
+      "id": 378040856,
+      "tag": "v2.1-hotrun16-split-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hotrun16-split-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hotrun16-split-v100-offline-bench/PepeW-v2.1-HotRun16-Split-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:c61204a118d82cb6d5083e8c9eb9e678e1889279afc87c2f77e017ca28d47590",
+          "size": 1802690
+        }
+      ]
+    },
+    {
+      "id": 377705436,
+      "tag": "v2.1-hierarchical-service704-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-hierarchical-service704-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Hierarchical-Service704-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-hierarchical-service704-v100-offline-bench/PepeW-Hierarchical-Service704-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:2e2d3ea9d30f214cf1a7725bd07cff451e46867a165e8b2f490ceef7e232b69e",
+          "size": 1686631
+        }
+      ]
+    },
+    {
+      "id": 377333844,
+      "tag": "v2.1-service4warp-guarded-sqrt-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-service4warp-guarded-sqrt-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Service4Warp-GuardedSqrt-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-service4warp-guarded-sqrt-v100-offline-bench/PepeW-Service4Warp-GuardedSqrt-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:fd16b9ba4ad9db499dc313e1e971efa26baa4b7e5b3ec12fa42afd6aa826f26d",
+          "size": 2220948
+        }
+      ]
+    },
+    {
+      "id": 377119350,
+      "tag": "v2.1-service4warp-duallut-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-service4warp-duallut-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-service4warp-duallut-v100-offline-bench/PepeW-Service4Warp-DualLUT-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:08c8ec74800afc0240aa52070c688ed093bba26e7bde2791db1b0680f1c02e8a",
+          "size": 2300426
+        }
+      ]
+    },
+    {
+      "id": 376915631,
+      "tag": "v2.1-guarded-lut-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-guarded-lut-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-guarded-lut-v100-offline-bench/PepeW-Guarded-LUT-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:03b94cfeb299e5d169f6b2be635562b6708ded84c081db3ea78622894aef0775",
+          "size": 1980537
+        }
+      ]
+    },
+    {
+      "id": 377436284,
+      "tag": "v2.1-compact128-v100-offline-bench",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-compact128-v100-offline-bench",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Compact128-V100-Offline-Bench.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-compact128-v100-offline-bench/PepeW-Compact128-V100-Offline-Bench.tar.gz",
+          "digest": "sha256:749dc773ad3f065988a683b9af6c4c24ebc0da1bc1850a46c75f7846cdfdb06d",
+          "size": 1677813
+        }
+      ]
+    },
+    {
+      "id": 378583488,
+      "tag": "v2.1-q20-e2e-sm70-offline-d8aa9f121594f641e0f2bb867b16e54e2941bb58",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-q20-e2e-sm70-offline-d8aa9f121594f641e0f2bb867b16e54e2941bb58",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "q20-e2e-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-e2e-sm70-offline-d8aa9f121594f641e0f2bb867b16e54e2941bb58/q20-e2e-sm70.tar.gz",
+          "digest": "sha256:d4193c141c7c98da5d1f13cf48402efb61179aee0270fee26df29b34c9e00d9e",
+          "size": 449680
+        },
+        {
+          "name": "q20-e2e-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-q20-e2e-sm70-offline-d8aa9f121594f641e0f2bb867b16e54e2941bb58/q20-e2e-sm70.tar.gz.sha256",
+          "digest": "sha256:fed9e76ee986f12dc886c3d744de630bce5560adef0783ddf98195e299c9589c",
+          "size": 86
+        }
+      ]
+    },
+    {
+      "id": 376066487,
+      "tag": "v2.1-beta.1-v100-t704-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-t704-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:93afbeb2d8f142edc061c68806a2e2d5cf4306066154398549430c01bc0d19f7",
+          "size": 691239
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:379a9b67d6bd21dfb8e47ad352f7fb7c2ac5d498bd70f74726ac76848997f935",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376319557,
+      "tag": "v2.1-beta.1-v100-t704-svc4-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-t704-svc4-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-svc4-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:c5ef21710444b7602b0de6962d9d8f3e56a17ab09a570dd8c783d32de534b8c5",
+          "size": 689613
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-svc4-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:f46bd5b3986678c73b679b52859bb8093ddf0f7871b78524544926dc363ca7fa",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376181255,
+      "tag": "v2.1-beta.1-v100-t704-split-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-t704-split-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-split-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:e04d965d70c7545f17c69afdcb604f60485e150bb0d6be500d4fac9888a64a69",
+          "size": 691477
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-split-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:9c9b5a705fda85372e2aaa003e942eb3316bdca7b2e95c4e482d42f62f448d35",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376126404,
+      "tag": "v2.1-beta.1-v100-t704-mb2-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-t704-mb2-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-mb2-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:c2748f077cf24ca7c12b484945277d4f5cb45a9eb9036be9ae2c5a40411943bb",
+          "size": 696960
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-mb2-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:b4357dc29eaf2ece6ad9087fd09f80454a22f1e7e5563c08f1978dde02471ae8",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376160922,
+      "tag": "v2.1-beta.1-v100-t704-bu2-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-t704-bu2-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-bu2-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:29664e983d67431a07e993262dc61e65aba47816f6b330a539cf03d35ee6f2ff",
+          "size": 740028
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t704-bu2-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:15778090f83a6c0c3a8d1fa38f1e7bbe722fc0e60e4977208fc9fd233adf0bc6",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376101212,
+      "tag": "v2.1-beta.1-v100-t672-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-t672-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t672-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:4e19527568e6cc55445cdbb75b76bbee4514e7e59fc1b2452b96e6af299758c3",
+          "size": 691237
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-t672-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:9d72ab8173cfe5d33e7c74d6b644fbf43dd155cc897e72243b65bb94bc9d1e0c",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376287104,
+      "tag": "v2.1-beta.1-v100-split-direct-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1-v100-split-direct-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-split-direct-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:18a81e91382840b7e00f2a546d935d7f8f8d7ff9c6c3a5542844b76b49229cfb",
+          "size": 691487
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1-v100-split-direct-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:6ad9cb90252409a47472dbdd2f2080932d00a8605542fff996e49888e4f3c02a",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 376027812,
+      "tag": "v2.1-beta.1",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.1-beta.1",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:04e00a30abc8235f871d940bf241f2a58e30857501cab99bc65b451fac841228",
+          "size": 691221
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-beta.1/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:3923ed93b326f4a6ffc07a48faf3b976c2c0d300e2c3d5e332929a2ccfa9fe0c",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 375986825,
+      "tag": "v2.0-beta.1",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v2.0-beta.1",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.0-beta.1/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:a2eb365d1c2d876c9e6657ef3565825d40ea1bd3701341a9234dcf7dd5f149f9",
+          "size": 691147
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.0-beta.1/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:ed1ec3add930a3c2ce00bbbf182e1842a11a611c848261edceecbeb1836b1d27",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 375305015,
+      "tag": "hiveos-v100-v104-direct-cold-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-direct-cold-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-direct-cold-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:68dcfd71301225d2e08147f9f0cd1f8abedab36e36af8e79d77fc821ffc60460",
+          "size": 681161
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-direct-cold-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:797969f0cc583d0040cfcceed38e173fc1db66551e8747900640ca2990ad6330",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 374505525,
+      "tag": "hiveos-v100-v104-recovery-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-recovery-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-recovery-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:3c167194151e5ae4aabe0717b9d1b5922703f87a6110ab5cb6c5e123149d4fbb",
+          "size": 580758
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-recovery-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:79f6b0fe01244c16e02dc57ae5da58421fa5cb1b501d90007e49eacd7116a29b",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 374257534,
+      "tag": "hiveos-v100-fastsolver-v3-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-fastsolver-v3-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v3-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:3a1720600bd11cd0a3798e7de5205bf2769140bbc3ce86537384b2cd79bf2bfa",
+          "size": 959156
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v3-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:f369545e69177f64eff7b20b6ab444de7b0c596141dea4c33df44b7b1314a096",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 374220829,
+      "tag": "hiveos-v100-fastsolver-v2-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-fastsolver-v2-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v2-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:554ccd6707eb19e6d6affaf3f794e8b0df6af0673567c8fcd7a3e785c1e1a8ad",
+          "size": 960685
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v2-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:b94d19d4f206c347186f9462f3ed48660b7a7ae1f596804bc07d984dae427e89",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 374207356,
+      "tag": "hiveos-v100-fastsolver-v1-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-fastsolver-v1-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v1-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:7b59a0ba52c29c9cd0278b98fff10eb553ed1c3ebf79ed8c74aea21eb6e760f3",
+          "size": 768351
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v1-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:8cdffc9f3c8d615033a0bb8f2c6be43ed0c2ac6f56fc68e976467d478f61f524",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 373718543,
+      "tag": "hiveos-v100-kv9a-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv9a-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv9a-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:8a3155a69512775a5b3a5c8c4ec8ff34578f3eb2175caeec25c713b0afab27e9",
+          "size": 939647
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv9a-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:6f031bc3cbd143a16c7340424937aeae2b7a67588ad3aa1ea835b3d8031c9929",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 373511981,
+      "tag": "hiveos-v100-kv8a-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv8a-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv8a-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:dc88e41b21848efdf2923eac1d9eea0a0a2080e787bd76eff3e290b40395e896",
+          "size": 933740
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv8a-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:98058f07d5b763749629fdb4da2b103efd63de84cc9e66efb69baba49c7d466c",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 373504023,
+      "tag": "hiveos-v100-kv7a-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv7a-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv7a-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:e403f9b4cd1244a5958f67e42dbeec8843d8b593676a8fc17b9e3a0831478409",
+          "size": 3549060
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv7a-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:692ee9dd7644bb0dbc869d07db36c9b213226b6476fdfa06cc9ea2252a111f4e",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 373209589,
+      "tag": "hiveos-v100-kv6c-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv6c-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "KV6C-PTXAS.log",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6c-test/KV6C-PTXAS.log",
+          "digest": "sha256:5283601dc8887e7a3321707df9f9578c63c9f8d5a0fab37ebcc22628c06153ff",
+          "size": 7731
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6c-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:b023a6946736f24d673438da974a510fbb40bc92198957f9347506c1b518ec50",
+          "size": 934195
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6c-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:4b7ae7ea69322d1a668e79f0a92babf0a68991a1df343f9b387d40778bded148",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372986567,
+      "tag": "hiveos-v100-kv6b-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv6b-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "KV6B-PTXAS.log",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6b-test/KV6B-PTXAS.log",
+          "digest": "sha256:e0190a6a42560aa6f5d086f5b9322364959d2ce84eae66cf4e63617bee2bd317",
+          "size": 7731
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6b-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:b50ac94e18c463b3c4b74d1cfbd45aca593853ee573925be16bb453118cfd0dc",
+          "size": 933773
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6b-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:95178be3957588b5904f17eaecfe34f7aa77b4968bad894d2be72fe5007b37e0",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372965050,
+      "tag": "hiveos-v100-kv6a-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv6a-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6a-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:0173cb1378d6f83134fd7950ce58c59b4abd300f89c207357cfba95479b9d7b7",
+          "size": 3545835
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv6a-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:01605e5f9f0ed1195860586583323d96c37eb465225441e0f70b7e35043112be",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372919952,
+      "tag": "hiveos-v100-kv5a-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv5a-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv5a-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:0bb71d07daaee9b1856fdefc89dad93b335cbe666894d0ee347e163dbd25d16e",
+          "size": 934000
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv5a-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:c3cfa339c5968265f843736f7d4d7a6e75a1facd45b651e60f09c3ed089a4611",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372894287,
+      "tag": "hiveos-v100-kv4a-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv4a-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv4a-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:a37ce2e51bb238a7e4df12ddcad488552ac248283f43cff7ebb8a9c6db0aeb41",
+          "size": 930334
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv4a-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:fe5e00817b0d9a3e629f5ca5a52fbf88798146745714e29fc461c80d1fd9b2b4",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372621193,
+      "tag": "hiveos-v100-kv3b-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv3b-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv3b-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:17f2f62dd6354fdddc3519e6bc499ea92420d9fcc65bc4d969dbd1e88739bb26",
+          "size": 1018530
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv3b-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:65618ae5806b4d9286511344fee08d9b9e3ca723d5a24dc4178040e46d031d28",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372526061,
+      "tag": "hiveos-v100-kv3-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kv3-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv3-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:9f0722430e2d2782c578525f7891da9714f3d8b0e6764e5e338610d6a31e4f43",
+          "size": 1028278
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kv3-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:b86ff4a27cab693ad05d337a286229e135fa50a6388753f098322986dd4a220b",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 372404435,
+      "tag": "hiveos-v100-kernel-v2-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-kernel-v2-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kernel-v2-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:06654a9717ac738e16c3793790871d798dd7f5bc61fddb5eae1120a82b3610b5",
+          "size": 930238
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-kernel-v2-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:c60471b0a430eed4162a0c1ed9facc159c851cef502af47ca3b5b996040d0a1a",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 371564541,
+      "tag": "hiveos-v100-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:5090d2b25a17c0553b0c2664ea47ed54473f3c3a28c570f991fef52e3055aba1",
+          "size": 1155224
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:9fb42ed127296907f03b738b5b9886c0daceaa2812b525e99eaeb068df7b0ee0",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 371967221,
+      "tag": "hiveos-v100-r128-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-r128-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-r128-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:87bd84275796f095a4399d85bee9a3789e1a43de07b7be656f21c413b13d36b2",
+          "size": 1154732
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-r128-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:649baffb662732ab78358122e22640925e3e76b69e8da5a7a99b9f0f4cc8771f",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 375039416,
+      "tag": "hiveos-v100-v104-sm70-t384-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-sm70-t384-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-sm70-t384-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:50252d20a6481cc37134cdbdbbabfbc27bf3c54aaa649c4640213eb90f1fa367",
+          "size": 688363
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-sm70-t384-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:72a12897818dd29d243b2733bcede8116bdf56ace6b3be8583a57bde1797cfda",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 374564126,
+      "tag": "hiveos-v100-v104-release-sm70-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-release-sm70-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-release-sm70-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:687e2db13b12359cad35621adb9decfc67630d595a250c8406a0493767f0d97e",
+          "size": 691139
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-release-sm70-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:10a4c109c4c6f8ab497f81ba84672ed3be434d5768d1e64aaa0356c53ee5450f",
+          "size": 97
+        },
+        {
+          "name": "PepeW-Miner-v1.0.4-V100-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-release-sm70-test/PepeW-Miner-v1.0.4-V100-sm70.tar.gz",
+          "digest": "sha256:967e1801a4b858478cc7e01fa29bb95e33ded911d8e091bb999fec0442bdcf50",
+          "size": 691161
+        },
+        {
+          "name": "PepeW-Miner-v1.0.4-V100-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-release-sm70-test/PepeW-Miner-v1.0.4-V100-sm70.tar.gz.sha256",
+          "digest": "sha256:c1cbfbb8d98451b6d47d49e2be2cbd083d390ec579002ac011978e5696d29e15",
+          "size": 107
+        }
+      ]
+    },
+    {
+      "id": 375055655,
+      "tag": "hiveos-v100-v104-geometry736-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-geometry736-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-geometry736-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:9413b90e857cdfdaccec1f7ca2c5f0fed98b9d3dee2403326fac11beef0ac45d",
+          "size": 691049
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-geometry736-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:a73c802e4ffcbefed1f9671d668315ec866c2224fa6e4b45e71a338269cdb9a7",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 375035753,
+      "tag": "hiveos-v100-v104-geometry640-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-geometry640-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-geometry640-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:e4701480178ae8b0f5f06bb436a351b05247c9f4cb7e7a91366fa83064bfd7b5",
+          "size": 688646
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-geometry640-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:b1aeb3d48adf1ff56e27d76bddebeb878d028b28d4e1c960f05b2a307c3d111e",
+          "size": 97
+        }
+      ]
+    },
+    {
+      "id": 374517940,
+      "tag": "hiveos-v100-v104-contract-restore-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-v104-contract-restore-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-contract-restore-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:0e9be5f172525f45a7e4b1bf8c0feeb058cc1bb583fdb73051accf1e20a95920",
+          "size": 931331
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-v104-contract-restore-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:a0039a342d2b26fb70c51da90f4c3f508a73d0d39de907b2c6e0948410df9a8e",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 374519603,
+      "tag": "hiveos-v100-pool-contract-hybrid-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-pool-contract-hybrid-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-pool-contract-hybrid-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:11cf928a8f98922820fb50540e3d8f032ac4cf985822a646aa5c9ed497773958",
+          "size": 931332
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-pool-contract-hybrid-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:a57935c413c975674fa1d7f09b82bc439c5d6a7052ded0e7b93f202efbeb9bee",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 374355093,
+      "tag": "hiveos-v100-fastsolver-v2-noncefix-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-v100-fastsolver-v2-noncefix-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v2-noncefix-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:a6b9e011dd43d927f86e9c39b18946b607bd211bc2d7c198f43297e8cf3cd130",
+          "size": 960758
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-v100-fastsolver-v2-noncefix-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:16313190eedad02124baaa03482f89d68942adad993dd18a3ca1ecbc275e11df",
+          "size": 92
+        }
+      ]
+    },
+    {
+      "id": 371141207,
+      "tag": "hiveos-test",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/hiveos-test",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-test/PepeW-Miner-HiveOS.tar.gz",
+          "digest": "sha256:b26bdce0d5f0cb518d39a53015d137a1e0270f9769e1665ecff420924558d12d",
+          "size": 721517
+        },
+        {
+          "name": "PepeW-Miner-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-test/PepeW-Miner-HiveOS.tar.gz.sha256",
+          "digest": "sha256:2612c12b5b0d3beb926e39aa5a5f5dd5525dc73b51c032f2c0f9a8c486fbba7a",
+          "size": 92
+        },
+        {
+          "name": "PepeW-Reference-KAT-CUDA118-sm70.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-test/PepeW-Reference-KAT-CUDA118-sm70.tar.gz",
+          "digest": "sha256:3fdeae93f4ca17174e5f80a509ddd46a0dd87dfa677561655291b41078b33bb5",
+          "size": 255516
+        },
+        {
+          "name": "PepeW-Reference-KAT-CUDA118-sm70.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/hiveos-test/PepeW-Reference-KAT-CUDA118-sm70.tar.gz.sha256",
+          "digest": "sha256:45845667ffc1444dd47c357fe03af69523ccbe854940698f080a14253ac6c0b8",
+          "size": 106
+        }
+      ]
+    },
+    {
+      "id": 370971421,
+      "tag": "v1.1.0",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.1.0",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.1.0-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.1.0/PepeW-Miner-v1.1.0-HiveOS.tar.gz",
+          "digest": "sha256:eca2a6adc1f57199e592f7b8ca42864028c31a01840b5179ba52c98c3ffb7cc7",
+          "size": 1423963
+        },
+        {
+          "name": "PepeW-Miner-v1.1.0-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.1.0/PepeW-Miner-v1.1.0-HiveOS.tar.gz.sha256",
+          "digest": "sha256:bae4e3facaca34e68c2eea038e0741812c6b006d6c5bd05c14632818e1a175cd",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 370813719,
+      "tag": "v1.0.9",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.9",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.9-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.9/PepeW-Miner-v1.0.9-HiveOS.tar.gz",
+          "digest": "sha256:59fdb7d6440f4ed6ab0de72af61d4803ca75f4d972fd11c828ab01dcc42b2e02",
+          "size": 2874122
+        },
+        {
+          "name": "PepeW-Miner-v1.0.9-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.9/PepeW-Miner-v1.0.9-HiveOS.tar.gz.sha256",
+          "digest": "sha256:b6a4ebfee40b827679a1a9177ccadde77dad9d57312cb1177c0e06cb5dc5fbfa",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 370378602,
+      "tag": "v1.0.8",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.8",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.8-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.8/PepeW-Miner-v1.0.8-HiveOS.tar.gz",
+          "digest": "sha256:bbeea382724f8f4e0c2bbeab8c3451da9f7c406eb2d7a565a1d0bae64d0eda82",
+          "size": 747029
+        },
+        {
+          "name": "PepeW-Miner-v1.0.8-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.8/PepeW-Miner-v1.0.8-HiveOS.tar.gz.sha256",
+          "digest": "sha256:d2b331532fcc3f3684b64094729b6d7615967f9883058e56b9a6cc435b30d3da",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 370190541,
+      "tag": "v1.0.7",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.7",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.7-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.7/PepeW-Miner-v1.0.7-HiveOS.tar.gz",
+          "digest": "sha256:d6b5e449b663cca25c41787a14e8dec1526198e3a8ab1788c9e1d0c44c4f58ab",
+          "size": 816871
+        },
+        {
+          "name": "PepeW-Miner-v1.0.7-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.7/PepeW-Miner-v1.0.7-HiveOS.tar.gz.sha256",
+          "digest": "sha256:9ed1c0f00f2ad66592e82514b96b0d53023332b70567287701d453ebecba4085",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 367825243,
+      "tag": "v1.0.5-test4",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.5-test4",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test4/PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz",
+          "digest": "sha256:e7cd48675efbe97d404b27e96a4d1412a2901941d3f0c2cac3ca76440506b1a5",
+          "size": 749084
+        },
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test4/PepeW-Miner-v1.0.5-HiveOS-test4.tar.gz.sha256",
+          "digest": "sha256:bc2760e5481fba7fc7567b3a698f9425abe2b87953652a3fa5e5df3f37243ced",
+          "size": 105
+        }
+      ]
+    },
+    {
+      "id": 365997598,
+      "tag": "v1.0.5-test3",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.5-test3",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test3.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test3/PepeW-Miner-v1.0.5-HiveOS-test3.tar.gz",
+          "digest": "sha256:c7feb0a57b035a458896157d04150cd4ef34970a6b3032cf659d77f36e08da7c",
+          "size": 748258
+        },
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test3.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test3/PepeW-Miner-v1.0.5-HiveOS-test3.tar.gz.sha256",
+          "digest": "sha256:8834dca97b6c74b1c06a2cde74bf6641a14e0e969fbd09251617235557cdb373",
+          "size": 105
+        }
+      ]
+    },
+    {
+      "id": 365810384,
+      "tag": "v1.0.5-test2",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.5-test2",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test2.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test2/PepeW-Miner-v1.0.5-HiveOS-test2.tar.gz",
+          "digest": "sha256:f22067a850ef24d2cddb3131cc200a52289bd09bffcc924d41319a736cbe21bc",
+          "size": 740389
+        },
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test2.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test2/PepeW-Miner-v1.0.5-HiveOS-test2.tar.gz.sha256",
+          "digest": "sha256:718029e870ce91048fe46262f4db5c35bdce4286535d1b57636d7ce8f01ec388",
+          "size": 105
+        }
+      ]
+    },
+    {
+      "id": 365784681,
+      "tag": "v1.0.5-test1",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.5-test1",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test1/PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz",
+          "digest": "sha256:3d24fba6b5725923ace1b53a25168747480719b569e2da0108f8c68930a55a28",
+          "size": 2287069
+        },
+        {
+          "name": "PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.5-test1/PepeW-Miner-v1.0.5-HiveOS-test1.tar.gz.sha256",
+          "digest": "sha256:960f386da188b1d1f6517c941bea1a6e6df1a058b0bfef8df7b5535f10b07ae0",
+          "size": 105
+        }
+      ]
+    },
+    {
+      "id": 364499879,
+      "tag": "v1.0.0",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.0",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.0-HiveOS-sm86.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.0/PepeW-Miner-v1.0.0-HiveOS-sm86.tar.gz",
+          "digest": "sha256:3fa38051ca1bbb484fd893b951d1deb30a392e0da81c0f380d20d56ca70f9463",
+          "size": 843281
+        },
+        {
+          "name": "PepeW-Miner-v1.0.0-HiveOS-sm86.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.0/PepeW-Miner-v1.0.0-HiveOS-sm86.tar.gz.sha256",
+          "digest": "sha256:6cbbbebb92259731ba77acfa9402b84e0ba5ddfe22a1a294a1c5218b6cab99f9",
+          "size": 104
+        }
+      ]
+    },
+    {
+      "id": 368379854,
+      "tag": "v1.0.6",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.6",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.6-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.6/PepeW-Miner-v1.0.6-HiveOS.tar.gz",
+          "digest": "sha256:c891650c9fc2634c08830decd6a7627ba3fd0cd511c5326ad3a2610c68a27d4d",
+          "size": 816848
+        },
+        {
+          "name": "PepeW-Miner-v1.0.6-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.6/PepeW-Miner-v1.0.6-HiveOS.tar.gz.sha256",
+          "digest": "sha256:6a1ea9c95276985b9b3605edde1548ea9408f3498a0e8e43161fac64c1ce080f",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 365345536,
+      "tag": "v1.0.4",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.4",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.4/PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz",
+          "digest": "sha256:0b3e752339761aab35c261c56e2f1da47a5ae458895cddc05a4ea83d871ebf49",
+          "size": 1789782
+        },
+        {
+          "name": "PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.4/PepeW-Miner-v1.0.4-HiveOS-1.0.4.tar.gz.sha256",
+          "digest": "sha256:319971576b5b11230e4b1cc47104f094dfb056e3e53f9f224c5d0bedf2dbecbc",
+          "size": 105
+        }
+      ]
+    },
+    {
+      "id": 365109202,
+      "tag": "v1.0.3",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.3",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.3/PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz",
+          "digest": "sha256:bb0f4ee29d0d8c6d491fc2d66994131dbdb85341ffa839fcff28697ddd7a36b0",
+          "size": 838409
+        },
+        {
+          "name": "PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.3/PepeW-Miner-v1.0.3-HiveOS-1.0.3.1.tar.gz.sha256",
+          "digest": "sha256:2591873919ffd7fb5ff0ddde34dc3cbb9441777cec327e9bf70ae52cc750c929",
+          "size": 107
+        }
+      ]
+    },
+    {
+      "id": 365062569,
+      "tag": "v1.0.2",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.2",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.2-HiveOS.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.2/PepeW-Miner-v1.0.2-HiveOS.tar.gz",
+          "digest": "sha256:e678004d0e9371ce1a9b048fb19065b3939746a82bdf155771e94bb83cb6f3bd",
+          "size": 841043
+        },
+        {
+          "name": "PepeW-Miner-v1.0.2-HiveOS.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.2/PepeW-Miner-v1.0.2-HiveOS.tar.gz.sha256",
+          "digest": "sha256:fdf62ddf2961a7b5aced04ac926690c4393f4dc951526bbb37e95ab70cf44906",
+          "size": 99
+        }
+      ]
+    },
+    {
+      "id": 365046104,
+      "tag": "v1.0.1",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v1.0.1",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "PepeW-Miner-v1.0.1-HiveOS-sm86.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.1/PepeW-Miner-v1.0.1-HiveOS-sm86.tar.gz",
+          "digest": "sha256:25f45e776948975e7ad38a4a814cad46c2d86f0f7b7fee8c00f2ccae6d5035c5",
+          "size": 842464
+        },
+        {
+          "name": "PepeW-Miner-v1.0.1-HiveOS-sm86.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v1.0.1/PepeW-Miner-v1.0.1-HiveOS-sm86.tar.gz.sha256",
+          "digest": "sha256:ce46c8081ad24fafb84a83f7893ac1675f753990540300e5eea049c03536eab5",
+          "size": 124
+        }
+      ]
+    },
+    {
+      "id": 363742038,
+      "tag": "v0.6.0-PR",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.6.0-PR",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.6.0-PR-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.6.0-PR/pepepowminer-v0.6.0-PR-hiveos.tar.gz",
+          "digest": "sha256:e333c9350107ae7f41f9d7bf1854f3af74d3e4eb55981f8e386490ae0d2e6a36",
+          "size": 802711
+        },
+        {
+          "name": "pepepowminer-v0.6.0-PR-hiveos.tar.gz.sha256",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.6.0-PR/pepepowminer-v0.6.0-PR-hiveos.tar.gz.sha256",
+          "digest": "sha256:65a84a7f51d97425d18961a827b1186408d4244de3b233510807842fde9238f6",
+          "size": 103
+        }
+      ]
+    },
+    {
+      "id": 363307860,
+      "tag": "v0.5.1-PR",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.5.1-PR",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.5.1-PR-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.5.1-PR/pepepowminer-v0.5.1-PR-hiveos.tar.gz",
+          "digest": "sha256:b9bcf80006b8db2a3140801d72977448ecfda397200c5be51fd0f1a9913f2eb0",
+          "size": 1011581
+        }
+      ]
+    },
+    {
+      "id": 362876578,
+      "tag": "v0.5.0-PR",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.5.0-PR",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.5.0-PR-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.5.0-PR/pepepowminer-v0.5.0-PR-hiveos.tar.gz",
+          "digest": "sha256:bd52f735a47e7aa0cbf56db4c0bfd2da8a3cad427b5fff3916d32f28cb68b100",
+          "size": 489304
+        }
+      ]
+    },
+    {
+      "id": 361003891,
+      "tag": "v0.4.1-PR",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.4.1-PR",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.4.1-PR-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.4.1-PR/pepepowminer-v0.4.1-PR-hiveos.tar.gz",
+          "digest": "sha256:dcec1bbc648570f73145ce643886ec37c8541ec6f41df5eccbccdf531ffe0708",
+          "size": 466813
+        }
+      ]
+    },
+    {
+      "id": 360735234,
+      "tag": "v0.4.0-PR",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.4.0-PR",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.4.0-PR-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.4.0-PR/pepepowminer-v0.4.0-PR-hiveos.tar.gz",
+          "digest": "sha256:55676faa60750ec310808bf8a64c3886cc13502c3e015811f5ae0ce60a3f1d01",
+          "size": 465473
+        }
+      ]
+    },
+    {
+      "id": 360668573,
+      "tag": "v0.3.9-PR",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.9-PR",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.9-PR-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.9-PR/pepepowminer-v0.3.9-PR-hiveos.tar.gz",
+          "digest": "sha256:6fdda82d68bff92004a5ca8484b9eb8f1fcc311ccccce1f13f420ac108181061",
+          "size": 464406
+        }
+      ]
+    },
+    {
+      "id": 360451519,
+      "tag": "v0.3.7-consensus-math",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.7-consensus-math",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.7-consensus-math-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.7-consensus-math/pepepowminer-v0.3.7-consensus-math-hiveos.tar.gz",
+          "digest": "sha256:93d7fc0cd5ef181b7f320c06acce286d9051a6fb52cf76c6d7fe79d5b5fa6e8c",
+          "size": 477766
+        }
+      ]
+    },
+    {
+      "id": 360374740,
+      "tag": "v0.3.6-authoritative-vector",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.6-authoritative-vector",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.6-authoritative-vector-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.6-authoritative-vector/pepepowminer-v0.3.6-authoritative-vector-hiveos.tar.gz",
+          "digest": "sha256:5f5005efb1446f49c13bf7da79473498b65e9e53bec0c8c1e776beedac7afcf2",
+          "size": 477864
+        }
+      ]
+    },
+    {
+      "id": 360347737,
+      "tag": "v0.3.5-pool-reference",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.5-pool-reference",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.5-pool-reference-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.5-pool-reference/pepepowminer-v0.3.5-pool-reference-hiveos.tar.gz",
+          "digest": "sha256:0039785763d23074fdb180d4c65ef30c9e66b1ccc3f4bc2630f53bcaff297cdf",
+          "size": 477848
+        }
+      ]
+    },
+    {
+      "id": 360292315,
+      "tag": "v0.3.4-protocol-reference",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.4-protocol-reference",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.4-protocol-reference-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.4-protocol-reference/pepepowminer-v0.3.4-protocol-reference-hiveos.tar.gz",
+          "digest": "sha256:e4425aa6de7aa1b85c10a6aecb7a43c04279b43c59e9155d865d75b87ed47467",
+          "size": 480184
+        }
+      ]
+    },
+    {
+      "id": 360235602,
+      "tag": "v0.3.2-forensic-debug",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.2-forensic-debug",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.2-forensic-debug-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.2-forensic-debug/pepepowminer-v0.3.2-forensic-debug-hiveos.tar.gz",
+          "digest": "sha256:bf2d729fb56bb0ae0d069110bcd0ebe52ae525b8bc996ad2a2b826891ff2e9a1",
+          "size": 476932
+        }
+      ]
+    },
+    {
+      "id": 360134908,
+      "tag": "v0.3.1-forensic-debug",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.1-forensic-debug",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.1-forensic-debug-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.1-forensic-debug/pepepowminer-v0.3.1-forensic-debug-hiveos.tar.gz",
+          "digest": "sha256:26ec7d60233c4d989e733e78a43d582bb0825bcbf16eea46880af450f52ebc16",
+          "size": 471518
+        }
+      ]
+    },
+    {
+      "id": 360127469,
+      "tag": "v0.3.0-forensic-debug",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.3.0-forensic-debug",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.3.0-forensic-debug-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.3.0-forensic-debug/pepepowminer-v0.3.0-forensic-debug-hiveos.tar.gz",
+          "digest": "sha256:8bf7b23a50367477b9502b5d13bf790dd8f362ad1740e2ad10f1a0673695ddf6",
+          "size": 471463
+        }
+      ]
+    },
+    {
+      "id": 360067170,
+      "tag": "v0.2.0-debug-edition",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.2.0-debug-edition",
+      "draft": false,
+      "prerelease": true,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.2.0-debug-edition-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.2.0-debug-edition/pepepowminer-v0.2.0-debug-edition-hiveos.tar.gz",
+          "digest": "sha256:15a8bd39152c73ec03cac240f4c7f48b5debcb6452a66d79e1127748a60de25c",
+          "size": 469256
+        }
+      ]
+    },
+    {
+      "id": 360002549,
+      "tag": "v0.1.8",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.8",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.8-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.8/pepepowminer-v0.1.8-hiveos.tar.gz",
+          "digest": "sha256:5c24b357f9d68436a76a3057cca85c37faa66f8cfd36efc77d906a4bda058ac4",
+          "size": 453317
+        }
+      ]
+    },
+    {
+      "id": 359999669,
+      "tag": "v0.1.7",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.7",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.7-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.7/pepepowminer-v0.1.7-hiveos.tar.gz",
+          "digest": "sha256:232db01e6b3c6c9153ef70d3ec02f2e9cb38973efa0bc8f8bb5a245259910423",
+          "size": 453202
+        }
+      ]
+    },
+    {
+      "id": 359990836,
+      "tag": "v0.1.6",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.6",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.6-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.6/pepepowminer-v0.1.6-hiveos.tar.gz",
+          "digest": "sha256:29fe892e24db9d4f967c68dca7ee94a6ac54adcde8fd6e66e2b6d4bc3c020947",
+          "size": 439505
+        }
+      ]
+    },
+    {
+      "id": 359984908,
+      "tag": "v0.1.5",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.5",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.5-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.5/pepepowminer-v0.1.5-hiveos.tar.gz",
+          "digest": "sha256:0649baf69d711b409ea2a117cb35625b7456a70b0079503774222b2d41297ba8",
+          "size": 439486
+        }
+      ]
+    },
+    {
+      "id": 359980874,
+      "tag": "v0.1.4",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.4",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.4-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.4/pepepowminer-v0.1.4-hiveos.tar.gz",
+          "digest": "sha256:dfcb88f5e32ed91e4cc97cbd6add9f62bbe4307e5d892193b167ab45c0b5c29d",
+          "size": 435440
+        }
+      ]
+    },
+    {
+      "id": 359976479,
+      "tag": "v0.1.3",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.3",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.3-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.3/pepepowminer-v0.1.3-hiveos.tar.gz",
+          "digest": "sha256:c1710eedacf70c3d70676299c950695c543b57e36f615edddd56f4adec8761d5",
+          "size": 435693
+        }
+      ]
+    },
+    {
+      "id": 359973225,
+      "tag": "v0.1.2",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.2",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.2-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.2/pepepowminer-v0.1.2-hiveos.tar.gz",
+          "digest": "sha256:87220308a67dfacf1fe3753174e9ab401adb3538dbe0810ed51e3ca30d33b7e9",
+          "size": 435687
+        }
+      ]
+    },
+    {
+      "id": 359963431,
+      "tag": "v0.1.1-rc2",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.1-rc2",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.1-rc2-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.1-rc2/pepepowminer-v0.1.1-rc2-hiveos.tar.gz",
+          "digest": "sha256:df6754ccdaedbccb3c6b2c820f64f66351e3ab6347bf0837422783faf9d6deac",
+          "size": 435685
+        }
+      ]
+    },
+    {
+      "id": 359892756,
+      "tag": "v0.1.1-rc1",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.1-rc1",
+      "draft": false,
+      "prerelease": false,
+      "assets": [
+        {
+          "name": "pepepowminer-v0.1.1-hiveos.tar.gz",
+          "url": "https://github.com/iPepew/PepePow_Miner/releases/download/v0.1.1-rc1/pepepowminer-v0.1.1-hiveos.tar.gz",
+          "digest": "sha256:3b891e7b9637b54f9f781ecd531d7983462f1e0be9ed15a090b4594aa0961b38",
+          "size": 435266
+        }
+      ]
+    },
+    {
+      "id": 359879889,
+      "tag": "v0.1.0",
+      "url": "https://github.com/iPepew/PepePow_Miner/releases/tag/v0.1.0",
+      "draft": false,
+      "prerelease": false,
+      "assets": []
+    }
+  ]
+}
