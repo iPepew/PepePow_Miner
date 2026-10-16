@@ -1,0 +1,133 @@
+name: Public 1.0 dual-profile preparation
+
+on:
+  workflow_dispatch:
+    inputs:
+      deadline_utc:
+        description: 'Absolute UTC deadline YYYY-MM-DDTHH:MM:SSZ (45-60 minutes ahead)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: pepew-public-release-build
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-profiles:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      DEADLINE_UTC: ${{ inputs.deadline_utc }}
+      GENERAL_SHA: 33ca7ff88acffb93dc36835d8fa99177b094d7c0
+      V100_SHA: 91af54de51c7d83db6ce2074e71d9d37443d66bf
+    steps:
+      - name: Reject invalid or late queued start
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEADLINE_UTC" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+          deadline=$(date -u -d "$DEADLINE_UTC" +%s)
+          remaining=$((deadline - $(date -u +%s)))
+          (( remaining >= 2700 && remaining <= 3600 )) || {
+            echo 'Deadline must be 45-60 minutes ahead at actual job start'; exit 1;
+          }
+      - name: Checkout pinned general source and packaging tools
+        uses: actions/checkout@v4
+        with:
+          ref: 33ca7ff88acffb93dc36835d8fa99177b094d7c0
+          path: source-general
+          persist-credentials: false
+      - name: Checkout pinned optimized V100 source
+        uses: actions/checkout@v4
+        with:
+          ref: 91af54de51c7d83db6ce2074e71d9d37443d66bf
+          path: source-v100
+          persist-credentials: false
+      - name: Install build tools with timeout
+        run: |
+          timeout --kill-after=10s 300s bash -c '
+            set -Eeuo pipefail
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+            python3 -m pip install --no-cache-dir cmake==3.31.6
+          '
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-general"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-v100"
+      - name: Build general profile and run CPU test only
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          (( remaining >= 1950 )) || { echo 'Insufficient time for both builds'; exit 1; }
+          [[ "$(git -C source-general rev-parse HEAD)" == "$GENERAL_SHA" ]]
+          [[ -z "$(git -C source-general status --porcelain --untracked-files=all)" ]]
+          mkdir -p build-general
+          timeout --kill-after=10s 900s bash -c '
+            set -Eeuo pipefail
+            cmake -S source-general/native -B build-general -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON \
+              -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+              "-DPEPEPOW_CUDA_ARCHITECTURES=61-real;70-real;75-real;80-real;86-real;89-real;120" \
+              -DPEPEPOW_CUDA_THREADS=768 -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            cmake --build build-general --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_benchmark pepepow_header80_differential
+            ctest --test-dir build-general --output-on-failure --no-tests=error -R "^pepepow_core_tests$"
+          ' 2>&1 | tee build-general/build.log
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path('build-general')
+          targets = ('pepepowminer', 'pepepow_core_tests', 'pepepow_cuda_tests', 'pepepow_cuda_header80_validation', 'pepepow_header80_benchmark', 'pepepow_header80_differential')
+          record = {'source_commit': os.environ['GENERAL_SHA'], 'status': 'compiled-cpu-tested-gpu-unverified', 'gpu_tests_executed': False, 'pool_tests_executed': False, 'historical_gpu_evidence_transferred': False, 'binary_sha256': {t: hashlib.sha256((root / t).read_bytes()).hexdigest() for t in targets}}
+          (root / 'PROFILE_BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY
+      - name: Build optimized V100 profile and run CPU test only
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          (( remaining >= 1050 )) || { echo 'Insufficient time for V100 build'; exit 1; }
+          local_deadline=$(date -u -d '+15 minutes' +%Y-%m-%dT%H:%M:%SZ)
+          python3 source-general/scripts/release/build_v100_profile.py \
+            --source "$GITHUB_WORKSPACE/source-v100" \
+            --build "$GITHUB_WORKSPACE/build-v100" \
+            --manifest source-general/docs/public-1.0-v100-integration.json \
+            --deadline-utc "$local_deadline"
+      - name: Verify embedded architectures and assemble preparation bundle
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          (( remaining >= 120 )) || { echo 'Deadline too close for packaging'; exit 1; }
+          timeout --kill-after=5s 60s bash -c '
+            set -Eeuo pipefail
+            /usr/local/cuda/bin/cuobjdump --list-elf build-general/pepepowminer > build-general/fatbin-elf.txt
+            for sm in 61 70 75 80 86 89 120; do grep -F "sm_${sm}.cubin" build-general/fatbin-elf.txt; done
+            /usr/local/cuda/bin/cuobjdump --list-elf build-v100/pepepowminer > build-v100/fatbin-elf.txt
+            grep -F "sm_70.cubin" build-v100/fatbin-elf.txt
+            mkdir dist
+            python3 source-general/scripts/release/package_profiles.py \
+              --general build-general --v100 build-v100 \
+              --expected-general "$GENERAL_SHA" --expected-v100 "$V100_SHA" \
+              --version 1.0.0-preparation.1 \
+              --output dist/pepew-miner-1.0.0-preparation.1-profiles.tar.gz \
+              > dist/pepew-miner-1.0.0-preparation.1-profiles.tar.gz.sha256
+          '
+      - name: Upload preparation bundle and build evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PepeW-public-1.0-dual-profile-preparation
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            dist/
+            build-general/PROFILE_BUILD.json
+            build-general/build.log
+            build-general/fatbin-elf.txt
+            build-v100/PROFILE_BUILD.json
+            build-v100/build.log
+            build-v100/fatbin-elf.txt
