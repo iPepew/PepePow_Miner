@@ -7,6 +7,7 @@ preparation artifacts, not a GPU-validated release.
 """
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -76,6 +77,10 @@ def main():
             run(["ctest", "--test-dir", str(build), "--output-on-failure",
                  "--no-tests=error", "-R", "^pepepow_core_tests$"], deadline, log)
         evidence["status"] = "compiled-cpu-tested-gpu-unverified"
+        evidence["binary_sha256"] = {
+            target: hashlib.sha256((build / target).read_bytes()).hexdigest()
+            for target in targets
+        }
     except BaseException:
         evidence["status"] = "failed-or-interrupted"
         raise
