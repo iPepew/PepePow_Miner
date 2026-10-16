@@ -68,10 +68,25 @@ fi
 
 pepew_extra=()
 if [[ -n "${pepew_extra_raw}" ]]; then
-  # HiveOS exposes this as an expert field. Preserve quoted argument groups.
-  eval "pepew_extra=( ${pepew_extra_raw} )"
+  # Parse quoting as data, never execute substitutions from the expert field.
+  pepew_args_file="$(mktemp)" || { return 1 2>/dev/null || exit 1; }
+  if ! PEPEW_PARSE_EXTRA="${pepew_extra_raw}" python3 -c '
+import os, shlex, sys
+try:
+    args = shlex.split(os.environ["PEPEW_PARSE_EXTRA"], posix=True)
+except ValueError:
+    print("Invalid quoting in extra arguments", file=sys.stderr)
+    sys.exit(1)
+for arg in args:
+    sys.stdout.buffer.write(arg.encode() + b"\0")
+' > "${pepew_args_file}"; then
+    rm -f "${pepew_args_file}"
+    return 1 2>/dev/null || exit 1
+  fi
+  mapfile -d '' -t pepew_extra < "${pepew_args_file}"
+  rm -f "${pepew_args_file}"
   for pepew_token in "${pepew_extra[@]}"; do
-    case "${pepew_token}" in
+    case "${pepew_token%%=*}" in
       -o|--pool|-O|--pool2|-u|--user|-p|--pass|--diagnostic-log|--profile|--cuda-threads|--stats-interval)
         echo "Reserved option is managed by the multi-GPU wrapper: ${pepew_token}" >&2
         return 1 2>/dev/null || exit 1
@@ -120,3 +135,4 @@ mv -f "${pepew_tmp_conf}" "${pepew_conf_file}"
 } > "${pepew_setup_file}"
 
 unset pepew_extra pepew_token 2>/dev/null || true
+
