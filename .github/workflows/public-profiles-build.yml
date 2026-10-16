@@ -38,6 +38,16 @@ jobs:
           (( remaining >= 2700 && remaining <= 3600 )) || {
             echo 'Deadline must be 45-60 minutes ahead at actual job start'; exit 1;
           }
+      - name: Install build tools with timeout
+        run: |
+          timeout --kill-after=10s 300s bash -c '
+            set -Eeuo pipefail
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+            python3 -m pip install --no-cache-dir cmake==3.31.6
+          '
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-general"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-v100"
       - name: Checkout pinned general source and packaging tools
         uses: actions/checkout@v4
         with:
@@ -50,16 +60,6 @@ jobs:
           ref: 91af54de51c7d83db6ce2074e71d9d37443d66bf
           path: source-v100
           persist-credentials: false
-      - name: Install build tools with timeout
-        run: |
-          timeout --kill-after=10s 300s bash -c '
-            set -Eeuo pipefail
-            apt-get update
-            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
-            python3 -m pip install --no-cache-dir cmake==3.31.6
-          '
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-general"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-v100"
       - name: Build general profile and run CPU test only
         run: |
           set -Eeuo pipefail
