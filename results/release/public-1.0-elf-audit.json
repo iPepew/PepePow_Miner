@@ -1,0 +1,541 @@
+{
+  "archive_sha256": "f5c5b389b01fdf7a76c9a0d4e1d854d15d101a6b978398e18053a9b7b6e38159",
+  "artifact_recovery": {
+    "cause_of_local_truncation": "unknown",
+    "hash_guard": "rejected mismatching local archive before ELF inspection",
+    "local_copy_sha256": "a6e2c48e74487b9eb47d8d8f4aa90df3915a36af34641d2e131edff51d2f2f29",
+    "local_copy_size": 6213632,
+    "local_gzip_check": "EOFError: end-of-stream marker missing",
+    "recovered_matches_recorded_sha256": true,
+    "recovered_size": 7294318
+  },
+  "binaries_executed": false,
+  "executables": {
+    "general/pepepow_core_tests": {
+      "defined_cuda_runtime_symbols": [],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "4a940534460e1a1944811157e802fa986a6dd86c34af82169ecf33b16a4368c7",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.11",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "general/pepepow_cuda_header80_validation": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "8891382217015c8627bcb3520e6f2b865e16e4e5316f20b67ddcef78618d6f6b",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.11",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "general/pepepow_cuda_tests": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "9392f96d342aae3b038d2f660e020c96d95b865ac846c69b661b501cd3e9742e",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.21",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "general/pepepow_header80_benchmark": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "2be43495938f2127f81b329c5c50664330847838960f87dd43cdf47183d77283",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.19",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "general/pepepow_header80_differential": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "5604de39e4372b60feb6ac0d93e2afe18773b9f27bb868e5a6547acc1171f43a",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.19",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "general/pepepowminer": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.30"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "38a111e4cc653023b65abc43cb43b9b1765f534540190c0a13c4fb07decc3a68",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.2",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.11",
+        "GLIBCXX_3.4.14",
+        "GLIBCXX_3.4.15",
+        "GLIBCXX_3.4.18",
+        "GLIBCXX_3.4.19",
+        "GLIBCXX_3.4.20",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.22",
+        "GLIBCXX_3.4.26",
+        "GLIBCXX_3.4.29",
+        "GLIBCXX_3.4.30",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.32",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "v100/pepepow_core_tests": {
+      "defined_cuda_runtime_symbols": [],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "e29a22eaa6edbc0fed0ade2172259cb1ad7060e3c1a70d06149046e442563a37",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.11",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "v100/pepepow_cuda_header80_validation": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "0e68bb4a800fd3e15b1b5c85aa6972111f6cfa521f8c659de38f58c57474582b",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.11",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "v100/pepepow_cuda_tests": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "cda509eba63a19e700dc25d2efd9ba106c91ca98b90d03777bcb079d503fbcf2",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.21",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "v100/pepepow_header80_benchmark": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "bf3f23b36f060fb9d7492124a18cd1366bc0534be8e063b8fbf0b0db41ea4f97",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.19",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "v100/pepepow_header80_differential": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.21"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "5781e2d297f36469cea51b9e3133375ad221c031805f808a70a67a25217e9763",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.19",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    },
+    "v100/pepepowminer": {
+      "defined_cuda_runtime_symbols": [
+        "__cudaRegisterFatBinary",
+        "cudaFree",
+        "cudaGetDeviceCount",
+        "cudaMalloc",
+        "cudaRuntimeGetVersion"
+      ],
+      "elf_class": "ELF64",
+      "machine": "x86_64",
+      "maximum_symbol_versions": {
+        "CXXABI": "CXXABI_1.3.9",
+        "GLIBC": "GLIBC_2.34",
+        "GLIBCXX": "GLIBCXX_3.4.30"
+      },
+      "needed_libraries": [
+        "libstdc++.so.6",
+        "libm.so.6",
+        "libgcc_s.so.1",
+        "libc.so.6",
+        "ld-linux-x86-64.so.2"
+      ],
+      "rpath_or_runpath": [],
+      "sha256": "c105fd194052769788aae74692af34c2af321d2aedd7088eadd91c56dd2d1a34",
+      "symbol_version_requirements": [
+        "CXXABI_1.3",
+        "CXXABI_1.3.2",
+        "CXXABI_1.3.9",
+        "GLIBCXX_3.4",
+        "GLIBCXX_3.4.11",
+        "GLIBCXX_3.4.14",
+        "GLIBCXX_3.4.18",
+        "GLIBCXX_3.4.19",
+        "GLIBCXX_3.4.20",
+        "GLIBCXX_3.4.21",
+        "GLIBCXX_3.4.22",
+        "GLIBCXX_3.4.26",
+        "GLIBCXX_3.4.29",
+        "GLIBCXX_3.4.30",
+        "GLIBCXX_3.4.9",
+        "GLIBC_2.14",
+        "GLIBC_2.17",
+        "GLIBC_2.2.5",
+        "GLIBC_2.29",
+        "GLIBC_2.3",
+        "GLIBC_2.3.2",
+        "GLIBC_2.3.3",
+        "GLIBC_2.3.4",
+        "GLIBC_2.32",
+        "GLIBC_2.34",
+        "GLIBC_2.4"
+      ]
+    }
+  },
+  "limits": [
+    "ELF requirements are not a target-host compatibility test",
+    "Defined CUDA symbols show embedded runtime code, not its exact version or redistribution terms",
+    "GPU correctness and pool acceptance are not tested"
+  ],
+  "schema_version": 1,
+  "session": {
+    "audit_completed_utc": "2026-10-16T23:05:21.396422+00:00",
+    "deadline_utc": "2026-10-17T00:02:42Z",
+    "started_utc": "2026-10-16T23:02:42Z"
+  },
+  "source_commits": {
+    "general": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
+    "v100": "91af54de51c7d83db6ce2074e71d9d37443d66bf"
+  }
+}
