@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "status": "completed-preparation-package; stable-release-blocked",
+  "started_utc": "2026-10-16T17:47:36Z",
+  "deadline_utc": "2026-10-16T18:47:36Z",
+  "verified_utc": "2026-10-16T18:04:38Z",
+  "runtime_source_commit": "8e08a9f8c77c3fa7587c8507845d9c473e0b0a0d",
+  "source_commits": {
+    "general": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
+    "v100": "91af54de51c7d83db6ce2074e71d9d37443d66bf"
+  },
+  "input": {
+    "run_id": 38906725960,
+    "artifact_id": 12048093124,
+    "archive_sha256": "3b810fd5cd67c47a48b7817b3253a04b7d570c2126ea4bb3b0fee64e940482a3"
+  },
+  "output": {
+    "filename": "pepew-miner-1.0.0-preparation.2-linux-x86_64-hiveos.tar.gz",
+    "size_bytes": 7294318,
+    "sha256": "f5c5b389b01fdf7a76c9a0d4e1d854d15d101a6b978398e18053a9b7b6e38159",
+    "regular_files": 28,
+    "checksums_verified": 27,
+    "binary_identities_unchanged": 12,
+    "package_version_smoke": "PASS",
+    "saved_deliverable": true,
+    "github_release_published": false
+  },
+  "cpu_checks": {
+    "hive_config": 6,
+    "package_profiles": 9,
+    "pool_address": 2,
+    "profile_runtime": 10,
+    "result": "PASS",
+    "bash_syntax": "PASS",
+    "native_recompiled": false
+  },
+  "limits": [
+    "GPU, pool and rig were not accessed",
+    "/proc/<pid>/exe read was denied in this host; no retry; executable identity logic tested with stub readlink, target-host integration pending",
+    "GLIBC_2.34 and GLIBCXX_3.4.30 required by both miner ELF; target HiveOS compatibility pending",
+    "CUDA static component redistribution inventory is not complete",
+    "Old releases, stable and production unchanged"
+  ],
+  "github_persistence": {
+    "runtime_branch": "release/public-1.0-preparation",
+    "branch_head_readback_verified": true,
+    "changed_file_git_blob_hashes_verified": 14,
+    "unchanged_runtime_inputs_verified": [
+      "LICENSE",
+      "hiveos/stratum-replay-proxy.py"
+    ]
+  },
+  "next": "Validate exact package binaries on authorized RTX/V100 hardware with required safeguards, finish runtime/license acceptance, then publish 1.0 and preserve rollback before deleting old releases"
+}

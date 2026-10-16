@@ -1,67 +1,65 @@
-# Сборка комплекта GPU-профилей
+# Упаковка профилей PepeW Miner
 
-Это промежуточный комплект для интеграции, **не устанавливаемый HiveOS-пакет**.
-Упаковщик не запускает бинарники и не выполняет GPU/пул проверки.
+Пакет остаётся preparation: GPU/pool-приёмка не выполнена. Упаковщик не
+запускает бинарники. Без --runtime создаётся комплект из двух профилей;
+с --runtime добавляются проверенные CPU-тестами адаптеры HiveOS и документы.
+Это не объявление готового стабильного выпуска.
 
-## Вход
+## Проверенные входы
 
-Два каталога сборки: general и v100. В каждом требуются PROFILE_BUILD.json
-и шесть файлов: pepepowminer, pepepow_core_tests, pepepow_cuda_tests,
+Для 1.0.0-preparation.2 используются результаты Actions run 38906725960:
+- general source 33ca7ff88acffb93dc36835d8fa99177b094d7c0;
+- v100 source 91af54de51c7d83db6ce2074e71d9d37443d66bf;
+- runtime source 8e08a9f8c77c3fa7587c8507845d9c473e0b0a0d.
+
+В каждом build-каталоге нужны PROFILE_BUILD.json и шесть файлов:
+pepepowminer, pepepow_core_tests, pepepow_cuda_tests,
 pepepow_cuda_header80_validation, pepepow_header80_benchmark,
-pepepow_header80_differential.
-
-Manifest должен содержать source_commit (40 hex), status
-compiled-cpu-tested-gpu-unverified и binary_sha256 со всеми шестью SHA256.
-V100 helper build_v100_profile.py формирует такой результат.
-Общий профиль должен формировать такой же manifest после настоящей сборки
-и CPU-теста. Нельзя создавать его вручную, приписывая отсутствующие проверки.
-
-Упаковщик проверяет заявленные SHA, но не является независимым доказательством
-достоверности входного manifest. Надёжность происхождения обеспечивает
-проверенный процесс сборки и сохранённые логи.
-
-## Запуск
+pepepow_header80_differential. Manifest содержит source_commit, status
+compiled-cpu-tested-gpu-unverified и binary_sha256 всех шести файлов.
+Происхождение manifest подтверждается журналами сборки, а не одним полем status.
 
 ```sh
-python3 scripts/release/package_profiles.py \
-  --general /absolute/build-general \
-  --v100 /absolute/build-v100 \
-  --expected-general FULL_GENERAL_SOURCE_SHA \
-  --expected-v100 91af54de51c7d83db6ce2074e71d9d37443d66bf \
-  --version 1.0.0-preparation.1 \
-  --output pepew-miner-1.0.0-preparation.1-profiles.tar.gz
+python3 scripts/release/package_profiles.py \\
+  --general /absolute/build-general \\
+  --v100 /absolute/build-v100 \\
+  --expected-general 33ca7ff88acffb93dc36835d8fa99177b094d7c0 \\
+  --expected-v100 91af54de51c7d83db6ce2074e71d9d37443d66bf \\
+  --runtime /absolute/runtime-checkout \\
+  --runtime-commit 8e08a9f8c77c3fa7587c8507845d9c473e0b0a0d \\
+  --version 1.0.0-preparation.2 \\
+  --output pepew-miner-1.0.0-preparation.2-linux-x86_64-hiveos.tar.gz
 ```
 
-FULL_GENERAL_SOURCE_SHA заменяется точным SHA фактической сборки.
-Существующий выходной файл никогда не перезаписывается.
-stdout содержит SHA256 итогового архива; сохраните его рядом с архивом.
-Отдельный файл с хешем не включается внутрь самого архива.
+Runtime-каталог должен соответствовать указанному SHA; упаковщик записывает
+заявленный SHA и точные хеши файлов, но не обращается к GitHub для его проверки.
+В проведённой сборке соответствие файлов Git blob SHA проверено отдельно.
+Существующий выходной файл не перезаписывается; stdout содержит SHA256 архива.
 
-## Выход и ограничения
+## Выход
 
-Один корневой каталог pepew-miner. В bin/general и bin/v100 — майнеры;
-в tests/offline/<profile> — соответствующие проверочные программы.
-VERSION, README.md, BUILD_MANIFEST.json и SHA256SUMS формируются автоматически.
-Список файлов фиксирован: wallet.conf, runtime state, логи и посторонние файлы
-не копируются. Права нормализуются, время в tar/gzip равно нулю.
-Хеши не доказывают отсутствие внешних библиотечных зависимостей.
+Один каталог pepew-miner: бинарники в bin/{general,v100}, matching tests в
+ tests/offline/{general,v100}. При --runtime добавляются root launcher,
+h-manifest.conf, h-config.sh, h-run.sh, h-stats.sh, libexec, README, CHANGELOG,
+LICENSE и notices. Полный вариант содержит 28 файлов. BUILD_MANIFEST.json
+сохраняет source/hashes, SHA256SUMS охватывает остальные 27 файлов.
 
-Версия без суффикса -preparation.N запрещена. Manifest содержит installable=false.
-Наличие профиля не означает корректность на GPU. В комплекте ещё нет HiveOS
-адаптеров, выбранных runtime dependencies и финальных лицензионных материалов:
-он не предназначен для публичного распространения как готовый майнер.
+Состав задаётся allowlist; wallet.conf, runtime state, логи и лишние файлы не
+копируются. Symlink запрещены. Права фиксированы, tar/gzip timestamps нулевые.
+Версия без -preparation.N запрещена; installable=false сохраняется до приёмки.
+PEPEW_ALLOW_UNVERIFIED=1 — технический переключатель согласованного испытания,
+не разрешение на GPU/pool. Текущий V100-риг не опрашивать до возвращения карты.
 
-Присланный ранее архив 76972b56 не содержит matching offline executables и
-PROFILE_BUILD.json нужного формата. Подставлять его как полноценный general build
-нельзя: необходимо добавить упаковку проверочных программ в hosted build.
+## Результат и оставшиеся gates
 
-## Проверки
+Фактический архив, его SHA256 и результаты записаны в
+[результате](../results/release/public-1.0-preparation.2.json).
+12 бинарников сохранены побайтно из исходного артефакта; заново не компилировались.
+9 тестов упаковщика, 10 runtime-тестов с имитаторами, 6 config и 2 pool-parser
+проверки прошли. /proc/exe identity в runtime-тесте подставлен: этот хост запрещает
+его чтение; реальная проверка на HiveOS остаётся обязательной.
 
-```sh
-python3 tests/test_package_profiles.py
-```
+До stable: exact GPU correctness, разрешённый pool gate, целевая HiveOS,
+GLIBC_2.34/GLIBCXX_3.4.30 и CUDA redistribution inventory. Проверки CPU и наличие
+лицензионных файлов не доказывают завершение этих gates.
 
-7 локальных проверок: воспроизводимость архива, состав/права/хеши/исключение
-секретов, повреждённый бинарник, отсутствие differential, symlink, неверный source,
-попытка обозначить preparation как stable. Данные тестов синтетические;
-настоящая CUDA compilation и исполнение GPU не выполняются.
