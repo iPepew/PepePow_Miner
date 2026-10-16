@@ -49,7 +49,7 @@ IFS=',' read -r -a gpu_list <<<"${GPU_LIST:-}"
 (( ${#gpu_list[@]} > 0 )) || { echo "[ERROR] no active GPUs in workers file" >&2; exit 1; }
 
 package_name="$(basename "${miner_dir}")"
-log_root="/var/log/miner/custom/${package_name}"
+log_root="${PEPEW_LOG_ROOT:-/var/log/miner/custom/${package_name}}"
 for index in "${gpu_list[@]}"; do
   event_logs+=("${log_root}/gpu${index}/pepew.log")
 done
@@ -70,12 +70,18 @@ event_tail_pid=$!
 ) &
 event_reader_pid=$!
 
+interval_pid=""
 cleanup_monitor() {
+  if [[ "${interval_pid}" =~ ^[1-9][0-9]*$ ]]; then
+    kill "${interval_pid}" 2>/dev/null || true
+    wait "${interval_pid}" 2>/dev/null || true
+  fi
   kill "${event_reader_pid}" "${event_tail_pid}" 2>/dev/null || true
   wait "${event_reader_pid}" "${event_tail_pid}" 2>/dev/null || true
   rm -f "${event_fifo}"
 }
-trap cleanup_monitor EXIT INT TERM
+trap cleanup_monitor EXIT
+trap 'exit 0' INT TERM
 
 while :; do
   declare -A temp fan power core mem
@@ -153,5 +159,9 @@ while :; do
   printf 'TOTAL %s MH/s | POWER %s W | A %s | R %s | UP %ss\n' \
     "${total_mhs}" "${total_power}" "${total_a}" "${total_r}" "${max_uptime}"
 
-  sleep "${interval}" || exit 0
+  sleep "${interval}" &
+  interval_pid=$!
+  wait "${interval_pid}" || exit 0
+  interval_pid=""
 done
+

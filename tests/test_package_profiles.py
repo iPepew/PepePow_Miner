@@ -87,6 +87,31 @@ class PackageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.build('1.0.0')
 
+    def test_runtime_bundle_inventory_and_provenance(self):
+        runtime = SCRIPT.parents[2]
+        data = package.assemble(self.root / 'general', self.root / 'v100',
+            '1.0.0-preparation.2', 'a' * 40, 'b' * 40, runtime, 'c' * 40)
+        with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as tar:
+            manifest = json.load(tar.extractfile('pepew-miner/BUILD_MANIFEST.json'))
+            self.assertEqual(manifest['runtime']['source_commit'], 'c' * 40)
+            self.assertFalse(manifest['installable'])
+            self.assertEqual(len(tar.getmembers()), 28)
+            for path, (_, mode) in package.RUNTIME_FILES.items():
+                member = tar.getmember('pepew-miner/' + path)
+                self.assertEqual(member.mode, mode)
+                self.assertEqual(manifest['files'][path]['sha256'],
+                                 package.digest(tar.extractfile(member).read()))
+            sums = tar.extractfile('pepew-miner/SHA256SUMS').read().decode()
+            for line in sums.splitlines():
+                sha, path = line.split('  ', 1)
+                self.assertEqual(sha, package.digest(tar.extractfile('pepew-miner/' + path).read()))
+            self.assertNotIn('wallet.conf', '\n'.join(tar.getnames()))
+
+    def test_runtime_requires_commit(self):
+        with self.assertRaisesRegex(ValueError, 'full source commit'):
+            package.assemble(self.root / 'general', self.root / 'v100',
+                '1.0.0-preparation.2', 'a' * 40, 'b' * 40, SCRIPT.parents[2])
+
 
 if __name__ == '__main__':
     unittest.main()

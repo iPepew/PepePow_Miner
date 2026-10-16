@@ -12,11 +12,21 @@ log_dir="${PEPEW_LOG_ROOT:-/var/log/miner/custom/${package_name}}"
 runtime_log="${log_dir}/runtime-diagnostics.txt"
 exit_file="${log_dir}/miner-exit-status.txt"
 workers_file="${miner_dir}/active-workers.env"
+package_version="$(cat "${miner_dir}/VERSION")"
+if [[ "${PEPEW_WRAPPER_SELFTEST:-0}" != "1" && "${PEPEW_ALLOW_UNVERIFIED:-0}" != "1" ]]; then
+  echo "[ERROR] Preparation package: exact GPU validation is pending. See README.md." >&2
+  exit 78
+fi
+if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+  echo "[ERROR] Use PEPEW_DEVICES in HiveOS configuration; inherited CUDA_VISIBLE_DEVICES is unsupported." >&2
+  exit 78
+fi
+umask 077
 mkdir -p "${log_dir}"
 
 [[ -x ./pepepowminer ]] || { echo "[ERROR] pepepowminer binary is missing or not executable" >&2; exit 1; }
-[[ -x ./stratum-replay-proxy.py ]] || { echo "[ERROR] stratum-replay-proxy.py is missing or not executable" >&2; exit 1; }
-[[ -x ./console-monitor.sh ]] || { echo "[ERROR] console-monitor.sh is missing or not executable" >&2; exit 1; }
+[[ -x ./libexec/stratum-replay-proxy.py ]] || { echo "[ERROR] stratum-replay-proxy.py is missing or not executable" >&2; exit 1; }
+[[ -x ./libexec/console-monitor.sh ]] || { echo "[ERROR] console-monitor.sh is missing or not executable" >&2; exit 1; }
 command -v nvidia-smi >/dev/null 2>&1 || { echo "[ERROR] nvidia-smi is required" >&2; exit 1; }
 
 conf_file="${CUSTOM_CONFIG_FILENAME:-${miner_dir}/config.txt}"
@@ -68,25 +78,6 @@ threads_for_sm() {
   esac
 }
 
-# Query CUDA-visible properties from the miner itself. CUDA_DEVICE_ORDER keeps
-# this ordering aligned with nvidia-smi PCI ordering on HiveOS.
-declare -A cuda_sm cuda_memory cuda_auto_profile
-while IFS= read -r line; do
-  if [[ "${line}" =~ ^\[([0-9]+)\].*\|[[:space:]]sm_([0-9]+)[[:space:]]\|[[:space:]]([^|]+)[[:space:]]\|[[:space:]]profile=([^[:space:]]+) ]]; then
-    index="${BASH_REMATCH[1]}"
-    cuda_sm["${index}"]="${BASH_REMATCH[2]}"
-    cuda_memory["${index}"]="$(trim_field "${BASH_REMATCH[3]}")"
-    cuda_auto_profile["${index}"]="${BASH_REMATCH[4]}"
-  elif [[ "${line}" =~ ^\[([0-9]+)\][[:space:]]+(.+)[[:space:]]sm_([0-9]+)$ ]]; then
-    # Compatibility with the native --list-gpu format inherited from v1.0.4.
-    index="${BASH_REMATCH[1]}"
-    sm="${BASH_REMATCH[3]}"
-    cuda_sm["${index}"]="${sm}"
-    cuda_memory["${index}"]=""
-    cuda_auto_profile["${index}"]="$(profile_for_sm "${sm}")"
-  fi
-done < <(./pepepowminer --list-gpu 2>/dev/null || true)
-
 # CUDA_VISIBLE_DEVICES accepts UUIDs, which avoids ambiguity between CUDA and
 # nvidia-smi numbering when PCI ordering differs.
 declare -a all_indices all_uuids all_names all_buses all_memory
@@ -97,7 +88,7 @@ while IFS=',' read -r raw_index raw_uuid raw_name raw_bus raw_memory; do
   bus="$(trim_field "${raw_bus}")"
   memory="$(trim_field "${raw_memory}")"
   [[ "${index}" =~ ^[0-9]+$ ]] || continue
-  [[ -n "${uuid}" ]] || uuid="${index}"
+  [[ "${uuid}" =~ ^GPU-[A-Za-z0-9-]+$ ]] || { echo "[ERROR] Missing GPU UUID" >&2; exit 1; }
   all_indices+=("${index}")
   all_uuids+=("${uuid}")
   all_names+=("${name}")
@@ -115,19 +106,33 @@ else
   for index in "${requested_devices[@]}"; do selected_lookup["${index}"]=1; done
 fi
 
-declare -a gpu_indices gpu_uuids gpu_names gpu_buses gpu_memory gpu_sm gpu_profiles gpu_threads
+declare -a gpu_indices gpu_uuids gpu_names gpu_buses gpu_memory gpu_sm gpu_profiles gpu_threads gpu_backends
 for ((position=0; position<${#all_indices[@]}; ++position)); do
   index="${all_indices[$position]}"
   if [[ -n "${selected_lookup[$index]:-}" ]]; then
-    sm="${cuda_sm[$index]:-unknown}"
+    # Probe each physical UUID in isolation: CUDA ordinal zero now refers to
+    # this GPU, regardless of nvidia-smi ordering or PCI enumeration order.
+    if ! gpu_info="$(CUDA_VISIBLE_DEVICES="${all_uuids[$position]}" timeout --kill-after=2s 15s ./bin/general/pepepowminer --list-gpu 2>/dev/null)"; then
+      echo "[ERROR] GPU ${index}: CUDA enumeration failed" >&2
+      exit 1
+    fi
+    if [[ "${gpu_info}" != *$'\n'* && "${gpu_info}" =~ ^\[0\][[:space:]]+(.+)[[:space:]]sm_([0-9]+)$ ]]; then
+      sm="${BASH_REMATCH[2]}"
+    else
+      echo "[ERROR] GPU ${index}: expected exactly one CUDA device" >&2
+      exit 1
+    fi
+    backend=general
+    if [[ "${sm}" == 70 && "${all_names[$position]}" == *V100* ]]; then backend=v100; fi
     if [[ ! "${sm}" =~ ^(61|70|75|80|86|89|120)$ ]]; then
       echo "[ERROR] GPU ${index} ${all_names[$position]} uses unsupported or undetected architecture sm_${sm}" >&2
-      echo "[ERROR] This v1.0.5 build supports sm_61, sm_70, sm_75, sm_80, sm_86, sm_89 and sm_120" >&2
+      echo "[ERROR] General build contains sm_61, sm_70, sm_75, sm_80, sm_86, sm_89 and sm_120" >&2
       exit 1
     fi
 
     if [[ "${PEPEPOW_PROFILE}" == "auto" ]]; then
-      profile="${cuda_auto_profile[$index]:-$(profile_for_sm "${sm}")}"
+      profile="$(profile_for_sm "${sm}")"
+      [[ "${backend}" == v100 ]] && profile=v100-hotrun8
     else
       profile="${PEPEPOW_PROFILE}"
     fi
@@ -136,11 +141,19 @@ for ((position=0; position<${#all_indices[@]}; ++position)); do
     else
       threads="${PEPEPOW_CUDA_THREADS_RUNTIME}"
     fi
+    if [[ "${backend}" == v100 ]]; then
+      if [[ "${PEPEPOW_CUDA_THREADS_RUNTIME}" != auto && "${PEPEPOW_CUDA_THREADS_RUNTIME}" != 128 ]]; then
+        echo "[ERROR] V100 optimized profile requires 128 threads; use auto for mixed GPUs" >&2
+        exit 1
+      fi
+      threads=128
+    fi
+    gpu_backends+=("${backend}")
     gpu_indices+=("${index}")
     gpu_uuids+=("${all_uuids[$position]}")
     gpu_names+=("${all_names[$position]}")
     gpu_buses+=("${all_buses[$position]}")
-    gpu_memory+=("${cuda_memory[$index]:-${all_memory[$position]} MiB}")
+    gpu_memory+=("${all_memory[$position]} MiB")
     gpu_sm+=("${sm}")
     gpu_profiles+=("${profile}")
     gpu_threads+=("${threads}")
@@ -158,7 +171,7 @@ if (( PEPEPOW_PROXY_PORT_BASE + ${#gpu_indices[@]} - 1 > 65535 )); then
   exit 1
 fi
 
-miner_version="$(./pepepowminer --version 2>&1 | head -n1 || true)"
+miner_version="${package_version}"
 driver_version="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d ' ' || true)"
 pool_display="${PEPEPOW_UPSTREAM#*://}"
 pool_display="${pool_display%%/*}"
@@ -167,10 +180,10 @@ printf '%s\n' 'PepeW Miner startup'
 printf '%-12s: %s\n' Miner 'PepeW Miner'
 printf '%-12s: %s\n' Version "${miner_version}"
 printf '%-12s: %s\n' Algorithm 'HooHash V110'
-printf '%-12s: %s\n' Pool "${pool_display}"
+printf '%-12s: %s\n' Pool 'configured'
 printf '%-12s: %s\n' 'GPU mining' enabled
 printf '%-12s: %s\n' 'CPU mining' disabled
-printf '%-12s: %s\n' Watchdog enabled
+printf '%-12s: %s\n' Supervision 'worker/proxy process exit detection'
 printf '%-12s: %s\n' 'Dev fee' '0.00%'
 printf '%-12s: %s\n' Driver "${driver_version:-unknown}"
 printf '%-12s: %s\n' 'GPU count' "${#gpu_indices[@]}"
@@ -192,7 +205,7 @@ if printf '%s\n' "${gpu_names[@]}" | grep -qi 'CMP'; then
 fi
 
 if [[ "${PEPEW_WRAPPER_SELFTEST:-0}" == "1" ]]; then
-  echo "PEPEW_V105_WRAPPER_GATE=PASS"
+  echo "PEPEW_PROFILE_WRAPPER_GATE=PASS"
   exit 0
 fi
 
@@ -206,7 +219,7 @@ fi
   echo "MULTI_GPU_MODE=one_process_per_gpu"
   echo "SELECTED_GPU_COUNT=${#gpu_indices[@]}"
   for ((position=0; position<${#gpu_indices[@]}; ++position)); do
-    echo "GPU${gpu_indices[$position]}=${gpu_names[$position]} uuid=${gpu_uuids[$position]} bus=${gpu_buses[$position]} sm=${gpu_sm[$position]} profile=${gpu_profiles[$position]} threads=${gpu_threads[$position]} chunk=262144"
+    echo "GPU${gpu_indices[$position]}=${gpu_names[$position]} uuid=${gpu_uuids[$position]} bus=${gpu_buses[$position]} sm=${gpu_sm[$position]} backend=${gpu_backends[$position]} profile=${gpu_profiles[$position]} threads=${gpu_threads[$position]} chunk=262144"
   done
 } > "${runtime_log}"
 
@@ -234,6 +247,10 @@ cleanup() {
   sleep 1
   for pid in "${miner_pids[@]:-}"; do kill -KILL "${pid}" 2>/dev/null || true; done
   for pid in "${proxy_pids[@]:-}"; do terminate_pid "${pid}"; done
+  sleep 1
+  for pid in "${monitor_pids[@]:-}" "${proxy_pids[@]:-}"; do
+    [[ "${pid}" =~ ^[1-9][0-9]*$ ]] && kill -KILL "${pid}" 2>/dev/null || true
+  done
   for pid in "${monitor_pids[@]:-}" "${miner_pids[@]:-}" "${proxy_pids[@]:-}"; do
     [[ "${pid}" =~ ^[1-9][0-9]*$ ]] && wait "${pid}" 2>/dev/null || true
   done
@@ -249,6 +266,7 @@ for ((position=0; position<${#gpu_indices[@]}; ++position)); do
   gpu_uuid="${gpu_uuids[$position]}"
   gpu_name="${gpu_names[$position]}"
   gpu_profile="${gpu_profiles[$position]}"
+  gpu_backend="${gpu_backends[$position]}"
   gpu_thread_count="${gpu_threads[$position]}"
   proxy_port=$((PEPEPOW_PROXY_PORT_BASE + position))
   worker_dir="${miner_dir}/gpu${gpu_index}"
@@ -266,7 +284,8 @@ for ((position=0; position<${#gpu_indices[@]}; ++position)); do
   done
   rm -f "${status_file}" "${worker_dir}/miner.pid" "${worker_dir}/proxy.pid"
 
-  ./stratum-replay-proxy.py \
+  worker_dirs+=("${worker_dir}")
+  ./libexec/stratum-replay-proxy.py \
     --upstream "${PEPEPOW_UPSTREAM}" \
     --listen-host 127.0.0.1 \
     --listen-port "${proxy_port}" \
@@ -295,6 +314,7 @@ for ((position=0; position<${#gpu_indices[@]}; ++position)); do
   printf '[START] GPU %s %s sm_%s profile=%s proxy_port=%s\n' \
     "${gpu_index}" "${gpu_name}" "${gpu_sm[$position]}" "${gpu_profile}" "${proxy_port}"
   CUDA_VISIBLE_DEVICES="${gpu_uuid}" \
+    PEPEW_BINARY_PROFILE="${gpu_backend}" \
     PEPEW_PHYSICAL_GPU_INDEX="${gpu_index}" \
     PEPEPOW_PROFILE="${gpu_profile}" \
     PEPEPOW_CUDA_THREADS_RUNTIME="${gpu_thread_count}" \
@@ -304,7 +324,6 @@ for ((position=0; position<${#gpu_indices[@]}; ++position)); do
   miner_pids+=("${miner_pid}")
   echo "${miner_pid}" > "${worker_dir}/miner.pid"
 
-  worker_dirs+=("${worker_dir}")
   worker_ports+=("${proxy_port}")
 done
 
@@ -320,14 +339,15 @@ gpu_list_csv="$(IFS=,; printf '%s' "${gpu_indices[*]}")"
     printf 'GPU%s_UUID=%q\n' "${index}" "${gpu_uuids[$position]}"
     printf 'GPU%s_NAME=%q\n' "${index}" "${gpu_names[$position]}"
     printf 'GPU%s_SM=%q\n' "${index}" "${gpu_sm[$position]}"
+    printf 'GPU%s_BINARY_PROFILE=%q\n' "${index}" "${gpu_backends[$position]}"
     printf 'GPU%s_PROFILE=%q\n' "${index}" "${gpu_profiles[$position]}"
   done
 } > "${workers_file}"
 
-./console-monitor.sh "${miner_dir}" "${PEPEPOW_STATS_INTERVAL}" &
+./libexec/console-monitor.sh "${miner_dir}" "${PEPEPOW_STATS_INTERVAL}" &
 monitor_pids+=("$!")
 
-echo "[READY] PepeW Miner v1.0.5 workers started: ${#miner_pids[@]}"
+echo "[READY] PepeW Miner ${package_version} workers started: ${#miner_pids[@]}"
 
 while (( stop_requested == 0 )); do
   for ((position=0; position<${#miner_pids[@]}; ++position)); do
@@ -368,3 +388,4 @@ printf 'exit_code=%s utc=%s reason=%s active_workers=%s\n' \
 
 trap - INT TERM
 exit "${failure_status}"
+

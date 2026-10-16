@@ -6,6 +6,11 @@ package_name="$(basename "${miner_dir}")"
 status_root="${PEPEW_STATUS_ROOT:-${miner_dir}}"
 log_root="${PEPEW_LOG_ROOT:-/var/log/miner/custom/${package_name}}"
 now="${PEPEW_NOW_EPOCH:-$(date +%s)}"
+package_version="$(cat "${miner_dir}/VERSION" 2>/dev/null || printf unknown)"
+[[ "${package_version}" =~ ^[A-Za-z0-9.+-]+$ ]] || package_version=unknown
+# Read only the generated GPU_LIST assignment as data, never source stats files.
+selected="$(sed -n 's/^GPU_LIST=//p' "${status_root}/active-workers.env" 2>/dev/null | tail -n1)"
+[[ "${selected}" =~ ^[0-9]+(,[0-9]+)*$ ]] || selected=""
 
 trim_field() {
   local value="$1"
@@ -29,22 +34,23 @@ nvidia_rows() {
   if [[ -n "${PEPEW_NVIDIA_SMI_FILE:-}" ]]; then
     cat "${PEPEW_NVIDIA_SMI_FILE}"
   else
-    nvidia-smi --query-gpu=index,pci.bus_id,temperature.gpu,fan.speed \
+    nvidia-smi --query-gpu=index,pci.bus_id,temperature.gpu,fan.speed,power.draw \
       --format=csv,noheader,nounits 2>/dev/null || true
   fi
 }
 
-declare -a gpu_indices gpu_hs gpu_temp gpu_fan gpu_bus
+declare -a gpu_indices gpu_hs gpu_temp gpu_fan gpu_bus gpu_power
 total_accepted=0
 total_rejected=0
 uptime=0
 
-while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
+while IFS=',' read -r raw_index raw_bus raw_temp raw_fan raw_power; do
   index="$(trim_field "${raw_index}")"
   bus="$(trim_field "${raw_bus}")"
   temp="$(trim_field "${raw_temp}")"
   fan="$(trim_field "${raw_fan}")"
   [[ "${index}" =~ ^[0-9]+$ ]] || continue
+  [[ ",${selected}," == *",${index},"* ]] || continue
 
   status_file="${status_root}/gpu${index}/miner-status.env"
   pid_file="${status_root}/gpu${index}/miner.pid"
@@ -67,7 +73,7 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
     for candidate in "${status_pid}" "${file_pid}"; do
       if [[ "${candidate}" =~ ^[1-9][0-9]*$ ]] && kill -0 "${candidate}" 2>/dev/null; then
         exe="$(readlink -f "/proc/${candidate}/exe" 2>/dev/null || true)"
-        if [[ "${exe}" == "${miner_dir}/pepepowminer" ]]; then
+        if [[ "${exe}" == "${miner_dir}/bin/general/pepepowminer" || "${exe}" == "${miner_dir}/bin/v100/pepepowminer" ]]; then
           pid="${candidate}"
           break
         fi
@@ -80,7 +86,8 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
     fresh=0
   fi
 
-  if [[ ${fresh} -eq 0 && ${pid} -ne 0 && -r "${console_log}" ]]; then
+  log_updated="$(stat -c %Y "${console_log}" 2>/dev/null || printf 0)"
+  if [[ ${fresh} -eq 0 && ${pid} -ne 0 && ${log_updated} -gt 0 && ${now} -ge ${log_updated} && $((now-log_updated)) -le 45 && -r "${console_log}" ]]; then
     latest_mhs="$(grep -a '\[MINING\]' "${console_log}" 2>/dev/null | tail -n1 | sed -nE 's/.*\[MINING\][[:space:]]+([0-9]+([.][0-9]+)?) MH\/s.*/\1/p')"
     if [[ "${latest_mhs}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
       hps="$(awk -v value="${latest_mhs}" 'BEGIN { printf "%.0f", value*1000000 }')"
@@ -97,10 +104,13 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
 
   gpu_indices+=("${index}")
   gpu_hs+=("$(((hps+500)/1000))")
-  [[ "${temp}" =~ ^[0-9]+$ ]] || temp=0
-  [[ "${fan}" =~ ^[0-9]+$ ]] || fan=0
+  [[ "${temp}" =~ ^[0-9]+$ ]] || temp=null
+  [[ "${fan}" =~ ^[0-9]+$ ]] || fan=null
   gpu_temp+=("${temp}")
   gpu_fan+=("${fan}")
+  power="$(trim_field "${raw_power}")"
+  [[ "${power}" =~ ^[0-9]+([.][0-9]+)?$ ]] || power=null
+  gpu_power+=("${power}")
 
   bus_tail="${bus#*:}"
   bus_hex="${bus_tail%%:*}"
@@ -116,10 +126,11 @@ while IFS=',' read -r raw_index raw_bus raw_temp raw_fan; do
 done < <(nvidia_rows)
 
 if (( ${#gpu_indices[@]} == 0 )); then
-  gpu_hs=(0)
-  gpu_temp=(0)
-  gpu_fan=(0)
-  gpu_bus=(0)
+  gpu_hs=()
+  gpu_temp=()
+  gpu_fan=()
+  gpu_bus=()
+  gpu_power=()
 fi
 
 khs=0
@@ -130,6 +141,7 @@ temp_json="$(array_json "${gpu_temp[@]}")"
 fan_json="$(array_json "${gpu_fan[@]}")"
 bus_json="$(array_json "${gpu_bus[@]}")"
 
-stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"ver":"1.0.5","algo":"hoohash"}' \
+stats=$(printf '{"hs":%s,"hs_units":"khs","temp":%s,"fan":%s,"uptime":%s,"ar":[%s,%s,0],"bus_numbers":%s,"power":%s,"ver":"%s","algo":"hoohash"}' \
   "${hs_json}" "${temp_json}" "${fan_json}" "${uptime}" \
-  "${total_accepted}" "${total_rejected}" "${bus_json}")
+  "${total_accepted}" "${total_rejected}" "${bus_json}" "$(array_json "${gpu_power[@]}")" "${package_version}")
+

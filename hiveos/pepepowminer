@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Package entry point. exec preserves the worker PID, exit status and signals.
+set -Eeuo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+profile="${PEPEW_BINARY_PROFILE:-general}"
+case "${profile}" in general|v100) ;; *) echo '[ERROR] PEPEW_BINARY_PROFILE must be general or v100' >&2; exit 64 ;; esac
+if [[ "${1:-}" == --version && $# == 1 ]]; then
+  printf 'PepeW Miner %s (package; native build identity: --backend-version)\n' "$(cat "${root}/VERSION")"
+  exit 0
+fi
+binary="${root}/bin/${profile}/pepepowminer"
+[[ -x "${binary}" ]] || { echo "[ERROR] Missing executable for profile ${profile}" >&2; exit 66; }
+if [[ "${1:-}" == --backend-version && $# == 1 ]]; then exec "${binary}" --version; fi
+if [[ "${1:-}" == --help && $# == 1 ]]; then
+  printf '%s\n' 'PepeW Miner preparation package. Select PEPEW_BINARY_PROFILE=general|v100.' \
+    'Native arguments follow. GPU validation is pending; consult README.md.'
+  exec "${binary}" --help
+fi
+if [[ "${1:-}" == --list-gpu && $# == 1 ]]; then exec "${binary}" --list-gpu; fi
+[[ "${PEPEW_ALLOW_UNVERIFIED:-0}" == 1 ]] || { echo '[ERROR] Preparation build: GPU validation pending. See README.md.' >&2; exit 78; }
+if [[ "${profile}" == v100 ]]; then
+  [[ "${CUDA_VISIBLE_DEVICES:-}" =~ ^GPU-[A-Za-z0-9-]+$ ]] || { echo '[ERROR] V100 requires one explicit GPU UUID in CUDA_VISIBLE_DEVICES' >&2; exit 64; }
+  [[ "${PEPEPOW_CUDA_THREADS_RUNTIME:-128}" == 128 ]] || { echo '[ERROR] V100 optimized build requires 128 threads' >&2; exit 64; }
+  info="$(timeout --kill-after=2s 15s "${binary}" --list-gpu)" || { echo '[ERROR] V100 enumeration failed' >&2; exit 69; }
+  [[ "${info}" != *$'\n'* && "${info}" =~ ^\[0\][[:space:]]+.*V100.*[[:space:]]sm_70$ ]] || { echo '[ERROR] V100 profile requires exactly one Tesla V100 sm_70 device' >&2; exit 64; }
+  export PEPEPOW_CUDA_THREADS_RUNTIME=128
+fi
+exec "${binary}" "$@"
