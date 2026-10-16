@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "status": "integration-pending-not-release-ready",
+  "created_utc": "2026-10-16T07:42:16Z",
+  "preparation_source": "76972b56eddca6474bfc0e729465c8209bcbf168",
+  "v100_source": "91af54de51c7d83db6ce2074e71d9d37443d66bf",
+  "source_differences": [
+    {
+      "path": "native/CMakeLists.txt",
+      "preparation_blob": "04b55a52298450c8f75d26d17611f913bd91791a",
+      "v100_blob": "608c0cefda46c771331763035f597b62b01182de"
+    },
+    {
+      "path": "native/include/pepepow/cuda/header80_backend.hpp",
+      "preparation_blob": "d9c5441244e87a4c4f9f7a79823956d5d61cb850",
+      "v100_blob": "aee43e915309ec7c246e0e17acc290c9d4426d10"
+    },
+    {
+      "path": "native/src/cuda/header80_backend.cu",
+      "preparation_blob": "56391ba9adc19db211100edd1191251792d31c3d",
+      "v100_blob": "c9d200a7431359010e173f1f3a0759f93668ae34"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_backend_part00.inc",
+      "preparation_blob": "12531e0e67a3e08fdcf48512bc69cc18e6c28eaa",
+      "v100_blob": "f0a6b01094cccd1335e5e50abcdb2aaed1565820"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_backend_part02.inc",
+      "preparation_blob": "6de282664c44f88663f4b1735755b1f4a0bee92f",
+      "v100_blob": "01beeeb3e6e1d7b9a0af58c1c8231cde507650ca"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_backend_part03.inc",
+      "preparation_blob": "40daf3715aac5157d0dc6602c5b7359b111fe77a",
+      "v100_blob": "9ceb418d360eb70c4cb17c4885d7e123db9aefb6"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_backend_part05.inc",
+      "preparation_blob": "c0c002731eb6f74b6f9a1d941bade51260c8af21",
+      "v100_blob": "415da2ea20fde73bbc39fb8edf8fa8d241165f5b"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_backend_part06.inc",
+      "preparation_blob": "12e6b7c903dfab9ed8c8c1aabad156e7fcb72f2b",
+      "v100_blob": "fe3389a5f92b519815098f03016192f755545853"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_backend_part07.inc",
+      "preparation_blob": "108a8bc522a382e4125b44177ef28faded48a8bf",
+      "v100_blob": "90857089f91031729f8ee45982191884490844c6"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_hotrun8.inc",
+      "preparation_blob": null,
+      "v100_blob": "7d10b86bc58b5f75fae4647705c6bf0fcf634444"
+    },
+    {
+      "path": "native/src/cuda/v1/header80_hotrun8_fusion.inc",
+      "preparation_blob": null,
+      "v100_blob": "f1808100235f733e6613b239e4ab57fa85f6ef27"
+    }
+  ],
+  "v100_cmake_arguments": [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc",
+    "-DPEPEPOW_ENABLE_CUDA=ON",
+    "-DPEPEPOW_BUILD_TESTS=ON",
+    "-DPEPEPOW_CUDA_PTXAS_VERBOSE=ON",
+    "-DPEPEPOW_CUDA_ARCHITECTURES=70-real",
+    "-DPEPEPOW_CUDA_THREADS=128",
+    "-DPEPEPOW_CUDA_MIN_BLOCKS=1",
+    "-DPEPEPOW_CUDA_SPLIT_PIPELINE=ON",
+    "-DPEPEPOW_CUDA_HOTRUN8=ON",
+    "-DPEPEPOW_CUDA_SCALED_MATRIX=OFF",
+    "-DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON",
+    "-DPEPEPOW_CUDA_ASSUME_FINITE=ON",
+    "-DPEPEPOW_CUDA_SW_STATE_MODE=3",
+    "-DPEPEPOW_CUDA_BYTE_UNROLL=1",
+    "-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1"
+  ],
+  "historical_evidence": {
+    "status": "PASS",
+    "label": "hotrun8-exact-cross-region-trig-call-fusion-v1-realpool-confirmed",
+    "asset_url": "https://github.com/iPepew/PepePow_Miner/releases/download/v2.1-trig-region-fusion-a010b8c-pool-candidate/PepeW-Miner-HiveOS.tar.gz",
+    "source_commit": "91af54de51c7d83db6ce2074e71d9d37443d66bf",
+    "asset_sha256": "a1b6b6688ab58e6dc1a2ebd4705a0326e86a728f43b16141343d609df914dc51",
+    "offline": {
+      "candidate_mhs": 12.101,
+      "baseline_mhs": 10.901,
+      "paired_gain_pct": 11.008164,
+      "previous_offline_leader_mhs": 10.825,
+      "gain_vs_previous_offline_leader_pct": 11.787529,
+      "differential_cases": 100000,
+      "differential_mismatches": 0,
+      "cuda_arch": "sm_70",
+      "registers": 56,
+      "allocated_registers": 56,
+      "stack_frame_bytes": 80,
+      "hot_sass": 1752,
+      "spill_load_bytes": 0,
+      "spill_store_bytes": 0,
+      "workflow_run_id": 34195869012
+    },
+    "hashrate_mhs": {
+      "avg": 11.492,
+      "min": 11.487,
+      "max": 11.495
+    },
+    "previous_realpool_leader": {
+      "label": "hotrun8-exact-static-blake32-schedule-v1-realpool-confirmed",
+      "avg_mhs": 10.42,
+      "min_mhs": 10.41,
+      "max_mhs": 10.426
+    },
+    "realpool_gain_pct": 10.29,
+    "shares": {
+      "accepted_first": 72,
+      "accepted_final": 100,
+      "accepted_delta": 28,
+      "rejected_first": 1,
+      "rejected_final": 1,
+      "rejected_delta": 0
+    },
+    "accepted_share_gate": {
+      "accepted_delta": 28,
+      "rejected_delta": 0,
+      "passed": true
+    },
+    "gpu": {
+      "power_w_avg": 195.31,
+      "util_pct_avg": 99.75,
+      "core_mhz_avg": 1507,
+      "mem_mhz_avg": 877,
+      "temp_c_avg": 57
+    },
+    "promotion_eligible": true,
+    "live_release_changed": false,
+    "pool_workflow_run_id": 34216352289,
+    "pool_workflow_url": "https://github.com/iPepew/PepePow_Lab/actions/runs/34216352289",
+    "confirmed_utc": "2026-09-08T10:37:31Z"
+  },
+  "evidence_limit": "Historical GPU results apply only to the recorded package SHA256, not a rebuild or combined public package.",
+  "decision": {
+    "public_package": "Preserve an isolated V100 optimized profile alongside the general GPU profile; do not overwrite the general backend with sm70 tuning.",
+    "pending": [
+      "Assemble and verify the combined package and explicit per-device profile selection.",
+      "Include matching offline correctness executables.",
+      "Test exact rebuilt package on intended GPU before publication."
+    ],
+    "experimental_candidates": [
+      "e5a038e80cc3bc6e634789ce87a015745f772de5",
+      "9895bf3c9a93c2527f7c31b3c72dd001a6c2602d"
+    ],
+    "experimental_policy": "Retain separately; neither candidate is approved for stable 1.0.",
+    "old_release_policy": "Retain historical V100 release until exact asset is preserved and replacement is verified."
+  }
+}
