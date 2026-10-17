@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     container:
-      image: nvidia/cuda:12.8.1-devel-ubuntu22.04
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04@sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97
     env:
       DEADLINE_UTC: ${{ inputs.deadline_utc }}
       GENERAL_SHA: 33ca7ff88acffb93dc36835d8fa99177b094d7c0
@@ -97,6 +97,23 @@ jobs:
             --build "$GITHUB_WORKSPACE/build-v100" \
             --manifest source-general/docs/public-1.0-v100-integration.json \
             --deadline-utc "$local_deadline"
+      - name: Preserve link commands and CUDA component identities
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          (( remaining >= 180 )) || { echo 'Deadline too close for provenance collection'; exit 1; }
+          timeout --kill-after=5s 60s bash -c '
+            set -Eeuo pipefail
+            mkdir build-evidence
+            /usr/local/cuda/bin/nvcc --version > build-evidence/nvcc-version.txt
+            dpkg-query -W -f="\${binary:Package} \${Version}\\n" cuda-cudart-12-8 cuda-cudart-dev-12-8 cuda-nvcc-12-8 > build-evidence/cuda-packages.txt
+            for profile in general v100; do
+              for target in pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_benchmark pepepow_header80_differential; do
+                ninja -C "build-$profile" -t commands "$target" > "build-evidence/$profile-$target-commands.txt"
+              done
+            done
+            sha256sum /usr/local/cuda/lib64/libcudart_static.a /usr/local/cuda/lib64/libcudadevrt.a /usr/local/cuda/nvvm/libdevice/libdevice.10.bc > build-evidence/cuda-components.sha256
+          '
       - name: Verify embedded architectures and assemble preparation bundle
         run: |
           set -Eeuo pipefail
@@ -125,9 +142,11 @@ jobs:
           if-no-files-found: error
           path: |
             dist/
+            build-evidence/
             build-general/PROFILE_BUILD.json
             build-general/build.log
             build-general/fatbin-elf.txt
             build-v100/PROFILE_BUILD.json
             build-v100/build.log
             build-v100/fatbin-elf.txt
+
