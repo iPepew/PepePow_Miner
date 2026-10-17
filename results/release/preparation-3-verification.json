@@ -1,0 +1,54 @@
+{
+  "run_id": 39010028827,
+  "artifact_id": 12092019989,
+  "workflow_sha": "885b24ce69f5b2893600ecc9c7f8f32bc5044734",
+  "archive_sha256": "eb973a46f6b8007ffd8c31842538e71c549cc130ddfb81b220f4584eba75b503",
+  "archive_size": 7295297,
+  "file_count": 29,
+  "checksums_verified": 28,
+  "binary_hashes_verified": 12,
+  "runtime_sha": "e65bd99240a3bb3c0e763a0fdc07bf2a6ecaea09",
+  "installable": false,
+  "profiles": {
+    "general": {
+      "source": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
+      "binary_sha256": {
+        "pepepowminer": "09673c6a443bb32ff162c303933282e9328f042fc9cc07d38a2568e7e6359d67",
+        "pepepow_core_tests": "4a940534460e1a1944811157e802fa986a6dd86c34af82169ecf33b16a4368c7",
+        "pepepow_cuda_tests": "3a55f2fc38da9062e0b8bb99c3afd617c195038a8f5d5a2765705be486a74dd2",
+        "pepepow_cuda_header80_validation": "9c2ae42c9be8a04fadf08c10735cccdbddd26bfdd75d86ce7c6cd382b51980d2",
+        "pepepow_header80_benchmark": "e303f1d799510074d1a0bc672a6034e62de4189b3d71e608c3872f34b99a203e",
+        "pepepow_header80_differential": "43238bb84dfdad2c6c79fd303257d277cd20053a977b33c3ae09080b4cc7327c"
+      },
+      "cpu_ctest": "PASS",
+      "link_tail": ": && /usr/bin/c++ -O3 -DNDEBUG  CMakeFiles/pepepowminer.dir/src/app/main_v105.cpp.o -o pepepowminer -L/usr/local/cuda/targets/x86_64-linux/lib libpepepow_core.a  libpepepow_cuda.a  libpepepow_core.a  _deps/blake3_source-build/libblake3.a  -lcudadevrt  -lcudart_static  -lrt  -lpthread  -ldl && :"
+    },
+    "v100": {
+      "source": "91af54de51c7d83db6ce2074e71d9d37443d66bf",
+      "binary_sha256": {
+        "pepepowminer": "c39690d5910ef97fecb3eaaeaa9b01cfc094fcf4618e39e53bc2212c9c591697",
+        "pepepow_core_tests": "e29a22eaa6edbc0fed0ade2172259cb1ad7060e3c1a70d06149046e442563a37",
+        "pepepow_cuda_tests": "2f401cadeeddbef118e4abe86bcfa33b71e100d4a9b9a639558587a26ce58306",
+        "pepepow_cuda_header80_validation": "1ecf2497c49c89dad9565dc67e7d54215c357cc75e638526271c23a17bab82a3",
+        "pepepow_header80_benchmark": "371876e20b94e70f3aa1dda3a4cf86d8d0e6e6313b71bead31d7ec6b7d469b6a",
+        "pepepow_header80_differential": "5884101aee55c246552146bfe89770c894e773d0dbba1a17ede505642b37ed48"
+      },
+      "cpu_ctest": "PASS",
+      "link_tail": ": && /usr/bin/c++ -O3 -DNDEBUG  CMakeFiles/pepepowminer.dir/src/app/main.cpp.o -o pepepowminer -L/usr/local/cuda/targets/x86_64-linux/lib libpepepow_core.a  libpepepow_cuda.a  libpepepow_core.a  _deps/blake3_source-build/libblake3.a  -lcudadevrt  -lcudart_static  -lrt  -lpthread  -ldl && :"
+    }
+  },
+  "cuda_packages": "cuda-cudart-12-8 12.8.90-1\ncuda-cudart-dev-12-8 12.8.90-1\ncuda-nvcc-12-8 12.8.93-1\n",
+  "cuda_component_hashes": "548012438f65d00ecc28c30bd4a11ca6b090cc8773a990174ccc33e0b81aa966  /usr/local/cuda/lib64/libcudart_static.a\n1621b3f71d09c649f94b8eb53c7d4adedc96bd36e2a0d7add2cf11eab3e3bbbb  /usr/local/cuda/lib64/libcudadevrt.a\n25498d6e3c64782833ff15a5f56665ff09e5d21177163148a1cf008c61733449  /usr/local/cuda/nvvm/libdevice/libdevice.10.bc\n",
+  "gpu_tests_executed": false,
+  "pool_tests_executed": false,
+  "runtime_git_blobs_verified": 14,
+  "started_utc": "2026-10-17T08:32:10Z",
+  "deadline_utc": "2026-10-17T09:32:10Z",
+  "remaining": [
+    "Exact-package GPU correctness on RTX and V100",
+    "Target HiveOS runtime and process/stats integration",
+    "Authorized pool validation after offline gate",
+    "Final distribution review before stable publication"
+  ],
+  "verified_utc": "2026-10-17T08:33:50Z"
+}
