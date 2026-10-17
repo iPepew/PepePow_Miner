@@ -1,0 +1,40 @@
+{
+  "date_utc": "2026-10-17",
+  "started_utc": "2026-10-17T02:30:36Z",
+  "completed_utc": "2026-10-17T02:34:03Z",
+  "deadline_utc": "2026-10-17T03:30:36Z",
+  "build_evidence": {
+    "run_id": 38906725960,
+    "job_id": 116992041207,
+    "image": "nvidia/cuda:12.8.1-devel-ubuntu22.04",
+    "digest": "sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97",
+    "declared_cudart": "12.8.90-1",
+    "declared_cudart_dev": "12.8.90-1",
+    "cmake_cuda_compiler": "12.8.93",
+    "cmake_host_compiler": "GNU 11.4.0"
+  },
+  "source": "https://docs.nvidia.com/cuda/archive/12.8.1/eula/index.html",
+  "changes": {
+    "workflow_main": "e45bbe04a7484efc18db56c39772200838a27f50",
+    "notice": "bf035259858110020109e95d623b93b02844e820",
+    "packager": "bf5e26870a04e950614a4679b5374d7b39c64096",
+    "tests": "6c21128338e3980330254b9bc3e045675094bbf7"
+  },
+  "validation": {
+    "packaging_tests": 9,
+    "packaging_result": "PASS",
+    "yaml_bash_syntax": "PASS",
+    "collection_fixture": "12 command records and 3 real fixture file hashes PASS",
+    "expired_deadline_fixture": "rejected PASS",
+    "github_readback": "4 files exact match",
+    "new_build_launched": false,
+    "archive_repacked": false,
+    "gpu_contacted": false
+  },
+  "limits": [
+    "Container declarations do not replace actual link component evidence",
+    "New build-evidence files will exist only after a future authorized successful build",
+    "Existing preparation.2 archive unchanged; new notice is source-prepared for next runtime package",
+    "GPU correctness, pool gate, target HiveOS and full component compliance remain open"
+  ]
+}
