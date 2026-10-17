@@ -26,6 +26,7 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04@sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97
     env:
       DEADLINE_UTC: ${{ inputs.deadline_utc }}
+      RUNTIME_SHA: e65bd99240a3bb3c0e763a0fdc07bf2a6ecaea09
       GENERAL_SHA: 33ca7ff88acffb93dc36835d8fa99177b094d7c0
       V100_SHA: 91af54de51c7d83db6ce2074e71d9d37443d66bf
     steps:
@@ -48,6 +49,7 @@ jobs:
           '
           git config --global --add safe.directory "$GITHUB_WORKSPACE/source-general"
           git config --global --add safe.directory "$GITHUB_WORKSPACE/source-v100"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-runtime"
       - name: Checkout pinned general source and packaging tools
         uses: actions/checkout@v4
         with:
@@ -59,6 +61,12 @@ jobs:
         with:
           ref: 91af54de51c7d83db6ce2074e71d9d37443d66bf
           path: source-v100
+          persist-credentials: false
+      - name: Checkout pinned runtime adapters and current packager
+        uses: actions/checkout@v4
+        with:
+          ref: e65bd99240a3bb3c0e763a0fdc07bf2a6ecaea09
+          path: source-runtime
           persist-credentials: false
       - name: Build general profile and run CPU test only
         run: |
@@ -126,12 +134,15 @@ jobs:
             /usr/local/cuda/bin/cuobjdump --list-elf build-v100/pepepowminer > build-v100/fatbin-elf.txt
             grep -F "sm_70.cubin" build-v100/fatbin-elf.txt
             mkdir dist
-            python3 source-general/scripts/release/package_profiles.py \
+            [[ "$(git -C source-runtime rev-parse HEAD)" == "$RUNTIME_SHA" ]]
+            [[ -z "$(git -C source-runtime status --porcelain --untracked-files=all)" ]]
+            python3 source-runtime/scripts/release/package_profiles.py \
               --general build-general --v100 build-v100 \
               --expected-general "$GENERAL_SHA" --expected-v100 "$V100_SHA" \
-              --version 1.0.0-preparation.1 \
-              --output dist/pepew-miner-1.0.0-preparation.1-profiles.tar.gz \
-              > dist/pepew-miner-1.0.0-preparation.1-profiles.tar.gz.sha256
+              --runtime source-runtime --runtime-commit "$RUNTIME_SHA" \
+              --version 1.0.0-preparation.3 \
+              --output dist/pepew-miner-1.0.0-preparation.3-linux-x86_64-hiveos.tar.gz \
+              > dist/pepew-miner-1.0.0-preparation.3-linux-x86_64-hiveos.tar.gz.sha256
           '
       - name: Upload preparation bundle and build evidence
         if: success()
