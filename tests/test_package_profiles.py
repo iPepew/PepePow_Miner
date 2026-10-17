@@ -95,7 +95,7 @@ class PackageTests(unittest.TestCase):
             manifest = json.load(tar.extractfile('pepew-miner/BUILD_MANIFEST.json'))
             self.assertEqual(manifest['runtime']['source_commit'], 'c' * 40)
             self.assertFalse(manifest['installable'])
-            self.assertEqual(len(tar.getmembers()), 28)
+            self.assertEqual(len(tar.getmembers()), 29)
             for path, (_, mode) in package.RUNTIME_FILES.items():
                 member = tar.getmember('pepew-miner/' + path)
                 self.assertEqual(member.mode, mode)
