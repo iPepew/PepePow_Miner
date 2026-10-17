@@ -32,6 +32,7 @@ RUNTIME_FILES = {
     'licenses/BLAKE3-CC0.txt': ('licenses/BLAKE3-CC0.txt', 0o644),
     'licenses/nlohmann-json-MIT.txt': ('licenses/nlohmann-json-MIT.txt', 0o644),
     'licenses/NOTICE.md': ('licenses/NOTICE.md', 0o644),
+    'licenses/NVIDIA-CUDA.md': ('licenses/NVIDIA-CUDA.md', 0o644),
 }
 
 
