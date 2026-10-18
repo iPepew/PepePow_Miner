@@ -15,6 +15,7 @@ NATIVE = '''#!/usr/bin/env python3
 import json, os, pathlib, signal, sys, time
 uuid = os.environ.get('CUDA_VISIBLE_DEVICES', '')
 if sys.argv[1:] == ['--list-gpu']:
+    print('PepeW Miner v1.0.5')
     if uuid == 'GPU-v100': print('[0] Tesla V100-SXM2-16GB sm_70')
     elif uuid == 'GPU-rtx': print('[0] NVIDIA GeForce RTX 3080 sm_86')
     else: sys.exit(9)
