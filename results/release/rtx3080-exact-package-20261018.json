@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-10-18T13:04:00Z",
+  "status": "offline-completed-runtime-pending",
+  "archive_sha256": "eb973a46f6b8007ffd8c31842538e71c549cc130ddfb81b220f4584eba75b503",
+  "build_run": 39010028827,
+  "build_artifact": 12092019989,
+  "general_source": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
+  "general_miner_sha256": "09673c6a443bb32ff162c303933282e9328f042fc9cc07d38a2568e7e6359d67",
+  "runtime_source": "e65bd99240a3bb3c0e763a0fdc07bf2a6ecaea09",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 3080",
+    "driver": "550.144.03",
+    "glibc": "2.35"
+  },
+  "recovery": {
+    "run": 39104012673,
+    "job": 117605923291,
+    "result": "PASS",
+    "natural_watchdog_lease_seconds": 60
+  },
+  "offline": {
+    "run": 39104198618,
+    "job": 117606475154,
+    "artifact": 12128190357,
+    "cuda_unit": "PASS",
+    "header80": "PASS",
+    "consensus_vectors": 5,
+    "differential_cases": 2048,
+    "differential_mismatches": 0,
+    "short_benchmark_mhs": [
+      2.537,
+      2.535,
+      2.538
+    ],
+    "recovery": "PASS"
+  },
+  "runtime": {
+    "run": 39129713917,
+    "status": "in_progress",
+    "not_yet_evidence": true
+  },
+  "limitations": [
+    "Short offline samples are not pool hashrate or sustained performance",
+    "V100 exact package hardware validation pending",
+    "Preparation package remains installable=false; stable 1.0 not published"
+  ]
+}
