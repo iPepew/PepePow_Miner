@@ -116,6 +116,8 @@ for ((position=0; position<${#all_indices[@]}; ++position)); do
       echo "[ERROR] GPU ${index}: CUDA enumeration failed" >&2
       exit 1
     fi
+    # Native --list-gpu includes a build banner before the device records.
+    gpu_info="$(printf '%s\n' "${gpu_info}" | sed -n '/^\[[0-9][0-9]*\][[:space:]]/p')"
     if [[ "${gpu_info}" != *$'\n'* && "${gpu_info}" =~ ^\[0\][[:space:]]+(.+)[[:space:]]sm_([0-9]+)$ ]]; then
       sm="${BASH_REMATCH[2]}"
     else
