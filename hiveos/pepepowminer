@@ -22,6 +22,7 @@ if [[ "${profile}" == v100 ]]; then
   [[ "${CUDA_VISIBLE_DEVICES:-}" =~ ^GPU-[A-Za-z0-9-]+$ ]] || { echo '[ERROR] V100 requires one explicit GPU UUID in CUDA_VISIBLE_DEVICES' >&2; exit 64; }
   [[ "${PEPEPOW_CUDA_THREADS_RUNTIME:-128}" == 128 ]] || { echo '[ERROR] V100 optimized build requires 128 threads' >&2; exit 64; }
   info="$(timeout --kill-after=2s 15s "${binary}" --list-gpu)" || { echo '[ERROR] V100 enumeration failed' >&2; exit 69; }
+  info="$(printf '%s\n' "${info}" | sed -n '/^\[[0-9][0-9]*\][[:space:]]/p')"
   [[ "${info}" != *$'\n'* && "${info}" =~ ^\[0\][[:space:]]+.*V100.*[[:space:]]sm_70$ ]] || { echo '[ERROR] V100 profile requires exactly one Tesla V100 sm_70 device' >&2; exit 64; }
   export PEPEPOW_CUDA_THREADS_RUNTIME=128
 fi
