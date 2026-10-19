@@ -34,9 +34,26 @@
   },
   "candidate_build": {
     "run": 39208192790,
-    "status": "in_progress"
+    "status": "SUCCESS",
+    "artifact_id": 12167075092,
+    "artifact_sha256": "fe7ddfc827590406ce9a07392200d0140a6b757df46e29f8e6341aa6328c5c26",
+    "manifest_sha256": "1a2e4a83010e03d32a6876a789c38e1193abb8d1bc6fd31d3060b4d288316cd2",
+    "all_six_binary_hashes_verified": true
   },
   "gpu_result": "PENDING_NEW_EXACT_BINARY",
   "v100_result": "UNVALIDATED",
-  "release_published": false
+  "release_published": false,
+  "session": {
+    "started_utc": "2026-10-19T11:06:13Z",
+    "deadline_utc": "2026-10-19T12:06:13Z"
+  },
+  "gpu_validation": {
+    "run": 39242460053,
+    "job": 118026315933,
+    "status": "IN_PROGRESS",
+    "source": "2292825ea66a577a13e61ad63695b890396bf38b",
+    "miner_sha256": "96d59fe347272af0e6be4c5b7f4e90e92c4b96912c0b5a738a207266f1eaee2c",
+    "runtime_source": "8ce4c24b55ada41ae2bf4d666d628aa661167792",
+    "validation_script": "5cf0a5adc9e024b0669263ff5849c1c0f4def139"
+  }
 }
