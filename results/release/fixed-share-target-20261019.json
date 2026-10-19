@@ -2,7 +2,7 @@
   "schema_version": 1,
   "started_utc": "2026-10-19T05:57:43Z",
   "deadline_utc": "2026-10-19T06:57:43Z",
-  "status": "STARTED",
+  "status": "COMPLETED_RTX_GATE",
   "candidate_source": "2292825ea66a577a13e61ad63695b890396bf38b",
   "base_source": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
   "target_policy": "fixed_diff1_0x1d00ffff_divided_by_wire_difficulty_over_65536",
@@ -40,7 +40,7 @@
     "manifest_sha256": "1a2e4a83010e03d32a6876a789c38e1193abb8d1bc6fd31d3060b4d288316cd2",
     "all_six_binary_hashes_verified": true
   },
-  "gpu_result": "PENDING_NEW_EXACT_BINARY",
+  "gpu_result": "PASS_RTX3080_EXPLICIT_CONSENSUS_AND_100000_DIFFERENTIAL",
   "v100_result": "UNVALIDATED",
   "release_published": false,
   "session": {
@@ -50,10 +50,378 @@
   "gpu_validation": {
     "run": 39242460053,
     "job": 118026315933,
-    "status": "IN_PROGRESS",
+    "status": "COMPLETED",
     "source": "2292825ea66a577a13e61ad63695b890396bf38b",
     "miner_sha256": "96d59fe347272af0e6be4c5b7f4e90e92c4b96912c0b5a738a207266f1eaee2c",
     "runtime_source": "8ce4c24b55ada41ae2bf4d666d628aa661167792",
-    "validation_script": "5cf0a5adc9e024b0669263ff5849c1c0f4def139"
-  }
+    "validation_script": "5cf0a5adc9e024b0669263ff5849c1c0f4def139",
+    "result": {
+      "accepted": 22,
+      "base_archive_sha256": "eb973a46f6b8007ffd8c31842538e71c549cc130ddfb81b220f4584eba75b503",
+      "binary_sha256": {
+        "pepepow_core_tests": "1ac295decdcb85e844cfecd96b6a0edfcd1b846c29071c7db2d123ef6b442d70",
+        "pepepow_cuda_header80_validation": "35fd6834669f0bbf21593749adbfaf27025540be1d1d55530e6eb4d96ed6be87",
+        "pepepow_cuda_tests": "ea5e0845047309948cd3794e9cb78173b4132dfee283eb18cafb41b3f5d6f09d",
+        "pepepow_header80_benchmark": "0d6c33ad99f1d10e75a401e90eb5393384ba5106a65cb6255ff75d55e7cde346",
+        "pepepow_header80_differential": "0693d076a8a1df3c7f479ee4ca6e4244109fb3e89cb23e22129bb7279a4878c8",
+        "pepepowminer": "96d59fe347272af0e6be4c5b7f4e90e92c4b96912c0b5a738a207266f1eaee2c"
+      },
+      "candidate_build_run": "39208192790",
+      "config_source": "current-root-owned-Hoo-process-argv",
+      "diagnostic_markers": [
+        "No such file or directory"
+      ],
+      "differential_cases": 100000,
+      "differential_mismatches": 0,
+      "finished_utc": "2026-10-19T11:17:20.276636+00:00",
+      "pepepow_cuda_header80_validation": "PASS",
+      "pepepow_cuda_tests": "PASS",
+      "pool_diagnostics": [
+        {
+          "accepted": 22,
+          "accepted_fixed_diff1_true": 22,
+          "clean_notify": 10,
+          "submitted": 22
+        }
+      ],
+      "pool_seconds": 120,
+      "recovery": "PASS",
+      "rejected": 0,
+      "run": "39242460053",
+      "runtime_overlay_sha256": {
+        "h-run.sh": "9b6c62cef279b5bcea89bd92143ea8eaeaef5c0337436d02ecb15332d0da7851",
+        "pepepowminer": "10a456a67ecb84f74e153d605c5b7a24d878a12f12060e06539776e838f1fb98"
+      },
+      "runtime_stop": "PASS",
+      "source": "2292825ea66a577a13e61ad63695b890396bf38b",
+      "started_utc": "2026-10-19T11:08:51.822313+00:00",
+      "stats": [
+        {
+          "algo": "hoohash",
+          "ar": [
+            4,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            30
+          ],
+          "hs": [
+            2209
+          ],
+          "hs_units": "khs",
+          "power": [
+            163.99
+          ],
+          "temp": [
+            52
+          ],
+          "uptime": 10,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            7,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            30
+          ],
+          "hs": [
+            2218
+          ],
+          "hs_units": "khs",
+          "power": [
+            164.25
+          ],
+          "temp": [
+            53
+          ],
+          "uptime": 20,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            12,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            30
+          ],
+          "hs": [
+            2217
+          ],
+          "hs_units": "khs",
+          "power": [
+            165.03
+          ],
+          "temp": [
+            54
+          ],
+          "uptime": 30,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            12,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            30
+          ],
+          "hs": [
+            2234
+          ],
+          "hs_units": "khs",
+          "power": [
+            165.91
+          ],
+          "temp": [
+            54
+          ],
+          "uptime": 40,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            13,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            30
+          ],
+          "hs": [
+            2202
+          ],
+          "hs_units": "khs",
+          "power": [
+            165.95
+          ],
+          "temp": [
+            55
+          ],
+          "uptime": 50,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            14,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            30
+          ],
+          "hs": [
+            2213
+          ],
+          "hs_units": "khs",
+          "power": [
+            165.5
+          ],
+          "temp": [
+            55
+          ],
+          "uptime": 60,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            17,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            31
+          ],
+          "hs": [
+            2223
+          ],
+          "hs_units": "khs",
+          "power": [
+            166.64
+          ],
+          "temp": [
+            55
+          ],
+          "uptime": 70,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            19,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            31
+          ],
+          "hs": [
+            2255
+          ],
+          "hs_units": "khs",
+          "power": [
+            167.13
+          ],
+          "temp": [
+            56
+          ],
+          "uptime": 80,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            20,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            32
+          ],
+          "hs": [
+            2234
+          ],
+          "hs_units": "khs",
+          "power": [
+            166.74
+          ],
+          "temp": [
+            56
+          ],
+          "uptime": 90,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            22,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            32
+          ],
+          "hs": [
+            2236
+          ],
+          "hs_units": "khs",
+          "power": [
+            166.93
+          ],
+          "temp": [
+            56
+          ],
+          "uptime": 100,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            22,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            33
+          ],
+          "hs": [
+            2236
+          ],
+          "hs_units": "khs",
+          "power": [
+            167.44
+          ],
+          "temp": [
+            56
+          ],
+          "uptime": 110,
+          "ver": "1.0.0-preparation.3"
+        },
+        {
+          "algo": "hoohash",
+          "ar": [
+            22,
+            0,
+            0
+          ],
+          "bus_numbers": [
+            1
+          ],
+          "fan": [
+            33
+          ],
+          "hs": [
+            2248
+          ],
+          "hs_units": "khs",
+          "power": [
+            167.1
+          ],
+          "temp": [
+            56
+          ],
+          "uptime": 120,
+          "ver": "1.0.0-preparation.3"
+        }
+      ],
+      "status": "COMPLETED",
+      "v100_validated": false,
+      "wrapper_exit_code": 0
+    },
+    "evidence_artifact": {
+      "id": 12181609176,
+      "sha256": "83bb602749d64fdf6d5563e990679ac2b87adf2732f68e85ae9aa2b765322e33"
+    }
+  },
+  "validation_caveat": "pepepow_cuda_tests uses assert disabled in this Release build; treat its exit code only as execution smoke. Correctness requires explicit-check Header80 consensus and 100000-case differential.",
+  "remaining_release_gates": [
+    "V100 exact binary hardware/pool validation absent",
+    "Final installable package not assembled/validated",
+    "Nonfatal diagnostic marker No such file or directory lacks attribution; do not claim all runtime diagnostics clean"
+  ]
 }
