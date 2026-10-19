@@ -11,6 +11,10 @@ using Target256 = std::array<std::uint8_t, 32>;
 
 inline constexpr double kStratumDifficultyWireScale = 65536.0;
 
+// Fixed diff1 pool policy, verified against RTX pool replies on 2026-10-19.
+// Independent of network nBits; legacy network-relative policy remains below.
+[[nodiscard]] Target256 target_from_fixed_difficulty(double stratum_difficulty);
+
 // Decodes the compact nBits field into a conventional big-endian 256-bit
 // network target. Negative, zero and overflowing compact values are rejected.
 [[nodiscard]] Target256 target_from_compact(std::uint32_t compact_bits);
@@ -31,3 +35,4 @@ inline constexpr double kStratumDifficultyWireScale = 65536.0;
 [[nodiscard]] bool hash_meets_target_be(const Hash256& hash, const Target256& target) noexcept;
 
 } // namespace pepepow::mining
+
