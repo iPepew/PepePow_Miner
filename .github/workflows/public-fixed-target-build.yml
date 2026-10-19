@@ -26,7 +26,7 @@ jobs:
       image: nvidia/cuda:12.8.1-devel-ubuntu22.04@sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97
     env:
       DEADLINE_UTC: ${{ inputs.deadline_utc }}
-      GENERAL_SHA: 816168296f10d92be390ab8901c629f60aaf0085
+      GENERAL_SHA: 2292825ea66a577a13e61ad63695b890396bf38b
     steps:
       - name: Reject invalid or late queued start
         run: |
@@ -51,7 +51,7 @@ jobs:
       - name: Checkout pinned general source and packaging tools
         uses: actions/checkout@v4
         with:
-          ref: 816168296f10d92be390ab8901c629f60aaf0085
+          ref: 2292825ea66a577a13e61ad63695b890396bf38b
           path: source-general
           persist-credentials: false
       - name: Build general profile and run CPU test only
