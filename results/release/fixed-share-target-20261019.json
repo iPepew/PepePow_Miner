@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "started_utc": "2026-10-19T05:57:43Z",
+  "deadline_utc": "2026-10-19T06:57:43Z",
+  "status": "STARTED",
+  "candidate_source": "2292825ea66a577a13e61ad63695b890396bf38b",
+  "base_source": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
+  "target_policy": "fixed_diff1_0x1d00ffff_divided_by_wire_difficulty_over_65536",
+  "hypothesis_scope": "observed current pool only",
+  "diagnostic_run": 39183608991,
+  "diagnostic_job": 117841355608,
+  "diagnostic": [
+    {
+      "accepted": 22,
+      "accepted_fixed_diff1_true": 22,
+      "clean_notify": 5,
+      "reject_code_26": 56,
+      "reject_low_difficulty": 56,
+      "rejected": 56,
+      "rejected_fixed_diff1_false": 56,
+      "submitted": 78
+    }
+  ],
+  "diagnostic_recovery": "PASS",
+  "cpu_oracle": {
+    "numeric_vectors": 36,
+    "invalid_inputs": 2,
+    "result": "PASS"
+  },
+  "first_build": {
+    "run": 39207842879,
+    "result": "FAILED_CORE_TEST",
+    "reason": "Two new expected hex literals were 33 bytes; corrected to 32 in candidate source."
+  },
+  "candidate_build": {
+    "run": 39208192790,
+    "status": "in_progress"
+  },
+  "gpu_result": "PENDING_NEW_EXACT_BINARY",
+  "v100_result": "UNVALIDATED",
+  "release_published": false
+}
