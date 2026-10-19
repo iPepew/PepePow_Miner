@@ -44,5 +44,346 @@
     "Short offline samples are not pool hashrate or sustained performance",
     "V100 exact package hardware validation pending",
     "Preparation package remains installable=false; stable 1.0 not published"
-  ]
+  ],
+  "runtime_result_39160070947": {
+    "archive_sha256": "eb973a46f6b8007ffd8c31842538e71c549cc130ddfb81b220f4584eba75b503",
+    "config_source": "current-root-owned-Hoo-process-argv",
+    "diagnostic_markers": [
+      "No such file or directory"
+    ],
+    "differential_cases": 100000,
+    "differential_mismatches": 0,
+    "finished_utc": "2026-10-18T19:46:08.316028+00:00",
+    "offline_evidence_reused_from_run": "39129713917",
+    "pool_seconds": 120,
+    "reason": "REJECTED_SHARES",
+    "recovery": "PASS",
+    "run": "39160070947",
+    "runtime_overlay_sha256": {
+      "h-run.sh": "9b6c62cef279b5bcea89bd92143ea8eaeaef5c0337436d02ecb15332d0da7851",
+      "pepepowminer": "10a456a67ecb84f74e153d605c5b7a24d878a12f12060e06539776e838f1fb98"
+    },
+    "source": "33ca7ff88acffb93dc36835d8fa99177b094d7c0",
+    "started_utc": "2026-10-18T19:43:54.881989+00:00",
+    "stats": [
+      {
+        "algo": "hoohash",
+        "ar": [
+          11,
+          6,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2193
+        ],
+        "hs_units": "khs",
+        "power": [
+          161.48
+        ],
+        "temp": [
+          50
+        ],
+        "uptime": 10,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          19,
+          14,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2193
+        ],
+        "hs_units": "khs",
+        "power": [
+          161.02
+        ],
+        "temp": [
+          50
+        ],
+        "uptime": 20,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          26,
+          23,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2192
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.88
+        ],
+        "temp": [
+          50
+        ],
+        "uptime": 30,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          34,
+          30,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2207
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.56
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 40,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          36,
+          32,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2234
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.15
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 50,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          37,
+          37,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2219
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.32
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 60,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          38,
+          40,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2214
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.14
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 71,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          41,
+          43,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2219
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.32
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 81,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          43,
+          46,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2212
+        ],
+        "hs_units": "khs",
+        "power": [
+          159.88
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 91,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          46,
+          48,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2210
+        ],
+        "hs_units": "khs",
+        "power": [
+          159.63
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 101,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          48,
+          52,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2209
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.18
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 111,
+        "ver": "1.0.0-preparation.3"
+      },
+      {
+        "algo": "hoohash",
+        "ar": [
+          49,
+          56,
+          0
+        ],
+        "bus_numbers": [
+          1
+        ],
+        "fan": [
+          30
+        ],
+        "hs": [
+          2222
+        ],
+        "hs_units": "khs",
+        "power": [
+          160.07
+        ],
+        "temp": [
+          49
+        ],
+        "uptime": 121,
+        "ver": "1.0.0-preparation.3"
+      }
+    ],
+    "status": "BLOCKED",
+    "v100_validated": false,
+    "wrapper_exit_code": null
+  },
+  "release_status": "BLOCKED_REJECTED_SHARES",
+  "runtime_source_commit": "8ce4c24b55ada41ae2bf4d666d628aa661167792",
+  "updated_utc": "2026-10-19T00:59:37Z"
 }
