@@ -237,5 +237,19 @@ int main() {
     assert(!pepepow::mining::hash_meets_target_be(max_hash, target_9227));
 
     std::cout << "PASS: live nBits share-target boundaries matched\n";
+    const auto fixed_one = pepepow::mining::target_from_fixed_difficulty(65536.0);
+    assert(fixed_one == parse_hex<32>(
+        "00000000ffff000000000000000000000000000000000000000000000000000000"));
+    const auto fixed_two = pepepow::mining::target_from_fixed_difficulty(131072.0);
+    assert(fixed_two == parse_hex<32>(
+        "000000007fff800000000000000000000000000000000000000000000000000000"));
+    auto above_fixed = fixed_one;
+    ++above_fixed.back();
+    assert(pepepow::mining::hash_meets_target_be(fixed_one, fixed_one));
+    assert(!pepepow::mining::hash_meets_target_be(above_fixed, fixed_one));
+    // A change in network difficulty must not change this pool share policy.
+    assert(fixed_one != network_at_one);
+    std::cout << "PASS: fixed diff1 share target and exact boundary matched\n";
     return 0;
 }
+
