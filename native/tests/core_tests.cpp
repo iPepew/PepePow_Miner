@@ -239,10 +239,10 @@ int main() {
     std::cout << "PASS: live nBits share-target boundaries matched\n";
     const auto fixed_one = pepepow::mining::target_from_fixed_difficulty(65536.0);
     assert(fixed_one == parse_hex<32>(
-        "00000000ffff000000000000000000000000000000000000000000000000000000"));
+        "00000000ffff0000000000000000000000000000000000000000000000000000"));
     const auto fixed_two = pepepow::mining::target_from_fixed_difficulty(131072.0);
     assert(fixed_two == parse_hex<32>(
-        "000000007fff800000000000000000000000000000000000000000000000000000"));
+        "000000007fff8000000000000000000000000000000000000000000000000000"));
     auto above_fixed = fixed_one;
     ++above_fixed.back();
     assert(pepepow::mining::hash_meets_target_be(fixed_one, fixed_one));
