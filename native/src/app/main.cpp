@@ -340,8 +340,8 @@ private:
 
             try {
                 auto mining_job = pepepow::stratum::build_mining_job(item.stratum_job, item.extranonce2);
-                const auto target = pepepow::mining::target_from_difficulty(
-                    item.stratum_job.difficulty, mining_job.bits);
+                const auto target = pepepow::mining::target_from_fixed_difficulty(
+                    item.stratum_job.difficulty);
                 const double normalized = item.stratum_job.difficulty /
                     pepepow::mining::kStratumDifficultyWireScale;
                 std::uint64_t nonce = 0;
@@ -355,7 +355,7 @@ private:
                            " nbits=" + item.stratum_job.nbits +
                            " ntime=" + item.stratum_job.ntime +
                            " clean=" + std::to_string(item.stratum_job.clean_jobs) +
-                           " target_source=nbits_div_difficulty" +
+                           " target_source=fixed_diff1_div_difficulty" +
                            " target_be=" + hex_of(target));
 
                 if (diagnostic_) {
@@ -536,7 +536,7 @@ int main(int argc, char** argv) {
                   std::to_string(diagnostic) + " log=" + log.path());
         log.write("POOL_REFERENCE hoohash=V110 matrix_seed=BLAKE3_MASKED_HEADER "
                   "header_nonce=BE32 mix_nonce=LE32 submit_nonce=LE_HEX "
-                  "share_target=NBITS_DIV_DIFFICULTY proxy=passive "
+                  "share_target=FIXED_DIFF1_DIV_DIFFICULTY proxy=passive "
                   "gpu_target_filter=1 blake3_midstate=1");
 
         pepepow::stratum::Config config;
@@ -573,3 +573,4 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+
