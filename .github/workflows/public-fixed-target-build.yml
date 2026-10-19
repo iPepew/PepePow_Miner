@@ -1,0 +1,111 @@
+name: Public 1.0 fixed share target candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      deadline_utc:
+        description: 'Absolute UTC deadline YYYY-MM-DDTHH:MM:SSZ (45-60 minutes ahead)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: pepew-public-release-build
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-profiles:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    container:
+      image: nvidia/cuda:12.8.1-devel-ubuntu22.04@sha256:a99a1860ba8e2916e5c3e73b72ec4c4301653a84586e05bfc9a2aa2d58027e97
+    env:
+      DEADLINE_UTC: ${{ inputs.deadline_utc }}
+      GENERAL_SHA: 816168296f10d92be390ab8901c629f60aaf0085
+    steps:
+      - name: Reject invalid or late queued start
+        run: |
+          set -Eeuo pipefail
+          [[ "$DEADLINE_UTC" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+          deadline=$(date -u -d "$DEADLINE_UTC" +%s)
+          remaining=$((deadline - $(date -u +%s)))
+          (( remaining >= 2700 && remaining <= 3600 )) || {
+            echo 'Deadline must be 45-60 minutes ahead at actual job start'; exit 1;
+          }
+      - name: Install build tools with timeout
+        run: |
+          timeout --kill-after=10s 300s bash -c '
+            set -Eeuo pipefail
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates git ninja-build python3 python3-pip binutils
+            python3 -m pip install --no-cache-dir cmake==3.31.6
+          '
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-general"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-v100"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source-runtime"
+      - name: Checkout pinned general source and packaging tools
+        uses: actions/checkout@v4
+        with:
+          ref: 816168296f10d92be390ab8901c629f60aaf0085
+          path: source-general
+          persist-credentials: false
+      - name: Build general profile and run CPU test only
+        run: |
+          set -Eeuo pipefail
+          remaining=$(( $(date -u -d "$DEADLINE_UTC" +%s) - $(date -u +%s) ))
+          (( remaining >= 1950 )) || { echo 'Insufficient time for both builds'; exit 1; }
+          [[ "$(git -C source-general rev-parse HEAD)" == "$GENERAL_SHA" ]]
+          [[ -z "$(git -C source-general status --porcelain --untracked-files=all)" ]]
+          timeout 45s python3 source-general/tests/test_fixed_target.py
+          mkdir -p build-general
+          timeout --kill-after=10s 900s bash -c '
+            set -Eeuo pipefail
+            cmake -S source-general/native -B build-general -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release -DPEPEPOW_ENABLE_CUDA=ON -DPEPEPOW_BUILD_TESTS=ON \
+              -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+              "-DPEPEPOW_CUDA_ARCHITECTURES=61-real;70-real;75-real;80-real;86-real;89-real;120" \
+              -DPEPEPOW_CUDA_THREADS=768 -DPEPEPOW_CUDA_MIN_BLOCKS=1
+            cmake --build build-general --parallel 4 --target pepepowminer pepepow_core_tests pepepow_cuda_tests pepepow_cuda_header80_validation pepepow_header80_benchmark pepepow_header80_differential
+            ctest --test-dir build-general --output-on-failure --no-tests=error -R "^pepepow_core_tests$"
+          ' 2>&1 | tee build-general/build.log
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path('build-general')
+          targets = ('pepepowminer', 'pepepow_core_tests', 'pepepow_cuda_tests', 'pepepow_cuda_header80_validation', 'pepepow_header80_benchmark', 'pepepow_header80_differential')
+          record = {'source_commit': os.environ['GENERAL_SHA'], 'status': 'compiled-cpu-tested-gpu-unverified', 'gpu_tests_executed': False, 'pool_tests_executed': False, 'historical_gpu_evidence_transferred': False, 'binary_sha256': {t: hashlib.sha256((root / t).read_bytes()).hexdigest() for t in targets}}
+          (root / 'PROFILE_BUILD.json').write_text(json.dumps(record, indent=2) + '\n')
+          PY
+      - name: Capture CUDA and architecture evidence
+        run: |
+          timeout --kill-after=5s 60s bash -c '
+            set -Eeuo pipefail
+            /usr/local/cuda/bin/cuobjdump --list-elf build-general/pepepowminer > build-general/fatbin-elf.txt
+            for sm in 61 70 75 80 86 89 120; do grep -F "sm_${sm}.cubin" build-general/fatbin-elf.txt; done
+            ninja -C build-general -t commands pepepowminer > build-general/link-commands.txt
+            /usr/local/cuda/bin/nvcc --version > build-general/nvcc-version.txt
+          '
+      - name: Upload fixed-target candidate and evidence
+        uses: actions/upload-artifact@v4
+        timeout-minutes: 2
+        with:
+          name: PepeW-1.0-fixed-target-candidate
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            build-general/pepepowminer
+            build-general/pepepow_core_tests
+            build-general/pepepow_cuda_tests
+            build-general/pepepow_cuda_header80_validation
+            build-general/pepepow_header80_benchmark
+            build-general/pepepow_header80_differential
+            build-general/PROFILE_BUILD.json
+            build-general/build.log
+            build-general/fatbin-elf.txt
+            build-general/link-commands.txt
+            build-general/nvcc-version.txt
