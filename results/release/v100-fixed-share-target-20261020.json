@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "status": "SOURCE_READY_CPU_CHECKED_NOT_GPU_VALIDATED",
+  "started_utc": "2026-10-20T11:37:57Z",
+  "deadline_utc": "2026-10-20T12:37:57Z",
+  "base_source": "91af54de51c7d83db6ce2074e71d9d37443d66bf",
+  "v100_source": "7ea6116773547b440ee513e65df357f8ebcb1c43",
+  "rtx_reference_source": "2292825ea66a577a13e61ad63695b890396bf38b",
+  "v100_cmake_arguments": [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc",
+    "-DPEPEPOW_ENABLE_CUDA=ON",
+    "-DPEPEPOW_BUILD_TESTS=ON",
+    "-DPEPEPOW_CUDA_PTXAS_VERBOSE=ON",
+    "-DPEPEPOW_CUDA_ARCHITECTURES=70-real",
+    "-DPEPEPOW_CUDA_THREADS=128",
+    "-DPEPEPOW_CUDA_MIN_BLOCKS=1",
+    "-DPEPEPOW_CUDA_SPLIT_PIPELINE=ON",
+    "-DPEPEPOW_CUDA_HOTRUN8=ON",
+    "-DPEPEPOW_CUDA_SCALED_MATRIX=OFF",
+    "-DPEPEPOW_CUDA_SCALED_NIBBLE_TABLE=ON",
+    "-DPEPEPOW_CUDA_ASSUME_FINITE=ON",
+    "-DPEPEPOW_CUDA_SW_STATE_MODE=3",
+    "-DPEPEPOW_CUDA_BYTE_UNROLL=1",
+    "-DCMAKE_CUDA_FLAGS=-DPEPEPOW_CUDA_HOTRUN8_FUSION_MODE=2 -DPEPEPOW_CUDA_COLD_OUTLINE=1 -DPEPEPOW_CUDA_HOTRUN8_WORD_STREAM=1 -DPEPEPOW_CUDA_LOCAL_RESIDENCY=1 -DPEPEPOW_CUDA_RUNTIME_LOCAL_PHASE_CACHE=1 -DPEPEPOW_CUDA_STATIC_BLAKE32_SCHEDULE=1"
+  ],
+  "hypothesis": "The V100 worker still computes network-relative targets; use the fixed-diff1 policy observed on the RTX pool, retaining V100 CUDA optimizations.",
+  "scope": "Observed fixed-diff1 pool policy; not a claim of compatibility with every pool.",
+  "changed_files": [
+    "native/include/pepepow/mining/target.hpp",
+    "native/src/app/main.cpp",
+    "native/src/mining/target.cpp",
+    "tests/test_fixed_target.py"
+  ],
+  "cuda_kernel_changes": false,
+  "checks": [
+    {
+      "command": "timeout 45s python3 tests/test_fixed_target.py",
+      "exit_code": 0,
+      "stdout": "PASS: 36 independent fixed-target vectors and 2 invalid inputs"
+    },
+    {
+      "command": "timeout 30s g++ -std=c++20 -DPEPEPOW_HAS_CUDA=1 -Inative/include -Icheck-include -fsyntax-only native/src/app/main.cpp",
+      "exit_code": 0,
+      "scope": "Host C++ syntax and V100 interfaces; exact source headers, fixture version.hpp; not CUDA compilation or linking."
+    },
+    {
+      "check": "GitHub readback",
+      "result": "All four modified/new source/test files match tested local bytes exactly."
+    },
+    {
+      "check": "GitHub compare base...candidate",
+      "result": "Only target.hpp, target.cpp, app/main.cpp and tests/test_fixed_target.py changed; all CUDA and build settings unchanged."
+    }
+  ],
+  "build_status": "NOT_BUILT",
+  "local_toolchain": {
+    "gxx": true,
+    "cmake": false,
+    "nvcc": false
+  },
+  "existing_dual_profile_workflow": "main public-profiles-build.yml remains pinned to original general/V100/runtime SHAs; do not rerun it expecting this fix.",
+  "build_helper": {
+    "ref": "98bf910105a688f5cfe55864a1ec0d12f08deac4",
+    "path": "scripts/release/build_v100_profile.py",
+    "instruction": "Use this JSON as --manifest with an exact clean checkout of v100_source; bounded hosted compilation only. Preserve absolute deadline and late-start guard."
+  },
+  "acceptance_criteria": [
+    "Bounded hosted CUDA build for this exact source and preserved sm70 options; save all six binary SHA256s.",
+    "Explicit consensus and differential correctness on exact V100 package when hardware is authorized and available.",
+    "Bounded pool check with matching difficulty policy, accepted shares and guaranteed recovery.",
+    "Final package/runtime verification; historical RTX or V100 evidence does not transfer to rebuilt binaries."
+  ],
+  "release_published": false,
+  "production_changed": false,
+  "experimental_optimization_queue_changed": false
+}
