@@ -132,6 +132,10 @@ Target256 target_from_difficulty(
     return output;
 }
 
+Target256 target_from_fixed_difficulty(double stratum_difficulty) {
+    return target_from_difficulty(stratum_difficulty, 0x1d00ffffU);
+}
+
 bool hash_meets_target_be(const Hash256& hash, const Target256& target) noexcept {
     for (std::size_t index = 0; index < hash.size(); ++index) {
         if (hash[index] < target[index]) return true;
