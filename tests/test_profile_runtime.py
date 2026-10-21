@@ -155,6 +155,7 @@ class RuntimeTests(unittest.TestCase):
             self.assertFalse(any(self.package.glob('gpu*/*.pid')))
             self.assertFalse(any(self.package.glob('.console-events.*.fifo')))
             self.assertNotIn('PRIVATE_', out.read_text())
+            self.assertNotIn('BUILD_PROFILE: No such file or directory', out.read_text())
 
     def test_worker_error_propagates_and_stops_other_worker(self):
         self.write_exe('bin/general/pepepowminer', NATIVE.replace(
