@@ -16,7 +16,7 @@ import json, os, pathlib, signal, sys, time
 uuid = os.environ.get('CUDA_VISIBLE_DEVICES', '')
 if sys.argv[1:] == ['--list-gpu']:
     print('PepeW Miner v1.0.5')
-    if uuid == 'GPU-v100': print('[0] Tesla V100-SXM2-16GB sm_70')
+    if uuid == 'GPU-rtx2': print('[0] NVIDIA GeForce RTX 3080 sm_86')
     elif uuid == 'GPU-rtx': print('[0] NVIDIA GeForce RTX 3080 sm_86')
     else: sys.exit(9)
     sys.exit(0)
@@ -33,7 +33,7 @@ time.sleep(30)
 SMI = '''#!/usr/bin/env bash
 case "$*" in
   *driver_version*) echo 580.0 ;;
-  *memory.total*) printf '%s\\n' '0, GPU-rtx, NVIDIA GeForce RTX 3080, 00000000:02:00.0, 10240' '1, GPU-v100, Tesla V100-SXM2-16GB, 00000000:01:00.0, 16384' ;;
+  *memory.total*) printf '%s\\n' '0, GPU-rtx, NVIDIA GeForce RTX 3080, 00000000:02:00.0, 10240' '1, GPU-rtx2, NVIDIA GeForce RTX 3080, 00000000:01:00.0, 16384' ;;
   *) printf '%s\\n' '0, 50, 40, 210, 1500, 9000' '1, 55, N/A, 190, 1200, 800' ;;
 esac
 '''
@@ -55,7 +55,7 @@ class RuntimeTests(unittest.TestCase):
         for name in ('general', 'v100'):
             (self.package / 'bin' / name).mkdir(parents=True)
             self.write_exe('bin/' + name + '/pepepowminer', NATIVE)
-        (self.package / 'VERSION').write_text('1.0.0-preparation.2\n')
+        (self.package / 'VERSION').write_text('1.0.0\n')
         self.commands = self.root / 'commands'
         self.commands.mkdir()
         (self.commands / 'nvidia-smi').write_text(SMI)
@@ -88,35 +88,29 @@ class RuntimeTests(unittest.TestCase):
     def test_version_without_gpu_and_invalid_profile(self):
         result = self.run_file('pepepowminer', '--version')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('1.0.0-preparation.2', result.stdout)
+        self.assertIn('1.0.0', result.stdout)
         self.assertEqual(self.run_file('pepepowminer', '--version', PEPEW_BINARY_PROFILE='../x').returncode, 64)
-        result = self.run_file('pepepowminer', '--backend-version', PEPEW_BINARY_PROFILE='v100')
+        result = self.run_file('pepepowminer', '--backend-version', PEPEW_BINARY_PROFILE='general')
         self.assertEqual(result.stdout.strip(), 'native-build-identity')
 
-    def test_preparation_gate(self):
-        self.assertEqual(self.run_file('h-run.sh').returncode, 78)
-        self.assertEqual(self.run_file('pepepowminer', '-o', 'pool').returncode, 78)
+    def test_v100_profile_is_postponed(self):
+        self.assertEqual(self.run_file('pepepowminer', '--version', PEPEW_BINARY_PROFILE='v100').returncode, 64)
 
-    def test_uuid_mapping_and_fixed_v100_geometry(self):
+    def test_uuid_mapping_for_two_rtx_cards(self):
         result = self.run_file('h-run.sh', PEPEW_WRAPPER_SELFTEST='1')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('GPU 0 | NVIDIA GeForce RTX 3080 | sm_86', result.stdout)
         self.assertIn('profile=ampere-auto | threads=768', result.stdout)
-        self.assertIn('profile=v100-hotrun8 | threads=128', result.stdout)
+        self.assertEqual(result.stdout.count('profile=ampere-auto | threads=768'), 2)
         self.assertNotIn('PRIVATE_', result.stdout + result.stderr)
 
-    def test_incompatible_v100_threads_and_inherited_visibility(self):
-        result = self.run_file('h-run.sh', PEPEW_WRAPPER_SELFTEST='1', PEPEW_CUDA_THREADS_RUNTIME='512')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('requires 128 threads', result.stderr)
+    def test_v100_device_and_inherited_visibility_rejected(self):
+        (self.commands / 'nvidia-smi').write_text(SMI.replace('NVIDIA GeForce RTX 3080', 'Tesla V100'))
+        result = self.run_file('h-run.sh', PEPEW_WRAPPER_SELFTEST='1')
+        self.assertEqual(result.returncode, 64)
+        self.assertIn('postponed', result.stderr)
         result = self.run_file('h-run.sh', PEPEW_WRAPPER_SELFTEST='1', CUDA_VISIBLE_DEVICES='GPU-rtx')
         self.assertEqual(result.returncode, 78)
-
-    def test_v100_selector_refuses_wrong_device(self):
-        for visible in ('GPU-rtx', '0', 'GPU-v100,GPU-rtx'):
-            result = self.run_file('pepepowminer', '-o', 'pool', PEPEW_ALLOW_UNVERIFIED='1',
-                                   PEPEW_BINARY_PROFILE='v100', CUDA_VISIBLE_DEVICES=visible)
-            self.assertNotEqual(result.returncode, 0)
 
     def test_multiple_cuda_devices_rejected(self):
         self.write_exe('bin/general/pepepowminer', '#!/bin/sh\nprintf "[0] V100 sm_70\\n[1] V100 sm_70\\n"\n')
@@ -128,7 +122,7 @@ class RuntimeTests(unittest.TestCase):
         out = self.root / 'wrapper.log'
         with out.open('w') as stream:
             process = subprocess.Popen(['bash', str(self.package / 'h-run.sh')],
-                env=dict(self.env, PEPEW_ALLOW_UNVERIFIED='1'), stdout=stream,
+                env=self.env, stdout=stream,
                 stderr=subprocess.STDOUT, start_new_session=True)
             self.children.append(process)
             deadline = time.monotonic() + 10
@@ -139,7 +133,7 @@ class RuntimeTests(unittest.TestCase):
             self.assertTrue(all(p.exists() for p in captures), out.read_text())
             data = [json.loads(p.read_text()) for p in captures]
             self.assertEqual([(v['uuid'], v['binary'], v['threads']) for v in data],
-                             [('GPU-rtx', 'general', '768'), ('GPU-v100', 'v100', '128')])
+                             [('GPU-rtx', 'general', '768'), ('GPU-rtx2', 'general', '768')])
             for v in data:
                 self.assertEqual(v['argv'][v['argv'].index('-u') + 1], 'PRIVATE_WALLET')
                 self.assertEqual(v['argv'][v['argv'].index('-p') + 1], 'PRIVATE_PASSWORD')
@@ -156,7 +150,7 @@ class RuntimeTests(unittest.TestCase):
             'time.sleep(30)', 'time.sleep(1); sys.exit(23)'))
         with (self.root / 'failure.log').open('w') as output:
             process = subprocess.Popen(['bash', str(self.package / 'h-run.sh')],
-                env=dict(self.env, PEPEW_ALLOW_UNVERIFIED='1'), stdout=output,
+                env=self.env, stdout=output,
                 stderr=subprocess.STDOUT, start_new_session=True)
             self.children.append(process)
             self.assertEqual(process.wait(timeout=12), 23)
@@ -218,7 +212,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(stats['fan'], [None, 40])
         self.assertEqual(stats['power'], [190.5, 210])
         self.assertEqual(stats['ar'], [4, 0, 0])
-        self.assertEqual(stats['ver'], '1.0.0-preparation.2')
+        self.assertEqual(stats['ver'], '1.0.0')
 
 
 if __name__ == '__main__':
