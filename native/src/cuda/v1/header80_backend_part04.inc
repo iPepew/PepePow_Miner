@@ -127,7 +127,6 @@ struct ColdServiceScratch {
     double task_x[PEPEPOW_CUDA_THREADS];
     double task_value[PEPEPOW_CUDA_THREADS];
     double task_result[PEPEPOW_CUDA_THREADS];
-    unsigned int task_owner[PEPEPOW_CUDA_THREADS];
 };
 
 __device__ __forceinline__ void service_accumulate(
@@ -138,4 +137,5 @@ __device__ __forceinline__ void service_accumulate(
     bool active, ColdServiceScratch& scratch) {
     const bool cold = active && sw_state_is_cold(sw);
     const bool task = cold && nibble != 0U;
+
 
