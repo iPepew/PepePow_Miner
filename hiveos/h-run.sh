@@ -13,10 +13,6 @@ runtime_log="${log_dir}/runtime-diagnostics.txt"
 exit_file="${log_dir}/miner-exit-status.txt"
 workers_file="${miner_dir}/active-workers.env"
 package_version="$(cat "${miner_dir}/VERSION")"
-if [[ "${PEPEW_WRAPPER_SELFTEST:-0}" != "1" && "${PEPEW_ALLOW_UNVERIFIED:-0}" != "1" ]]; then
-  echo "[ERROR] Preparation package: exact GPU validation is pending. See README.md." >&2
-  exit 78
-fi
 if [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
   echo "[ERROR] Use PEPEW_DEVICES in HiveOS configuration; inherited CUDA_VISIBLE_DEVICES is unsupported." >&2
   exit 78
@@ -125,7 +121,10 @@ for ((position=0; position<${#all_indices[@]}; ++position)); do
       exit 1
     fi
     backend=general
-    if [[ "${sm}" == 70 && "${all_names[$position]}" == *V100* ]]; then backend=v100; fi
+    if [[ "${all_names[$position]}" == *V100* ]]; then
+      echo "[ERROR] Tesla V100 support is postponed; select RTX devices using PEPEW_DEVICES." >&2
+      exit 64
+    fi
     if [[ ! "${sm}" =~ ^(61|70|75|80|86|89|120)$ ]]; then
       echo "[ERROR] GPU ${index} ${all_names[$position]} uses unsupported or undetected architecture sm_${sm}" >&2
       echo "[ERROR] General build contains sm_61, sm_70, sm_75, sm_80, sm_86, sm_89 and sm_120" >&2
