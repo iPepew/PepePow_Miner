@@ -216,7 +216,11 @@ fi
   echo "PACKAGE_NAME=${package_name}"
   echo "MINER_VERSION=${miner_version}"
   echo "DRIVER_VERSION=${driver_version}"
-  echo "PROFILE=$(tr '\n' ' ' < ./BUILD_PROFILE 2>/dev/null || true)"
+  if [[ -r ./BUILD_PROFILE ]]; then
+    echo "PROFILE=$(tr '\n' ' ' < ./BUILD_PROFILE)"
+  else
+    echo "PROFILE=not-provided"
+  fi
   echo "MULTI_GPU_MODE=one_process_per_gpu"
   echo "SELECTED_GPU_COUNT=${#gpu_indices[@]}"
   for ((position=0; position<${#gpu_indices[@]}; ++position)); do
