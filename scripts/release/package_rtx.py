@@ -9,6 +9,8 @@ from pathlib import Path
 import re
 import tarfile
 
+PACKAGE_ROOT = 'pepew-miner-1.0.0-linux-x86_64'
+
 SOURCE = '2292825ea66a577a13e61ad63695b890396bf38b'
 MINER = '96d59fe347272af0e6be4c5b7f4e90e92c4b96912c0b5a738a207266f1eaee2c'
 RUNTIME = {
@@ -52,6 +54,7 @@ def assemble(binary, runtime, runtime_commit):
         files[dest] = (regular(path), mode)
     manifest = {
         'schema_version': 1, 'product': 'PepeW Miner', 'version': '1.0.0',
+        'package_root': PACKAGE_ROOT, 'packaging_revision': 2,
         'installable': True, 'profiles': ['general'], 'v100_included': False,
         'binary_source': SOURCE, 'binary_sha256': MINER,
         'runtime_source': runtime_commit,
@@ -68,7 +71,7 @@ def assemble(binary, runtime, runtime_commit):
     with gzip.GzipFile(fileobj=output, mode='wb', filename='', mtime=0) as gz:
         with tarfile.open(fileobj=gz, mode='w', format=tarfile.USTAR_FORMAT) as archive:
             for path, (data, mode) in sorted(files.items()):
-                entry = tarfile.TarInfo('pepew-miner/' + path)
+                entry = tarfile.TarInfo(PACKAGE_ROOT + '/' + path)
                 entry.size, entry.mode, entry.mtime = len(data), mode, 0
                 entry.uid = entry.gid = 0
                 entry.uname = entry.gname = ''
