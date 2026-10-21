@@ -43,10 +43,10 @@ class RuntimeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='pepew test ')
         self.root = Path(self.tmp.name)
-        self.package = self.root / 'pepew-miner'
+        self.package = self.root / 'pepew-miner-1.0.0-linux-x86_64'
         self.package.mkdir()
         (self.package / 'libexec').mkdir()
-        for name in ('h-run.sh', 'h-config.sh', 'h-stats.sh', 'pepepowminer'):
+        for name in ('h-manifest.conf', 'h-run.sh', 'h-config.sh', 'h-stats.sh', 'pepepowminer'):
             shutil.copyfile(SOURCE / 'hiveos' / name, self.package / name)
             (self.package / name).chmod(0o755)
         shutil.copyfile(SOURCE / 'hiveos/console-monitor.sh', self.package / 'libexec/console-monitor.sh')
@@ -84,6 +84,17 @@ class RuntimeTests(unittest.TestCase):
         return subprocess.run(['bash', str(self.package / name), *args],
                               env=dict(self.env, **env), text=True,
                               capture_output=True, timeout=20)
+
+    def test_manifest_config_uses_installed_directory(self):
+        result = subprocess.run(['bash', '-eu', '-c',
+            'source "$1/h-manifest.conf"; source "$1/h-config.sh"; '
+            'printf "%s\\n" "$CUSTOM_NAME" "$CUSTOM_VERSION" "$CUSTOM_CONFIG_FILENAME" "$CUSTOM_LOG_BASENAME"',
+            'test', str(self.package)], env=self.env, text=True,
+            capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), [self.package.name, '1.0.0',
+            str(self.package / 'config.txt'), '/var/log/miner/custom/' + self.package.name + '/pepew'])
+        self.assertTrue((self.package / 'config.txt').is_file())
 
     def test_version_without_gpu_and_invalid_profile(self):
         result = self.run_file('pepepowminer', '--version')
