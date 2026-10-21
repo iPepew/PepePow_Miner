@@ -6,8 +6,10 @@ Tesla V100 отложена и не входит в этот выпуск; её 
 
 ## Установка в HiveOS
 
-В Flight Sheet выберите Custom miner, имя pepew-miner. Installation URL — ссылка
-на архив этого релиза. Задайте Pool URL (stratum+tcp://HOST:PORT), Wallet and
+В Flight Sheet выберите Custom miner и вставьте ссылку на архив в Installation URL.
+Имя из ссылки: pepew-miner-1.0.0-linux-x86_64; вручную заменять его не нужно.
+Архив распаковывается в каталог с тем же именем; manifest определяет пути
+относительно своего расположения. Задайте Pool URL (stratum+tcp://HOST:PORT), Wallet and
 worker template и пароль пула (обычно x). Реальные реквизиты в архив не включены.
 Для выбора карт задайте PEPEW_DEVICES в окружении: all либо индексы nvidia-smi,
 например 0,2. На смешанном риге исключите V100 из выбранных устройств.
@@ -15,7 +17,7 @@ worker template и пароль пула (обычно x). Реальные ре
 После ручной распаковки:
 
 ```sh
-cd pepew-miner
+cd pepew-miner-1.0.0-linux-x86_64
 sha256sum -c SHA256SUMS
 ./pepepowminer --version
 ./pepepowminer --help
@@ -25,7 +27,7 @@ CUSTOM_URL='stratum+tcp://HOST:PORT' CUSTOM_TEMPLATE='WALLET.WORKER' CUSTOM_PASS
 Подставьте свои HOST, PORT, WALLET.WORKER. Нужны bash, Python3, NVIDIA driver,
 nvidia-smi и стандартные Linux coreutils. Каталогу пакета и логов нужны права
 записи; для обычного пользователя задайте PEPEW_LOG_ROOT на доступный каталог.
-Завершение — Ctrl+C/SIGTERM. Логи: /var/log/miner/custom/pepew-miner.
+Завершение — Ctrl+C/SIGTERM. Логи: /var/log/miner/custom/pepew-miner-1.0.0-linux-x86_64.
 Конфигурация сохраняется с правами0600; не публикуйте config.txt и рабочие логи.
 
 ## Проверенные результаты
