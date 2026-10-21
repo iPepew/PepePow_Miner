@@ -36,8 +36,6 @@
         if (task) {
             scratch.task_x[slot] = task_x;
             scratch.task_value[slot] = value;
-            scratch.task_owner[slot] =
-                static_cast<unsigned int>(threadIdx.x);
         }
     }
 
@@ -48,8 +46,9 @@
              task_index < task_count; task_index += 32U) {
             const double nonlinear_value =
                 safe_nonlinear(scratch.task_x[task_index]);
-            const unsigned int owner = scratch.task_owner[task_index];
-            scratch.task_result[owner] =
+            // The producer retains its unique queue slot across both barriers.
+            // Return by slot, avoiding the shared owner array and its traffic.
+            scratch.task_result[task_index] =
                 nonlinear_value * scratch.task_value[task_index] * 1234.0;
         }
         __syncwarp();
@@ -60,7 +59,7 @@
     if (active) {
         if (cold) {
             if (nibble != 0U) {
-                sum += scratch.task_result[threadIdx.x];
+                sum += scratch.task_result[slot];
             }
         } else {
             sum += warm_contribution;
@@ -154,3 +153,4 @@ void header80_pow_kernel(
 
     const std::size_t index =
         static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+
