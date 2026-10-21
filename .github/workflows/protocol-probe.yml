@@ -2,6 +2,8 @@ name: Protocol Probe
 
 on:
   push:
+    branches:
+      - '**'
     paths:
       - '.github/workflows/protocol-probe.yml'
   workflow_dispatch:
